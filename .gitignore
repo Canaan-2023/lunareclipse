@@ -1,0 +1,32 @@
+# 依赖
+node_modules/
+
+# 构建产物
+out/
+dist/
+.npm-cache/
+.playwright-browsers/
+.vite/
+.vitest/
+coverage/
+
+# 用户数据（记忆/日志/会话/快照——不进版本库）
+.userdata/
+data/
+tmp/
+
+# 日志
+*.log
+npm-install.log
+
+# 系统/环境
+.DS_Store
+Thumbs.db
+.env
+.env.local
+
+# 本地备用的 node 运行时（从莉莉丝 companion 复制，方便跑 typecheck/test，不进版本库）
+.tools/
+
+# 打包机本机隐私词文件（作者常住地特征词，门禁读取注入 ABYSSAC_GEO_TERMS，绝不上库）
+scripts/.geo-terms.local

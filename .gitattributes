@@ -1,0 +1,6 @@
+# 换行符规范：文本统一 LF（与 .prettierrc endOfLine=lf 一致），
+# Windows 批处理脚本保留 CRLF 以避免 cmd.exe 解析问题。
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

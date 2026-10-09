@@ -1,0 +1,16 @@
+{
+  "name": "headless-browser",
+  "description": "浏览器控制工具（AI 直接浏览/操作网页）：导航/快照/点击/输入/滚动/执行脚本/状态/接管系统默认浏览器。页面快照把网页转成可读文本结构，AI 不需看图就能理解页面并操作。自动发现本机任意常见浏览器内核（Edge/Chrome/Brave/Firefox 等，缺失或全部不可用时自动降级内置无头内核），可选接管对方系统的默认浏览器（复用其登录态）。",
+  "version": "1.0.0",
+  "author": "ABYSSAC",
+  "tools": [
+    { "id": "browser_navigate", "name": "打开网页", "category": "browser", "description": "打开指定网页（后台自动加载，不弹窗口），返回页面标题和 URL。之后可用「页面快照」查看页面结构。", "defaultEnabled": true, "riskLevel": "low", "agents": ["frontend"] },
+    { "id": "browser_snapshot", "name": "页面快照", "category": "browser", "description": "把当前网页转成可读的文本结构树（链接/按钮/标题等），AI 据此理解页面内容——不需要看截图，纯文本直接可读。", "defaultEnabled": true, "riskLevel": "low", "agents": ["frontend"] },
+    { "id": "browser_click", "name": "点击元素", "category": "browser", "description": "点击页面上的元素（CSS 选择器，如按钮/链接）。", "defaultEnabled": true, "riskLevel": "low", "agents": ["frontend"] },
+    { "id": "browser_type", "name": "输入文本", "category": "browser", "description": "在页面的输入框输入文字（CSS 选择器，默认先清空再输入）。", "defaultEnabled": true, "riskLevel": "low", "agents": ["frontend"] },
+    { "id": "browser_scroll", "name": "滚动页面", "category": "browser", "description": "滚动当前网页（向上/向下，像素）。", "defaultEnabled": true, "riskLevel": "low", "agents": ["frontend"] },
+    { "id": "browser_evaluate", "name": "执行脚本", "category": "browser", "description": "在网页里执行一段 JavaScript，返回结果。用于读特定数据或做页面内操作。", "defaultEnabled": true, "riskLevel": "medium", "agents": ["frontend"] },
+    { "id": "browser_status", "name": "浏览器状态", "category": "browser", "description": "查询当前浏览的网页地址、标题和页面快照，确认操作结果。", "defaultEnabled": true, "riskLevel": "low", "agents": ["frontend"] },
+    { "id": "browser_takeover", "name": "接管系统默认浏览器", "category": "browser", "description": "切换到对方系统里真实的默认浏览器（Edge/Chrome/Brave 等 Chromium 内核浏览器，CDP 协议），复用其已登录会话。之后的网页操作会发生在这个真实浏览器上（可有窗口）。", "defaultEnabled": true, "riskLevel": "medium", "agents": ["frontend"], "caps": ["browser:manager"] }
+  ]
+}

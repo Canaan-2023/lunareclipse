@@ -1,0 +1,11 @@
+{
+  "name": "lilith",
+"description": "莉莉丝陪伴插件：用户记忆 / 世界观知识库 / 情绪表达（打包内置，开箱即用）",
+  "version": "1.0.0",
+  "author": "ABYSSAC",
+  "tools": [
+    { "id": "lilith_player_memory", "name": "用户记忆", "category": "graph", "description": "读写用户记忆（记录用户的偏好/约定/忌讳，长期陪伴记忆）", "defaultEnabled": false, "riskLevel": "low", "agents": ["lilith"] },
+    { "id": "lilith_lore_query", "name": "世界观查询", "category": "graph", "description": "查询世界观知识库（设定/共同经历，伴侣角色的背景记忆）", "defaultEnabled": false, "riskLevel": "low", "agents": ["lilith"] },
+    { "id": "lilith_emotion", "name": "情绪表达", "category": "self-shape", "description": "控制自己的 LIVE2D 情绪/动画（下一条回复按指定情绪表达）", "defaultEnabled": false, "riskLevel": "low", "agents": ["lilith"] }
+  ]
+}
