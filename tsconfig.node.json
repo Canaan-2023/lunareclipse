@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    // noEmit：allowImportingTsExtensions 的前置条件是「设置了 noEmit 或 emitDeclarationOnly」，
+    //   二者都不设时，IDE 直接按本配置求值会报「只有在设置 noEmit 或 emitDeclarationOnly 时…」。
+    //   为什么过去没暴露：`npm run typecheck` 走的是 `tsc --noEmit -p … --composite false`，
+    //   命令行补上了 noEmit，于是只有 IDE 报错、CLI 却是 0 错误。
+    //   为什么保留 composite：根 tsconfig.json 的 references 要求被引用工程是 composite。
+    //   加 noEmit 不影响构建——转译由 electron-vite/rollup 负责，它们不读本文件。
+    "noEmit": true,
+    "lib": ["ES2022"],
+    "types": ["node", "electron"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+"outDir": "./out/tsconfig.node",
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    }
+  },
+  "include": [
+"electron/**/*.ts",
+    "shared/**/*.ts",
+    "electron.vite.config.ts"
+  ],
+  "exclude": [
+    "electron/main/tools/暂未使用的代码/**"
+  ]
+}
