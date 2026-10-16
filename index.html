@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:* https://*; media-src 'self' blob:" />
+    <title>月蚀</title>
+    <script>
+      // 首帧防闪（FOUC）：React 挂载前同步恢复上次主题 class，
+      // 避免暗色主题用户在启动时先渲染一帧亮色（:root 默认值）
+      ;(function () {
+        try {
+          var t = localStorage.getItem('lunareclipse.theme')
+          var valid = ['frost-glass', 'parchment', 'night', 'violet-night', 'eclipse', 'gilded']
+          var el = document.documentElement
+          el.classList.remove('dark', 'theme-transitioning', 'undefined')
+          if (t && valid.indexOf(t) !== -1) el.classList.add(t)
+        } catch (e) {}
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,563 @@
+@import 'tailwindcss';
+
+/* Tailwind v4 CSS-first 主题（@theme inline：工具类内联引用运行时变量，
+   三元组 --color-* 仍由下文主题块按 html.theme 切换；opacity/color-mix 均可用） */
+@theme inline {
+  --color-bg-base: rgb(var(--color-bg-base));
+  --color-bg-surface: rgb(var(--color-bg-surface));
+  --color-bg-elevated: rgb(var(--color-bg-elevated));
+  --color-bg-muted: rgb(var(--color-bg-muted));
+  --color-fg-primary: rgb(var(--color-fg-primary));
+  --color-fg-secondary: rgb(var(--color-fg-secondary));
+  --color-fg-muted: rgb(var(--color-fg-muted));
+  --color-accent: rgb(var(--color-accent));
+  --color-accent-glow: var(--color-accent-glow);
+  --color-accent-fg: rgb(var(--color-accent-fg));
+  --color-border: rgb(var(--color-border));
+  --color-border-subtle: rgb(var(--color-border-subtle));
+  --color-success: rgb(var(--color-success));
+  --color-success-soft: var(--color-success-soft);
+  --color-danger: rgb(var(--color-danger));
+  --color-danger-soft: var(--color-danger-soft);
+--color-warning: rgb(var(--color-warning));
+  --color-warning-fg: rgb(var(--color-warning-fg));
+  --color-warning-soft: var(--color-warning-soft);
+  --radius-window: 20px;
+  --radius-card: 12px;
+  --radius-btn: 8px;
+  --font-sans:
+    -apple-system, 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  --text-micro: 11px;
+  --text-micro--line-height: 15px;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-title: 16px;
+  --text-title--line-height: 22px;
+  --text-heading: 20px;
+  --text-heading--line-height: 28px;
+  --text-display: 22px;
+  --text-display--line-height: 30px;
+}
+
+/* ===== 霜璃：雾白玻璃质感 + 深雾蓝 + 立体阴影 + 反光（默认主题） =====
+   配色策略：低饱和莫兰迪色系，accent 加深配白字可读
+   参考：Glassmorphism Palette — 低饱和 + 半透明 + 柔光 */
+:root,
+html.frost-glass {
+  --color-bg-base: 220 228 237;
+  --color-bg-surface: 238 242 247;
+  --color-bg-elevated: 255 255 255;
+  --color-bg-muted: 224 231 240;
+--color-fg-primary: 30 41 59;
+  --color-fg-secondary: 71 85 105;
+  /* 对比度修复：原 148 163 184 在浅雾蓝底仅约 2.0~2.6:1，明显偏淡；
+     加深为雾蓝灰后在全部背景 ≥4.5:1，且层级仍低于 secondary(5.9:1) */
+  --color-fg-muted: 88 102 124;
+  --color-accent: 61 90 122;
+  --color-accent-glow: rgba(61, 90, 122, 0.18);
+  --color-accent-fg: 255 255 255;
+  --color-border: 184 197 212;
+  --color-border-subtle: 209 220 232;
+  --color-success: 22 163 74;
+  --color-success-soft: rgba(22, 163, 74, 0.16);
+  --color-danger: 220 38 38;
+  --color-danger-soft: rgba(220, 38, 38, 0.14);
+--color-warning: 180 83 9;
+  --color-warning-fg: 255 255 255;
+  --color-warning-soft: rgba(180, 83, 9, 0.14);
+}
+
+/* ===== 素笺：纯白底 + 黑边黑字（夜幕的反转，日间高对比模式） =====
+   配色策略：与夜幕完全反过来，纯白背景 + 黑色描边 + 黑色文字
+   accent 黑色配白字，最高对比度，适合强光环境 */
+html.parchment {
+  --color-bg-base: 255 255 255;
+  --color-bg-surface: 250 250 250;
+  --color-bg-elevated: 245 245 245;
+  --color-bg-muted: 239 239 239;
+  --color-fg-primary: 0 0 0;
+  --color-fg-secondary: 51 51 51;
+  --color-fg-muted: 102 102 102;
+  --color-accent: 0 0 0;
+  --color-accent-glow: rgba(0, 0, 0, 0.10);
+  --color-accent-fg: 255 255 255;
+  --color-border: 0 0 0;
+  --color-border-subtle: 204 204 204;
+  --color-success: 22 163 74;
+  --color-success-soft: rgba(22, 163, 74, 0.16);
+  --color-danger: 220 38 38;
+  --color-danger-soft: rgba(220, 38, 38, 0.14);
+--color-warning: 180 83 9;
+  --color-warning-fg: 255 255 255;
+  --color-warning-soft: rgba(180, 83, 9, 0.14);
+}
+
+/* ===== 夜幕：纯黑 + 白边白字（夜间模式） =====
+   配色策略：非纯白文字降低眩光（halation效应），accent 微灰更柔和
+   参考：mantlr.com dark mode guide — #F5F5F5 在 #000000 上 16:1，AAA 达标且不刺眼 */
+html.night {
+  --color-bg-base: 0 0 0;
+  --color-bg-surface: 10 10 10;
+  --color-bg-elevated: 20 20 20;
+  --color-bg-muted: 26 26 26;
+--color-fg-primary: 245 245 245;
+  --color-fg-secondary: 204 204 204;
+  /* 对比度修复：134 灰在 bg-muted 上 4.78:1（原 128 仅 4.41:1） */
+  --color-fg-muted: 134 134 134;
+  --color-accent: 224 224 224;
+  --color-accent-glow: rgba(224, 224, 224, 0.10);
+  --color-accent-fg: 0 0 0;
+  --color-border: 255 255 255;
+  --color-border-subtle: 51 51 51;
+  --color-success: 74 222 128;
+  --color-success-soft: rgba(74, 222, 128, 0.16);
+  --color-danger: 248 113 113;
+  --color-danger-soft: rgba(248, 113, 113, 0.16);
+--color-warning: 251 191 36;
+  --color-warning-fg: 0 0 0;
+  --color-warning-soft: rgba(251, 191, 36, 0.16);
+}
+
+/* ===== 紫夜：深紫黑 + 紫罗兰 accent（高级感暗色主题） =====
+   配色策略：极暗紫基底（#171226）+ 紫罗兰 accent（#A78BFA），
+   比夜幕多一层紫色调，文字用紫白降低纯白刺眼感 */
+html.violet-night {
+  --color-bg-base: 23 18 38;
+  --color-bg-surface: 32 26 51;
+  --color-bg-elevated: 42 34 64;
+  --color-bg-muted: 47 39 71;
+--color-fg-primary: 237 233 248;
+  --color-fg-secondary: 196 186 219;
+  /* 对比度修复：153 143 183 在 bg-muted 上 4.64:1（原 139 128 168 仅 3.83:1） */
+  --color-fg-muted: 153 143 183;
+  --color-accent: 167 139 250;
+  --color-accent-glow: rgba(167, 139, 250, 0.18);
+  --color-accent-fg: 23 18 38;
+  --color-border: 74 63 110;
+  --color-border-subtle: 47 39 71;
+  --color-success: 74 222 128;
+  --color-success-soft: rgba(74, 222, 128, 0.16);
+  --color-danger: 248 113 113;
+  --color-danger-soft: rgba(248, 113, 113, 0.16);
+--color-warning: 251 191 36;
+  --color-warning-fg: 23 18 38;
+  --color-warning-soft: rgba(251, 191, 36, 0.16);
+}
+
+/* ===== 月蚀：深靛夜空 + 月白 + 月晕金（品牌主题） =====
+   配色策略：暗色优先的"深夜观测台"气质——深邃靛蓝夜空、月白文字、月晕金点缀 */
+html.eclipse {
+  --color-bg-base: 13 15 24;
+  --color-bg-surface: 18 21 32;
+  --color-bg-elevated: 24 28 42;
+  --color-bg-muted: 30 35 52;
+--color-fg-primary: 236 238 246;
+  --color-fg-secondary: 190 196 214;
+  /* 对比度修复：134 142 168 在 bg-muted 上 4.79:1（原 124 132 158 仅 4.20:1） */
+  --color-fg-muted: 134 142 168;
+  --color-accent: 214 178 118;
+  --color-accent-glow: rgba(214, 178, 118, 0.16);
+  --color-accent-fg: 20 16 8;
+  --color-border: 52 58 82;
+  --color-border-subtle: 36 41 62;
+  --color-success: 74 222 128;
+  --color-success-soft: rgba(74, 222, 128, 0.16);
+  --color-danger: 248 113 113;
+  --color-danger-soft: rgba(248, 113, 113, 0.16);
+--color-warning: 251 191 36;
+  --color-warning-fg: 20 16 8;
+  --color-warning-soft: rgba(251, 191, 36, 0.16);
+}
+
+/* ===== 烫金：深棕向黑的底 + 金色描边（奢华暗金主题） =====
+   配色策略：暖棕黑渐变基底，accent/border 用经典烫金 #D4AF37 系，
+   面板金色描边 + 内顶暖光，呈现"深夜里的一块烫金封皮"质感 */
+html.gilded {
+  --color-bg-base: 26 20 14;
+  --color-bg-surface: 32 25 18;
+  --color-bg-elevated: 40 31 22;
+  --color-bg-muted: 46 36 26;
+  --color-fg-primary: 242 230 210;
+  --color-fg-secondary: 207 189 159;
+  --color-fg-muted: 158 140 112;
+  --color-accent: 212 175 55;
+  --color-accent-glow: rgba(212, 175, 55, 0.18);
+  --color-accent-fg: 28 22 12;
+  --color-border: 173 138 74;
+  --color-border-subtle: 92 74 50;
+  --color-success: 74 222 128;
+  --color-success-soft: rgba(74, 222, 128, 0.16);
+  --color-danger: 248 113 113;
+  --color-danger-soft: rgba(248, 113, 113, 0.16);
+  --color-warning: 233 168 60;
+  --color-warning-fg: 28 22 12;
+  --color-warning-soft: rgba(233, 168, 60, 0.16);
+}
+
+/* 月蚀背景氛围层：右上角一抹极淡的食甚红晕（正在进行中的月食） */
+html.eclipse body {
+  background:
+    radial-gradient(circle at 78% 10%, rgba(196, 98, 90, 0.07), transparent 38%),
+    radial-gradient(circle at 12% 88%, rgba(214, 178, 118, 0.05), transparent 45%),
+    #0D0F18;
+  background-attachment: fixed;
+}
+/* 月蚀面板：靛蓝描边 + 微弱月白内反光 */
+html.eclipse .bg-bg-surface,
+html.eclipse .bg-bg-elevated {
+  box-shadow:
+    0 0 0 1px rgba(52, 58, 82, 0.50),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* 月蚀空态月相图形：月白色圆盘 + 深靛蓝本影缓缓遮过（20s 循环）
+   使用固定色彩值，不依赖主题变量——月盘=月白（亮），本影=深靛蓝（暗） */
+@keyframes eclipseShadow {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.eclipse-moon-phase {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgb(236, 238, 246);
+  box-shadow:
+    0 0 50px rgba(236, 238, 246, 0.35),
+    0 0 25px rgba(214, 178, 118, 0.2),
+    inset 0 0 12px rgba(214, 178, 118, 0.1);
+  overflow: hidden;
+}
+.eclipse-moon-phase::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgb(13, 15, 24);
+  animation: eclipseShadow 20s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eclipse-moon-phase::after { animation: none; }
+}
+
+/* ===== 主题质感层 ===== */
+
+/* 霜璃：雾白基底 + 柔光晕染（玻璃面板有立体阴影 + 内反光高光） */
+html.frost-glass body {
+  background:
+    radial-gradient(circle at 15% 20%, rgba(180, 215, 245, 0.35), transparent 45%),
+    radial-gradient(circle at 85% 80%, rgba(200, 185, 240, 0.28), transparent 50%),
+    linear-gradient(135deg, #DCE4ED 0%, #E8EEF6 50%, #DCE4ED 100%);
+  background-attachment: fixed;
+}
+/* 玻璃立体质感：surface/elevated 有阴影 + 顶部内反光高光描边 */
+html.frost-glass .bg-bg-surface,
+html.frost-glass .bg-bg-elevated {
+  box-shadow:
+    0 4px 16px rgba(50, 80, 120, 0.10),
+    0 1px 3px rgba(50, 80, 120, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+/* 霜璃交互态：hover 时面板上浮 + 反光增强 */
+html.frost-glass .bg-bg-surface:hover,
+html.frost-glass .bg-bg-elevated:hover {
+  box-shadow:
+    0 6px 20px rgba(50, 80, 120, 0.14),
+    0 2px 4px rgba(50, 80, 120, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
+}
+
+/* 素笺：纯白底，无纹理，极简高对比（与夜幕对称） */
+html.parchment body {
+  background-color: #FFFFFF;
+}
+/* 素笺面板：黑色描边 + 微弱阴影，强化边界隔离 */
+html.parchment .bg-bg-surface,
+html.parchment .bg-bg-elevated {
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(0, 0, 0, 0.04);
+}
+
+/* 夜幕：纯黑底，无纹理，极简 */
+html.night body {
+  background-color: #000000;
+}
+/* 夜幕面板：白边描边 + 微弱发光，纯黑白对比 */
+html.night .bg-bg-surface,
+html.night .bg-bg-elevated {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* 紫夜：深紫黑底 + 微弱紫晕 */
+html.violet-night body {
+  background:
+    radial-gradient(circle at 20% 15%, rgba(139, 92, 246, 0.14), transparent 50%),
+    radial-gradient(circle at 85% 85%, rgba(167, 139, 250, 0.10), transparent 45%),
+    #171226;
+  background-attachment: fixed;
+}
+/* 紫夜面板：紫边描边 + 微弱紫光 */
+html.violet-night .bg-bg-surface,
+html.violet-night .bg-bg-elevated {
+  box-shadow:
+    0 0 0 1px rgba(167, 139, 250, 0.10),
+    inset 0 1px 0 rgba(167, 139, 250, 0.06);
+}
+
+/* 烫金：深棕向黑的暖渐变底 + 右上角一抹金色辉光 */
+html.gilded body {
+  background:
+    radial-gradient(circle at 15% 18%, rgba(212, 175, 55, 0.08), transparent 45%),
+    radial-gradient(circle at 85% 82%, rgba(140, 90, 35, 0.14), transparent 50%),
+    linear-gradient(160deg, #241A10 0%, #1A1208 55%, #110C06 100%);
+  background-attachment: fixed;
+}
+/* 烫金面板：经典烫金描边 + 顶部内顶暖光 */
+html.gilded .bg-bg-surface,
+html.gilded .bg-bg-elevated {
+  box-shadow:
+    0 0 0 1px rgba(212, 175, 55, 0.30),
+    inset 0 1px 0 rgba(212, 175, 55, 0.10);
+}
+
+/* ===== 标题栏无缝 =====
+   标题栏正下方的结构面板（侧栏/标签栏/抽屉）不再绘制顶部内反光与描边，
+   避免各主题的 inset 高光/全周描边在标题栏正下方聚成一条 1px 亮线
+   （霜璃根因：inset 0 1px 0 rgba(255,255,255,0.9)，此处去掉后线即消失）。
+   保留各自的下落阴影，视觉深度不变；hover 态同步处理 */
+html.frost-glass .titlebar-seamless,
+html.frost-glass .titlebar-seamless:hover {
+  box-shadow:
+    0 4px 16px rgba(50, 80, 120, 0.10),
+    0 1px 3px rgba(50, 80, 120, 0.08);
+}
+html.parchment .titlebar-seamless,
+html.parchment .titlebar-seamless:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+html.night .titlebar-seamless,
+html.night .titlebar-seamless:hover,
+html.violet-night .titlebar-seamless,
+html.violet-night .titlebar-seamless:hover,
+html.eclipse .titlebar-seamless,
+html.eclipse .titlebar-seamless:hover,
+html.gilded .titlebar-seamless,
+html.gilded .titlebar-seamless:hover {
+  box-shadow: none;
+}
+
+/* 基础重置放入 @layer base：Tailwind v4 将工具类放入 @layer utilities，
+   未分层的规则会压过所有 @layer 内规则导致 p-2/px-4/mx-auto 等间距类失效；
+   包入 base 层后 utilities 优先，间距类恢复正常（v3 无 @layer 时按特异性竞争无此问题） */
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* 主题切换过渡动画：颜色淡入 + 模糊消散，营造"蜕变"感 */
+html.theme-transitioning {
+  animation: themeFade 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: background-color 400ms ease, color 400ms ease, border-color 400ms ease, background-image 400ms ease, box-shadow 400ms ease !important;
+}
+
+@keyframes themeFade {
+  0% {
+    opacity: 0.6;
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 20px;
+    color: rgb(var(--color-fg-primary));
+    background-color: rgb(var(--color-bg-base));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    user-select: none;
+  }
+}
+
+input, textarea {
+  user-select: text;
+}
+
+/* 聊天消息内容允许选中复制（覆盖 body 的 user-select: none） */
+.markdown-body,
+.message-content,
+pre, code {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--color-border));
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--color-fg-muted));
+}
+
+.word-break {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.token-fade {
+  animation: tokenFade 150ms ease-out;
+}
+
+@keyframes tokenFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ToolCallCard running 态：左右扫描的不定进度条 */
+@keyframes indeterminateProgress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.animate-indeterminate-progress {
+  animation: indeterminateProgress 1.2s ease-in-out infinite;
+}
+
+/* 卡片展开过渡：高度 + 透明度 */
+.tool-card-expand {
+  animation: cardExpand 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cardExpand {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 状态徽章微光：running 态的呼吸效果 */
+@keyframes statusBreath {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.status-breath {
+  animation: statusBreath 1.5s ease-in-out infinite;
+}
+
+@keyframes authFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes authGlowPulse {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes authLineGrow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.auth-enter-1 { animation: authFadeUp 400ms cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: 0ms; }
+.auth-enter-2 { animation: authFadeUp 400ms cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: 80ms; }
+.auth-enter-3 { animation: authFadeUp 400ms cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: 160ms; }
+.auth-enter-4 { animation: authFadeUp 400ms cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: 240ms; }
+.auth-enter-5 { animation: authFadeUp 400ms cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: 320ms; }
+
+.auth-glow {
+  animation: authGlowPulse 4s ease-in-out infinite;
+}
+
+.auth-line {
+  transform-origin: left center;
+  animation: authLineGrow 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 400ms;
+}
+
+.paper-texture {
+  position: relative;
+}
+
+.paper-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 0;
+  /* 纯 CSS 噪点纹理（避免 SVG data URL 在某些 CSP 下报错） */
+  background-image:
+    radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+    radial-gradient(circle at 75% 75%, rgba(255, 255, 255, 0.008) 1px, transparent 1px);
+  background-size: 3px 3px, 5px 5px;
+}
