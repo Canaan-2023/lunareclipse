@@ -1,0 +1,10 @@
+{
+  "name": "coding",
+  "description": "编程流程插件：结构化任务计划（编号任务树/边界/验证段）+ 代码审查清单（打包内置，通用编码工作流）",
+  "version": "1.0.0",
+  "author": "ABYSSAC",
+  "tools": [
+    { "id": "coding_plan", "name": "编程任务计划", "category": "task-mode", "description": "生成结构化任务计划框架（编号任务树/边界/验证段），编程任务先计划后动手", "defaultEnabled": true, "riskLevel": "low", "agents": ["frontend"] },
+    { "id": "coding_review", "name": "代码审查", "category": "task-mode", "description": "代码审查清单（安全扫描/质量门/自查点），交付前过一遍", "defaultEnabled": true, "riskLevel": "low", "agents": ["frontend"] }
+  ]
+}
