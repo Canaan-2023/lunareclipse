@@ -1,0 +1,19 @@
+{
+  "name": "computer-use",
+  "description": "系统级电脑操控（开源 computer-use / cua-driver 思路的 Windows 零依赖实现）：截屏 / 鼠标（移动/点击/双击/右键/拖拽/滚轮）/ 键盘（键入/组合键）/ 窗口枚举与聚焦。高风险——默认禁用，需在设置页手动启用。参考开源 computer-use 方案语义。",
+  "version": "1.0.0",
+  "author": "ABYSSAC",
+  "tools": [
+    { "id": "screen_capture", "name": "截屏", "category": "computer", "description": "截取当前屏幕（整屏），返回 PNG 路径 + 尺寸。AI 用截图上的坐标对应 SetCursorPos 物理坐标（1:1）。", "defaultEnabled": false, "riskLevel": "medium", "agents": ["frontend"], "caps": ["system:input"] },
+    { "id": "screen_info", "name": "屏幕信息", "category": "computer", "description": "返回主屏物理分辨率 + 当前光标位置 + 已载入窗口列表（名称/进程 PID）。", "defaultEnabled": false, "riskLevel": "low", "agents": ["frontend"], "caps": ["system:input"] },
+    { "id": "mouse_move", "name": "移动鼠标", "category": "computer", "description": "移动鼠标到屏幕物理坐标 (x,y)。", "defaultEnabled": false, "riskLevel": "medium", "agents": ["frontend"], "caps": ["system:input"] },
+    { "id": "mouse_click", "name": "鼠标点击", "category": "computer", "description": "在指定坐标（可省略=当前光标位）点击，button=left/right/middle。", "defaultEnabled": false, "riskLevel": "medium", "agents": ["frontend"], "caps": ["system:input"] },
+    { "id": "mouse_double_click", "name": "鼠标双击", "category": "computer", "description": "在指定坐标（可省略）双击左键。", "defaultEnabled": false, "riskLevel": "medium", "agents": ["frontend"], "caps": ["system:input"] },
+    { "id": "mouse_drag", "name": "鼠标拖拽", "category": "computer", "description": "从 (fromX,fromY) 平滑拖拽到 (toX,toY)（按住→移动→松开），button=left/right/middle。", "defaultEnabled": false, "riskLevel": "medium", "agents": ["frontend"], "caps": ["system:input"] },
+    { "id": "mouse_scroll", "name": "鼠标滚轮", "category": "computer", "description": "滚动：deltaY 正=上滚负=下滚（格），可选坐标定位；deltaX 横向（按住 shift 场景）。", "defaultEnabled": false, "riskLevel": "low", "agents": ["frontend"], "caps": ["system:input"] },
+    { "id": "key_press", "name": "按键", "category": "computer", "description": "按组合键，keys 形如：'enter' / 'tab' / 'ctrl+s' / 'ctrl+shift+esc' / 'alt+tab' / 'win+e'。修饰键 ctrl/shift/alt/win，普通键用 SendKeys 名（enter/esc/tab/up/down/left/right/f1-f12/home/end/delete 等）或单个字符。", "defaultEnabled": false, "riskLevel": "medium", "agents": ["frontend"], "caps": ["system:input"] },
+    { "id": "type_text", "name": "键入文本", "category": "computer", "description": "向当前焦点窗口键入文本（支持多行，中文可输；发送给当前焦点目标，键入前请确认焦点正确）。", "defaultEnabled": false, "riskLevel": "medium", "agents": ["frontend"], "caps": ["system:input"] },
+    { "id": "app_list", "name": "列出窗口", "category": "computer", "description": "枚举可见顶层窗口（标题 + 进程 PID），用于定位要操控的应用。", "defaultEnabled": false, "riskLevel": "low", "agents": ["frontend"], "caps": ["system:input"] },
+    { "id": "app_focus", "name": "聚焦窗口", "category": "computer", "description": "按标题匹配激活/聚焦某应用窗口（SetForegroundWindow）。", "defaultEnabled": false, "riskLevel": "medium", "agents": ["frontend"], "caps": ["system:input"] }
+  ]
+}
