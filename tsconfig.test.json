@@ -1,0 +1,40 @@
+{
+  // 测试代码类型检查专用工程（0.52.9 可移植性加固，对应 CODE-RULES 待实施项 / 测试专家 D4）：
+  // 背景：tsconfig.node.json 与 tsconfig.web.json 的 include 都不含 test/，
+  //   `npm run typecheck` 从不检查测试代码——测试侧类型漂移无静态拦截。
+  // 为什么必须独立一份而不是并入现有两份：
+  //   - test/ 里 212 个文件 import electron/main（需 node 类型），14 个 import src/（需 DOM + jsx），
+  //     node 配置无 DOM、web 配置无 node 类型，任一并入都会造成大面积假错。
+  //   - 本配置同时提供 node 类型 + DOM lib + jsx，覆盖两类测试。
+  // 说明：仅做类型检查（noEmit），不参与构建；转译仍由 vitest/esbuild 负责。
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node", "electron", "vite/client"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "paths": {
+      "@shared/*": ["./shared/*"],
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    // 全局声明文件：test/ 里的用例会 import src/stores、src/components，
+    // 这些文件依赖 `window.lunareclipse`（由本文件 declare global）。
+    // 缺此 include 时 program 里没有该声明 → 连带检查出的 src 侧出现大量
+    // TS2339（Property 'lunareclipse' does not exist on type 'Window'）假错
+    // （2026-10-17 复验实测：加这一行即消除 127+ 条，是 481 存量里 ROI 最高的收敛项）。
+    "src/types/global.d.ts"
+  ]
+}
