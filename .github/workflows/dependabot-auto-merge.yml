@@ -50,8 +50,8 @@ jobs:
           echo "PR #$PR_NUMBER  author=$author  state=$state  mergeable=$mergeable"
           echo "title: $title"
 
-          if [ "$author" != "dependabot[bot]" ]; then
-            echo "Not authored by Dependabot; skipping."
+          if ! printf '%s' "$author" | grep -qi 'dependabot'; then
+            echo "Not authored by Dependabot (author=$author); skipping."
             exit 0
           fi
           if ! printf '%s' "$title" | grep -qi 'minor-and-patch group'; then
