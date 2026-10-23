@@ -324,10 +324,10 @@ export async function runJavaScript(
       resolve({
         ok: false,
         stdout: stdoutChunks.join(''),
-        stderr: stderrChunks.join('') + err.message + '\n',
+        stderr: stderrChunks.join('') + (err as Error).message + '\n',
         durationMs: Date.now() - start,
         timedOut: false,
-        errorMessage: err.message
+        errorMessage: (err as Error).message
       })
     })
 

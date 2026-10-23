@@ -69,7 +69,7 @@ export class LanHashPool {
           if (!entry) continue
           this.pending.delete(id)
           this.workerOfId.delete(id)
-          entry.reject(new Error(`哈希 worker 异常: ${err.message}`))
+          entry.reject(new Error(`哈希 worker 异常: ${(err as Error).message}`))
         }
       })
       this.workers.push(worker)
