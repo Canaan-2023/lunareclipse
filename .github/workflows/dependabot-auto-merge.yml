@@ -1,0 +1,46 @@
+name: Dependabot auto-merge
+
+# After the CI workflow finishes for a pull request, automatically merge
+# Dependabot's grouped minor/patch PR when every check passed.
+# Major-version updates are intentionally left as PRs for manual review.
+# Uses workflow_run (which runs on the default branch with a writable token)
+# and merges directly, so no branch protection is required and force-pushing
+# main at release time is not blocked.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Merge minor/patch updates when CI passes
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Squash-merge the minor/patch Dependabot group PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          num=$(gh pr list --state open --limit 100 \
+            --json number,title,headRefOid,author \
+            --jq '.[]
+              | select(.author.login == "dependabot[bot]")
+              | select(.headRefOid == env.HEAD_SHA)
+              | select(.title | test("minor-and-patch group"; "i"))
+              | .number' | head -n 1)
+          if [ -z "${num}" ]; then
+            echo "No mergeable minor/patch group PR for this run; skipping."
+            exit 0
+          fi
+          echo "Merging Dependabot PR #${num}"
+          gh pr merge "${num}" --squash --delete-branch
