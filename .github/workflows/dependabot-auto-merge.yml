@@ -12,6 +12,7 @@ on:
     workflows: ["CI"]
     types:
       - completed
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -28,6 +29,7 @@ jobs:
       - name: Squash-merge the minor/patch Dependabot group PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
