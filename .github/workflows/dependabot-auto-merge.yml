@@ -3,9 +3,12 @@ name: Dependabot auto-merge
 # After the CI workflow finishes for a pull request, automatically merge
 # Dependabot's grouped minor/patch PR when every check passed.
 # Major-version updates are intentionally left as PRs for manual review.
-# Uses workflow_run (which runs on the default branch with a writable token)
-# and merges directly, so no branch protection is required and force-pushing
-# main at release time is not blocked.
+#
+# Runs on workflow_run (which executes on the default branch with a writable
+# token) and merges directly, so no branch protection is required and release
+# force-pushes to main are not blocked. The PR number is taken from the
+# workflow_run payload (pull_requests[0].number); matching the run's head SHA
+# is unreliable because pull_request runs use a synthetic merge commit.
 
 on:
   workflow_run:
@@ -31,19 +34,38 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
         run: |
           set -euo pipefail
-          num=$(gh pr list --state open --limit 100 \
-            --json number,title,headRefOid,author \
-            --jq '.[]
-              | select(.author.login == "dependabot[bot]")
-              | select(.headRefOid == env.HEAD_SHA)
-              | select(.title | test("minor-and-patch group"; "i"))
-              | .number' | head -n 1)
-          if [ -z "${num}" ]; then
-            echo "No mergeable minor/patch group PR for this run; skipping."
+          if [ -z "${PR_NUMBER:-}" ]; then
+            echo "No triggering pull request (manual dispatch); skipping."
             exit 0
           fi
-          echo "Merging Dependabot PR #${num}"
-          gh pr merge "${num}" --squash --delete-branch
+
+          meta=$(gh pr view "$PR_NUMBER" --json author,title,state,mergeable)
+          author=$(printf '%s' "$meta" | jq -r '.author.login')
+          title=$(printf '%s' "$meta" | jq -r '.title')
+          state=$(printf '%s' "$meta" | jq -r '.state')
+          mergeable=$(printf '%s' "$meta" | jq -r '.mergeable')
+          echo "PR #$PR_NUMBER  author=$author  state=$state  mergeable=$mergeable"
+          echo "title: $title"
+
+          if [ "$author" != "dependabot[bot]" ]; then
+            echo "Not authored by Dependabot; skipping."
+            exit 0
+          fi
+          if ! printf '%s' "$title" | grep -qi 'minor-and-patch group'; then
+            echo "Not the grouped minor/patch PR; skipping."
+            exit 0
+          fi
+          if [ "$state" != "OPEN" ]; then
+            echo "Pull request is not open; skipping."
+            exit 0
+          fi
+          if [ "$mergeable" != "MERGEABLE" ]; then
+            echo "Pull request is not mergeable ($mergeable); skipping."
+            exit 0
+          fi
+
+          echo "Auto-merging PR #$PR_NUMBER"
+          gh pr merge "$PR_NUMBER" --squash --delete-branch
