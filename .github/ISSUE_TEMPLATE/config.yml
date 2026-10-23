@@ -1,8 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 安全漏洞报告
+  - name: Security report / 安全漏洞报告
     url: https://github.com/Canaan-2023/lunareclipse/security/advisories/new
-    about: 安全问题请私密报告，不要开公开 Issue。
-  - name: 提问 / 使用帮助
+    about: Report security issues privately; do not open a public issue. / 安全问题请私密报告，不要开公开 Issue。
+  - name: Email contact / 邮件联系
+    url: mailto:canaanmonika@foxmail.com
+    about: Contact the maintainer by email. / 通过邮件联系维护者。
+  - name: Questions / 提问与使用帮助
     url: https://github.com/Canaan-2023/lunareclipse/blob/main/SUPPORT.md
-    about: 提问前请先阅读 SUPPORT.md。
+    about: Read SUPPORT.md before asking. / 提问前请先阅读 SUPPORT.md。
