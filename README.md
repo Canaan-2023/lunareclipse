@@ -8,6 +8,7 @@
 
 **v0.53.15 · AGPL-3.0-or-later · Windows x64**
 
+[![CI](https://github.com/Canaan-2023/lunareclipse/actions/workflows/ci.yml/badge.svg)](https://github.com/Canaan-2023/lunareclipse/actions/workflows/ci.yml)
 [![version](https://img.shields.io/badge/version-0.53.15-6f5bd6?style=flat-square)](https://github.com/Canaan-2023/lunareclipse/releases)
 [![license](https://img.shields.io/badge/license-AGPL--3.0--or--later-2ea44f?style=flat-square)](./LICENSE)
 [![platform](https://img.shields.io/badge/platform-Windows%20x64-0078D4?style=flat-square)](#快速开始)

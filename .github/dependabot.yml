@@ -1,0 +1,39 @@
+version: 2
+updates:
+  # npm dependencies (production + dev)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps"
+    pull-request-branch-name:
+      separator: "-"
+    # All minor/patch updates are grouped into one weekly PR.
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    # Major versions are opened as separate PRs and reviewed manually.
+
+  # GitHub Actions used in the workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
