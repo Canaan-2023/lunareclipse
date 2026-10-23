@@ -23,8 +23,9 @@ jobs:
     name: Merge minor/patch updates when CI passes
     runs-on: ubuntu-latest
     if: >-
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success'
+      (github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'workflow_dispatch'
     steps:
       - name: Squash-merge the minor/patch Dependabot group PR
         env:
