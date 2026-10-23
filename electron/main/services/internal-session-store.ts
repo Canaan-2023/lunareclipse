@@ -27,7 +27,6 @@ import { dirname, join } from 'path'
 import { renameFileWithRetry } from '../utils/atomic-write'
 import { DEFAULT_AI_ID, type InternalMessage, type InternalSession, type InternalSessionSummary } from '@shared/types'
 import { validateSessionId } from '../api/session-store'
-import { isAutonomousOwner } from './raw-source'
 
 export const DEFAULT_INTERNAL_SESSION_TITLE = '新内部会话'
 
@@ -602,17 +601,13 @@ export class InternalSessionStore {
 
   /**
    * 级联删除某用户会话名下全部内部会话（删整个 ai/ 目录；User 会话删除时调用）。
-   * **自主域保护（ADR-25 支柱 3）**：owner 属自主域（`room-autonomous*`）时**默认不清**——
-   * 自主模式的内部会话是 AI 的成果，不随「用户会话被删」消失；确需清理传 `{ includeAutonomous: true }`。
-   * 判据用来源标记（`isAutonomousOwner`），不用路径猜。
-   * @returns 是否真的执行了删除（false = 因自主域保护跳过）
+   * 0.53.17：不再有自主域例外——`room-autonomous-*` 与普通会话一样直接清空。
+   * 为什么撤销（用户 2026-10-23）：「干净没啥用还烦死了」——保护只让自主数据越积越多，
+   * 自动清理和用户显式删除都应该按同一语义删掉，不保留第二套判据。
+   * @returns 是否真的执行了删除（目录不存在也算完成）
    */
-  deleteByOwner(ownerSessionId: string, opts?: { includeAutonomous?: boolean }): boolean {
+  deleteByOwner(ownerSessionId: string): boolean {
     validateSessionId(ownerSessionId)
-    if (isAutonomousOwner(ownerSessionId) && opts?.includeAutonomous !== true) {
-      console.warn(`[internal-session] 跳过自主域内部会话清理（ADR-25 自主域保护）：${ownerSessionId}`)
-      return false
-    }
     this.clearActive(ownerSessionId)
     for (const k of this.writeChains.keys()) {
       if (k.startsWith(`${ownerSessionId}/`)) this.writeChains.delete(k)

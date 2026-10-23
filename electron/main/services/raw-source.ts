@@ -42,23 +42,12 @@ export const RAW_SOURCE_LABELS: Record<RawSourceKind, string> = {
   messaging: '外部平台接入'
 }
 
-// ===== 自主域判据（ADR-25 支柱 3：判据用来源标记，不用路径猜）=====
-// 自主域 = ROOM 数据（{root}/room/**）+ 自主内部会话（owner 前缀）+ 自主轮次 RAW（source === 'autonomous'）。
-// 为什么集中在这里：来源标记的唯一真源在本文件，自主域判据必须与它同源，否则会出现两套判据打架
-// （例如 RAW 头标 `autonomous`、清理侧却按路径猜）。**常量声明须在 PREFIX_MAP 之前**（后者初始化时引用它）。
+// ===== 自主模式会话 id 前缀 =====
+// 只作为 `sourceOfSession` 的映射键存在；0.53.17 起不再承担「自主域保护」判据
+// （用户裁决：保护干净但没用，删除/清理一律平等）。常量声明须在 PREFIX_MAP 之前。
 
 /** 自主模式会话 id 前缀（ROOM 自主轮次；`sourceOfSession` 的映射表也用它，保证同源） */
 export const AUTONOMOUS_OWNER_PREFIX = 'room-autonomous'
-
-/** 该 owner 会话是否属自主域（内部会话/会话级清理据此排除） */
-export function isAutonomousOwner(ownerSessionId: string | undefined | null): boolean {
-  return (ownerSessionId ?? '').trim().startsWith(AUTONOMOUS_OWNER_PREFIX)
-}
-
-/** 该 RAW 来源是否属自主域 */
-export function isAutonomousSource(source: RawSourceKind | undefined | null): boolean {
-  return source === 'autonomous'
-}
 
 /** 会话 id 前缀 → 来源（顺序敏感：长前缀在前）。 */
 const PREFIX_MAP: ReadonlyArray<[string, RawSourceKind]> = [

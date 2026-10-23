@@ -190,7 +190,13 @@ export function createChatSlice(set: SliceSet, get: SliceGet): ChatSlice {
     },
 
     deleteSession: async (id) => {
-      await window.lunareclipse.deleteSession(id)
+      const ok = await window.lunareclipse.deleteSession(id)
+      // IPC 返回 false 表示主进程拒绝或目录未删掉：此时**不能**先从列表移除，
+      // 否则界面显示已删、刷新后又回来（0.53.16 之前自主域会话就是这样）。
+      if (ok === false) {
+        set({ errorMessage: '删除会话失败：主进程未完成删除，请稍后重试' })
+        return
+      }
       set((s) => {
         const sessions = s.sessions.filter((sess) => sess.id !== id)
         const newCurrent =

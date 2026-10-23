@@ -11,7 +11,6 @@ import { DEFAULT_INTERNAL_SESSION_TITLE } from '../../services/internal-session-
 import type { ChatMessage, Session, InternalSession, InternalSessionSummary } from '@shared/types'
 import { safeHandle } from './safe-handle'
 import { clearPreviewFile } from '../../services/workspace-state'
-import { isAutonomousOwner } from '../../services/raw-source'
 
 export function registerSessionHandlers(
   ipc: typeof ipcMainType,
@@ -45,13 +44,11 @@ export function registerSessionHandlers(
 
   ipc.handle('session:delete', async (_event, id: unknown) => {
     if (typeof id !== 'string' || !id) return false
-    // 自主域保护（ADR-25 支柱 3）：自主模式（ROOM）的会话与其内部会话是 AI 的成果，
-    // **不随用户删会话而清空**——`sessionStore.delete` 会整目录删掉 `…/{id}/ai/`，之后
-    // `deleteByOwner` 再拦也来不及，故必须在入口就拒绝。判据用来源标记（`isAutonomousOwner`）。
-    if (isAutonomousOwner(id)) {
-      console.warn(`[session] 拒绝删除自主域会话（ADR-25 自主域保护）：${id}`)
-      return false
-    }
+    /**
+     * 0.53.17：自主域保护已整体撤销——删除会话没有例外分支。
+     * 之前 ADR-25 为「自主数据不随删会话清空」留了入口拒绝与级联跳过，
+     * 结果只是让 `room-autonomous-*` 越积越多、用户点名删除也删不掉。
+     */
     await sessionStore.delete(id)
     // 级联：清掉该会话名下内部会话的在飞写链（文件已随会话文件夹删除）
     getInternalSessionStore()?.deleteByOwner(id)

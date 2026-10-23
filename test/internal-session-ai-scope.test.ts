@@ -112,24 +112,17 @@ describe('内部会话 AI 隔离（L5）', () => {
   })
 })
 
-describe('自主域保护（ADR-25 支柱 3：自主内部会话不随用户删会话清空）', () => {
+describe('自主域不再特殊（0.53.17 撤销保护）', () => {
   const AUTONOMOUS_OWNER = 'room-autonomous-U1-AI1'
 
-  it('owner 属自主域 → deleteByOwner 默认跳过（返回 false，数据仍在）', () => {
+  it('自主 owner 与普通会话一样直接级联删除', () => {
     const s = makeStore(1)
     const n = s.create(AUTONOMOUS_OWNER, { title: '自主会话' })
-    expect(s.deleteByOwner(AUTONOMOUS_OWNER)).toBe(false)
-    expect(s.get(AUTONOMOUS_OWNER, n.id)?.title).toBe('自主会话')
-  })
-
-  it('显式 includeAutonomous → 真删（返回 true）', () => {
-    const s = makeStore(1)
-    const n = s.create(AUTONOMOUS_OWNER, { title: '自主会话' })
-    expect(s.deleteByOwner(AUTONOMOUS_OWNER, { includeAutonomous: true })).toBe(true)
+    expect(s.deleteByOwner(AUTONOMOUS_OWNER)).toBe(true)
     expect(s.get(AUTONOMOUS_OWNER, n.id)).toBeNull()
   })
 
-  it('非自主 owner 不受影响（仍级联删除）', () => {
+  it('普通 owner 行为不变', () => {
     const s = makeStore(1)
     const n = s.create(OWNER, { title: '普通会话' })
     expect(s.deleteByOwner(OWNER)).toBe(true)
