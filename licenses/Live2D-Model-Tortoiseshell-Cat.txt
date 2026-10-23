@@ -1,0 +1,14 @@
+Live2D model: 玳瑁猫猫 v1.0
+Author: 路过的猫窝 / 画师 昊冕sama
+Release: 2023-12-09
+Attribution text: 形象：玳瑁猫猫 v1.0 / 路过的猫窝；画师：昊冕sama
+
+Terms as provided by the author:
+- Personal, guild, group, and commercial use (including live streams, videos and games) is allowed.
+- Attribution is required.
+- Resale, modification, and AI training are prohibited.
+- Final interpretation belongs to the author.
+- For the binding terms, refer to the author's release page.
+
+This model is redistributed unmodified as part of the LunarEclipse distribution.
+The attribution text is also shown in the application's Appearance panel.

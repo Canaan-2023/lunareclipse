@@ -1,0 +1,341 @@
+/**
+ * 为什么存在：多开实例互为对等节点，任何角色都可能被连接，须常驻监听端口并管理各对端 socket 与心跳保活。
+ * 作用：启动 WebSocketServer 监听（端口被占用时自增重试），登记 hello、转发信封、心跳/超时清理并回调断线。
+ */
+
+import { WebSocket, WebSocketServer } from 'ws'
+import { randomUUID } from 'crypto'
+import type { LanEnvelope, LanHello } from './lan-types'
+import { LAN_DEFAULT_PORT, LAN_ENVELOPE_MAX_PAYLOAD, LAN_MAX_PAYLOAD, isValidLanUid } from './lan-types'
+import { isLanStreamFrame } from './lan-stream'
+
+/**
+ * 局域网直连服务端（每个参与直连的终端都监听一个固定端口）：
+ * - 绑定地址默认 127.0.0.1（仅本机）；跨机协作需上层显式传入 bindHost='0.0.0.0'
+ *   （当前握手无鉴权，对外开放仅限可信局域网；hello_auth 挑战待后续版本）
+ * - 端口 62003 起，被占自动回退 +1
+ * - 连接建立后任一方向先发 hello 交换身份，双方都收到对方 hello 才算握手完成；
+ *   hello 自报 uid 必须是正整数（isValidLanUid），否则拒连——防冒充顶掉真实用户
+ * - 信封帧受 LAN_ENVELOPE_MAX_PAYLOAD 软阀约束（超限告警丢弃，不击穿连接）；流帧不受此阀影响
+ * - 心跳 ping 20s：连续超时（40s 无 pong）判定对端离线并清理连接
+ * - 同一 uid 只保留最近一条活跃连接（后连入者顶掉旧连接，避免双向重复建连）
+ */
+export interface LanServerCallbacks {
+  /** 收到对端 hello（身份交换完成）：peer 为对端声明，socket 已可复用 */
+  onHello: (peer: LanHello, socket: WebSocket) => void
+  /** 收到业务信封（非 hello 类型） */
+  onEnvelope: (env: LanEnvelope) => void
+  /** 对端连接关闭（主动断或心跳超时）：uid 已从连接表移除 */
+  onPeerClose: (uid: number) => void
+  /**
+   * 收到二进制流帧（magic='LMST'）：由上层 LanStreamManager 解析分发。
+   * 与 JSON 信封共存于同一条 ws 连接，按帧首 4 字节 magic 分流互不干扰。
+   */
+  onStreamFrame?: (uid: number, raw: Buffer) => void
+  /** 连接登记完成（入站握手/出站注册统一的登记点）：流管理器据此桥接收发 */
+  onSocketAttached?: (uid: number, socket: WebSocket) => void
+}
+
+export class LanServer {
+  private wss: WebSocketServer | null = null
+  private readonly sockets = new Map<number, WebSocket>()
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  private timeoutTimer: ReturnType<typeof setInterval> | null = null
+  private listenPort = LAN_DEFAULT_PORT
+
+  constructor(
+    private readonly helloFactory: () => LanHello | null,
+    private readonly callbacks: LanServerCallbacks,
+    /**
+     * 绑定选项：
+     * - `bindHost` 缺省 127.0.0.1（仅本机）；跨机协作由上层（config.json 的 lan.bindHost）显式放开到 '0.0.0.0'。
+     * - `port` 缺省 `LAN_DEFAULT_PORT`（62003 起、被占 +1 回退）；**`port: 0` = 交给系统分配临时端口**。
+     *   为什么需要 0（0.53.5）：测试与正在运行的应用共用 62003+ 端口段时，一个测试停掉的端口
+     *   会被并行测试/应用的其他服务立刻占走，导致「连到错误的对端」这类**只在负载下出现**的竞态。
+     *   临时端口让每个实例天然隔离，测试不再依赖固定端口段。
+     */
+    private readonly options: { bindHost?: string; port?: number } = {}
+  ) {}
+
+  /** 启动监听：缺省从 LAN_DEFAULT_PORT 尝试，被占则 +1 回退；`port: 0` 时由系统分配并返回真实端口。 */
+  start(): Promise<number> {
+    return new Promise((resolve, reject) => {
+      let attempt = 0
+      const basePort = this.options.port ?? LAN_DEFAULT_PORT
+      const tryBind = (): void => {
+        const requestedPort = basePort === 0 ? 0 : basePort + attempt
+        const wss = new WebSocketServer({ host: this.options.bindHost ?? '127.0.0.1', port: requestedPort, maxPayload: LAN_MAX_PAYLOAD })
+        wss.on('listening', () => {
+          const addr = wss.address()
+          const actualPort = typeof addr === 'object' && addr ? addr.port : requestedPort
+          this.wss = wss
+          this.listenPort = actualPort
+          this.wire(wss)
+          this.startHeartbeat()
+          resolve(actualPort)
+        })
+        wss.on('error', (err: NodeJS.ErrnoException) => {
+          try {
+            wss.close()
+          } catch {
+            // 忽略关闭异常
+          }
+          if (err.code === 'EADDRINUSE' && basePort !== 0 && attempt < 20) {
+            attempt += 1
+            tryBind()
+            return
+          }
+          reject(err)
+        })
+      }
+      tryBind()
+    })
+  }
+
+  getPort(): number {
+    return this.listenPort
+  }
+
+  /** 向指定 uid 直连发送信封；无活跃连接返回 false（调用方决定入 outbox） */
+  sendTo(uid: number, env: LanEnvelope): boolean {
+    const socket = this.sockets.get(uid)
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false
+    socket.send(JSON.stringify(env))
+    return true
+  }
+
+  /**
+   * 注册一条出站连接（lan-client open 完成后由调用方登记为可发送通道）；pending 为握手期间缓冲的业务消息，接管后回放。
+   * 返回是否被采纳：双向同时建连时若本连接落败（对端保留了既有连接），pending 经存活连接转发，避免消息丢失。
+   */
+  registerOutbound(uid: number, socket: WebSocket, pending: LanEnvelope[] = []): boolean {
+    const initiator = this.helloFactory()?.uid
+    if (initiator == null) {
+      try {
+        socket.terminate()
+      } catch {
+        // 忽略
+      }
+      return false
+    }
+    // 对端自报 uid 必须为正整数：非法规避以 uid 为键的登记（防冒充顶连，见 isValidLanUid 注释）
+    if (!isValidLanUid(uid) || !isValidLanUid(initiator)) {
+      try {
+        socket.terminate()
+      } catch {
+        // 忽略
+      }
+      return false
+    }
+    if (!this.attach(socket, uid, initiator)) return false
+    for (const env of pending) {
+      this.callbacks.onEnvelope(env)
+    }
+    return true
+  }
+
+  hasPeer(uid: number): boolean {
+    return this.sockets.has(uid)
+  }
+
+  getSocket(uid: number): WebSocket | null {
+    return this.sockets.get(uid) ?? null
+  }
+
+  stop(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
+    }
+    if (this.timeoutTimer) {
+      clearInterval(this.timeoutTimer)
+      this.timeoutTimer = null
+    }
+    for (const ws of this.sockets.values()) {
+      try {
+        ws.terminate()
+      } catch {
+        // 已关闭的连接忽略
+      }
+    }
+    this.sockets.clear()
+    this.wss?.close()
+    this.wss = null
+  }
+
+  private wire(wss: WebSocketServer): void {
+    wss.on('connection', (socket) => {
+      // 入站连接：等待对端先发 hello；迟到（>8s）则关闭防僵尸连接
+      // （closure 监听统一由 attach 挂载，这里只处理握手期）
+      const helloTimer = setTimeout(() => {
+        try {
+          socket.close(4001, 'hello timeout')
+        } catch {
+          // 忽略关闭异常
+        }
+      }, 8000)
+      socket.on('message', (raw) => {
+        try {
+          const buf = raw as Buffer
+          // 握手期只接受信封；超软阀直接拒（载荷分级：信封通道 32MB，流帧不在此路径）
+          if (buf.length > LAN_ENVELOPE_MAX_PAYLOAD) {
+            console.warn(`[lan] 握手期信封超限丢弃（${buf.length} > ${LAN_ENVELOPE_MAX_PAYLOAD}）`)
+            return
+          }
+          const env = JSON.parse(buf.toString()) as LanEnvelope
+          if (env.type !== 'hello') return // 未握手前只接受 hello
+          const peer = env.payload as LanHello
+          // 身份校验先于握手完成：uid 非正整数即拒连（防冒充顶连，见 isValidLanUid）
+          if (!isValidLanUid(peer?.uid)) {
+            clearTimeout(helloTimer)
+            console.warn('[lan] 入站 hello 的 uid 非法，已拒连')
+            try {
+              socket.close(4002, 'invalid uid')
+            } catch {
+              // 忽略关闭异常
+            }
+            return
+          }
+          clearTimeout(helloTimer)
+          // 回发本机 hello 完成双向握手（出站侧等待对端 hello 才 resolve）
+          const mine = this.helloFactory()
+          if (mine) {
+            socket.send(
+              JSON.stringify({
+                id: randomUUID(),
+                type: 'hello',
+                from: mine.uid,
+                to: peer.uid,
+                ts: Date.now(),
+                payload: mine
+              } satisfies LanEnvelope)
+            )
+          }
+          // 关键顺序：先 attach（挂统一消息/关闭监听、移除握手监听）再回调上层；
+          // 入站连接必由对端出站发起，initiator 即对端 uid（与出站侧比较规则同源，双向同时建连时收敛一致）。
+          if (!this.attach(socket, peer.uid, peer.uid)) return
+          this.callbacks.onHello(peer, socket)
+        } catch {
+          // 非 JSON 消息忽略
+        }
+      })
+    })
+  }
+
+  /**
+   * 以 uid 键控登记连接（挂统一消息/关闭监听）。initiator 为本连接的发起方 uid：
+   * - 出站连接的发起方是本机；入站连接的发起方是对端（hello.from）
+   * - 双向同时建连时两端各自独立比较，规则「发起方 uid 小者保留、相等先到先得」收敛出同一条连接，
+   * 杜绝「A 保留 A→B、B 保留 B→A、各自的另一端已被顶掉」导致双向断连
+   */
+  private attach(socket: WebSocket, uid: number, initiator: number): boolean {
+    // 纵深防御：所有以对端自报 uid 为键的登记（入站 hello / 出站 registerOutbound）都必须先过正整数校验
+    if (!isValidLanUid(uid)) {
+      try {
+        socket.terminate()
+      } catch {
+        // 忽略
+      }
+      return false
+    }
+    const old = this.sockets.get(uid)
+    if (old && old !== socket) {
+      const oldInitiator = (old as WebSocket & { lanInitiator?: number }).lanInitiator
+      // 新连接发起方 uid 不小于旧连接时落败：关闭新连接、保留旧连接（对端大概率保留的正是旧连接）
+      if (initiator >= (oldInitiator ?? Number.MAX_SAFE_INTEGER)) {
+        try {
+          socket.terminate()
+        } catch {
+          // 忽略
+        }
+        return false
+      }
+      try {
+        old.terminate()
+      } catch {
+        // 忽略
+      }
+    }
+    this.sockets.set(uid, socket)
+    ;(socket as WebSocket & { lanUid?: number }).lanUid = uid
+    ;(socket as WebSocket & { lanInitiator?: number }).lanInitiator = initiator
+    // 心跳基线：登记时打一次时间戳，此后由 pong 事件刷新。
+    // 修复：此前只在「发送 ping 时」赋时间戳且无人监听 pong，超时判定恒为假，
+    // 对端静默消失（休眠/断网无 FIN）时连接永不清理、在线状态长期失真。
+    ;(socket as WebSocket & { lanLastPong?: number }).lanLastPong = Date.now()
+    socket.on('pong', () => {
+      ;(socket as WebSocket & { lanLastPong?: number }).lanLastPong = Date.now()
+    })
+    // 接管连接：移除握手中的临时监听（lan-client 的握手监听器/入站 hello 监听器），
+    // 防止其将后续消息重复缓冲或吞掉；此后业务消息统一走下面这个监听器。
+    socket.removeAllListeners('message')
+    socket.on('message', (raw) => {
+      const buf = raw as Buffer
+      if (this.callbacks.onStreamFrame && isLanStreamFrame(buf)) {
+        // 二进制流帧：直通流管理器（信封通道完全不受影响）
+        this.callbacks.onStreamFrame(uid, buf)
+        return
+      }
+      try {
+        // 载荷分级：信封帧超软阀即丢弃（流帧已在上方分流，1MB 分块不受此限）
+        if (buf.length > LAN_ENVELOPE_MAX_PAYLOAD) {
+          console.warn(`[lan] 信封超限丢弃（${buf.length} > ${LAN_ENVELOPE_MAX_PAYLOAD}）`)
+          return
+        }
+        const env = JSON.parse(buf.toString()) as LanEnvelope
+        if (env.type === 'hello') return // 已登记连接不再重复握手
+        this.callbacks.onEnvelope(env)
+      } catch {
+        // 非法消息忽略（协议外数据）
+      }
+    })
+    // 出站连接（registerOutbound 路径）在 wire() 里没有挂过这些监听，
+    // 必须在此统一补挂：否则对端下线后死 socket 残留，在线状态永远失真。
+    socket.on('close', () => {
+      this.detach(socket)
+    })
+    socket.on('error', () => {
+      try {
+        socket.terminate()
+      } catch {
+        // 忽略
+      }
+    })
+    // 流管理器桥接：登记完成（入站/出站统一路径）后通知上层挂接收发
+    this.callbacks.onSocketAttached?.(uid, socket)
+    return true
+  }
+
+  private detach(socket: WebSocket): void {
+    const uid = (socket as WebSocket & { lanUid?: number }).lanUid
+    if (uid == null) return
+    if (this.sockets.get(uid) === socket) {
+      this.sockets.delete(uid)
+      this.callbacks.onPeerClose(uid)
+    }
+  }
+
+  private startHeartbeat(): void {
+    // 每 20s 对所有连接 ping；40s 未收到 pong 视为超时断开（时间戳由 attach 的 pong 监听刷新）
+    this.heartbeatTimer = setInterval(() => {
+      for (const [, socket] of this.sockets) {
+        if (socket.readyState !== WebSocket.OPEN) continue
+        socket.ping()
+      }
+    }, 20_000)
+    this.timeoutTimer = setInterval(() => {
+      const now = Date.now()
+      for (const [, socket] of [...this.sockets]) {
+        const last = (socket as WebSocket & { lanLastPong?: number }).lanLastPong
+        if (last == null || socket.readyState !== WebSocket.OPEN) continue
+        if (now - last > 40_000) {
+          try {
+            socket.terminate()
+          } catch {
+            // 忽略
+          }
+        }
+      }
+    }, 10_000)
+  }
+}

@@ -1,0 +1,22 @@
+Live2D Cubism Core
+(C) 2019 Live2D Inc. All rights reserved.
+
+This file is licensed pursuant to the Live2D Proprietary Software License Agreement:
+https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html
+
+`live2dcubismcore.min.js` corresponds to the "Redistributable Code" in that agreement
+and is redistributed unmodified, as provided by Live2D Inc., together with this application.
+
+Key conditions (the official agreement is the binding text):
+- The Redistributable Code may be copied and redistributed only as part of a Derivative Work
+  or Output File that adds important major functions using it (Section 5.2.1).
+- Distributors and end users must agree to terms protecting the Redistributable Code that are
+  equivalent to the agreement (Section 5.2.2).
+- The code must be redistributed on an "as is" basis as provided by Live2D (Section 5.2.4).
+- Live2D's trademarks may not be used in the name of the work, or in a way that implies
+  Live2D's endorsement, without a separate publication license (Section 5.3.1).
+- This proprietary license is separate from the project's AGPL-3.0-or-later license.
+  The AGPL covers the project's own code, not the Live2D Cubism Core.
+
+Full agreement:
+https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html

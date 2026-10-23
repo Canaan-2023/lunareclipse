@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "characterSource": "portrait",
+  "character": {
+    "x": -0.45,
+    "y": 2.16,
+    "lift": 0,
+    "scale": 1
+  },
+  "background": {
+    "mode": "image"
+  }
+}
