@@ -22,6 +22,11 @@ updates:
           - "minor"
           - "patch"
     # Major versions are opened as separate PRs and reviewed manually.
+    # @vitejs/plugin-react v6 requires Vite 8 (the project pins Vite 7); hold
+    # it back until the build chain (vite + electron-vite + vitest) moves as one.
+    ignore:
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions used in the workflows
   - package-ecosystem: "github-actions"
