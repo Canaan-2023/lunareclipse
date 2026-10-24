@@ -71,7 +71,7 @@
     "electron-vite": "^5.0.0",
     "eslint": "^10.13.0",
     "lucide-react": "^1.60.0",
-    "motion": "^13.4.1",
+    "motion": "^14.4.0",
     "postcss": "^8.5.31",
     "prettier": "^3.9.10",
     "react": "^19.3.1",
