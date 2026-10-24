@@ -108,14 +108,11 @@ export function RoomView({ sessionId, bottomInset = 0 }: { sessionId: string; bo
   }, [roomState.lastReply, roomState.lastReplyAt, appendRoomMessage])
 
 
-  // 上报「房间正承载在哪个会话」：仅在 AI 选了 contextMode='session' 时影响房间选路。
-  // 卸载时清空（避免留下过期会话）；房间**配置**挂在 AI 上，换会话不会重置它。
+  // 上报「自主模式在哪个会话里」（0.53.18：房间继承这个会话已有的逆生树）。
+  // **卸载不清空**：房间循环不随视图卸载而停；清空会让仍在跑的自主模式失去承载会话。
+  // 主进程只在未运行时接受上报；正在跑的上下文不会被「打开别的会话」悄悄换掉。
   useEffect(() => {
-    const api = window.lunareclipse
-    void api?.roomSetHostSession?.({ aiId, sessionId })
-    return () => {
-      void api?.roomSetHostSession?.({ aiId, sessionId: '' })
-    }
+    void window.lunareclipse?.roomSetHostSession?.({ aiId, sessionId })
   }, [aiId, sessionId])
 
   // 「用户来了」唤醒源（ADR-29 裁决3）：房间视图可见 / 窗口聚焦即**上报**一次。
@@ -146,12 +143,13 @@ export function RoomView({ sessionId, bottomInset = 0 }: { sessionId: string; bo
     setBusy(true)
     setLoopError(null)
     try {
-      const r = await window.lunareclipse?.roomStartLoop?.(aiId)
+      // 开启时把**当前会话**交给主进程绑定：之后房间的树就是这一棵（0.53.18）
+      const r = await window.lunareclipse?.roomStartLoop?.(aiId, sessionId)
       if (r && r.ok === false) setLoopError(r.error ?? null)
     } finally {
       setBusy(false)
     }
-  }, [aiId])
+  }, [aiId, sessionId])
 
   const stop = useCallback(async () => {
     setBusy(true)
@@ -302,7 +300,7 @@ export function RoomView({ sessionId, bottomInset = 0 }: { sessionId: string; bo
         state={roomState}
         aiId={aiId}
         aiName={aiName}
-        {...(roomState.sessionId ? { roomSessionId: roomState.sessionId } : {})}
+        {...(roomState.hostSessionId ? { hostSessionId: roomState.hostSessionId } : {})}
       />
     </div>
   )

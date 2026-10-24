@@ -118,10 +118,10 @@ describe('授权面板 · 范围编辑器（0.53.1：不再让用户猜填什么
 })
 
 describe('细节面板 · 关于页', () => {
-  it('SSR（规格未取到）时仍显示 AI 名字与房间会话 id', () => {
-    const html = renderToStaticMarkup(<AboutPanel aiId={1} aiName="月蚀" roomSessionId="room-autonomous-U1-AI1" />)
+  it('SSR（规格未取到）时仍显示 AI 名字与承载会话 id', () => {
+    const html = renderToStaticMarkup(<AboutPanel aiId={1} aiName="月蚀" hostSessionId="s_chat_1" />)
     expect(html).toContain('月蚀')
-    expect(html).toContain('room-autonomous-U1-AI1')
+    expect(html).toContain('s_chat_1')
   })
 })
 

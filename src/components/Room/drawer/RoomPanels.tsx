@@ -336,11 +336,12 @@ export function ToolsDevicesPanel() {
 export function AboutPanel({
   aiId,
   aiName,
-  roomSessionId
+  hostSessionId
 }: {
   aiId: number
   aiName: string
-  roomSessionId?: string
+  /** 承载会话（0.53.18）：自主模式正在继承的那个会话 */
+  hostSessionId?: string
 }) {
   const t = useT()
   const mascot = useMascot(aiId)
@@ -393,7 +394,7 @@ export function AboutPanel({
 
   const rows: Array<[string, string]> = [
     [t('room.drawer.about.ai'), aiName],
-    ...(roomSessionId ? ([[t('room.drawer.about.session'), roomSessionId]] as Array<[string, string]>) : []),
+    ...(hostSessionId ? ([[t('room.drawer.about.session'), hostSessionId]] as Array<[string, string]>) : []),
     ...(spec
       ? ([
           [t('room.drawer.about.roomSize'), `${spec.room.w}×${spec.room.h}`],

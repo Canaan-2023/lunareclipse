@@ -6,14 +6,14 @@
 
 **月相会告诉你时间，记忆会告诉她你是谁。**
 
-**v0.53.17 · AGPL-3.0-or-later · Windows x64**
+**v0.53.18 · AGPL-3.0-or-later · Windows x64**
 
 [![CI](https://github.com/Canaan-2023/lunareclipse/actions/workflows/ci.yml/badge.svg)](https://github.com/Canaan-2023/lunareclipse/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.53.17-6f5bd6?style=flat-square)](https://github.com/Canaan-2023/lunareclipse/releases)
+[![version](https://img.shields.io/badge/version-0.53.18-6f5bd6?style=flat-square)](https://github.com/Canaan-2023/lunareclipse/releases)
 [![license](https://img.shields.io/badge/license-AGPL--3.0--or--later-2ea44f?style=flat-square)](./LICENSE)
 [![platform](https://img.shields.io/badge/platform-Windows%20x64-0078D4?style=flat-square)](#快速开始)
 [![electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square)](https://www.electronjs.org/)
-[![tests](https://img.shields.io/badge/tests-3449%20passing-2ea44f?style=flat-square)](#从源码运行)
+[![tests](https://img.shields.io/badge/tests-3447%20passing-2ea44f?style=flat-square)](#从源码运行)
 
 [下载最新版](https://github.com/Canaan-2023/lunareclipse/releases) ·
 [问题反馈](https://github.com/Canaan-2023/lunareclipse/issues) ·
@@ -285,7 +285,7 @@ npm run lint       # ESLint
 npm run build      # 构建到 out/（electron-vite）
 ```
 
-当前基线：**299 文件 / 3449 用例**通过。
+当前基线：**299 文件 / 3447 用例**通过。
 
 源码版同样使用内置月蚀立绘与 `assets/room-seed` 的两张背景（`背景1.jpg` / `背景2.jpg`）：`npm run dev` 首次启动会把它们写入
 `data/abyssac_data/room/`（用户文件不会被覆盖）。你也可以把自己的素材放进 `data/abyssac_data/room/`。
@@ -365,7 +365,7 @@ T0 硬禁止不可授予，T1 需要逐项授予。这是产品边界，不是�
 
 # LunarEclipse 月蚀
 
-**v0.53.17 · AGPL-3.0-or-later · Windows x64**
+**v0.53.18 · AGPL-3.0-or-later · Windows x64**
 
 **The moon tells the time; memory tells her who you are.**
 
@@ -592,7 +592,7 @@ npm run lint       # ESLint
 npm run build      # build into out/ (electron-vite)
 ```
 
-Current baseline: **299 files / 3449 tests** passing.
+Current baseline: **299 files / 3447 tests** passing.
 
 The source build uses the same built-in portrait and `assets/room-seed` backgrounds:
 `npm run dev` seeds them into `data/abyssac_data/room/` on first launch (user files are not

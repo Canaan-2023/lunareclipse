@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { InternalSessionStore } from '../electron/main/services/internal-session-store'
+import { InternalSessionStore, purgeLegacyAutonomousTrees } from '../electron/main/services/internal-session-store'
 
 const OWNER = 's_shared_owner'
 let root = ''
@@ -109,6 +109,40 @@ describe('内部会话 AI 隔离（L5）', () => {
     const n = s.create(OWNER, { title: '会话' })
     expect(existsSync(join(aiDir(1), `${n.id}.json`))).toBe(true)
     expect(s.get(OWNER, n.id)?.title).toBe('会话')
+  })
+})
+
+/**
+ * 0.53.18：自主模式不再自持房间树，改为继承承载会话的树；旧树**一次性清空**（用户裁决）。
+ * 边界必须钉住：只删 `ai/` 纸堆，**不删** owner 目录里的会话记录（那是历史，不是树）。
+ */
+describe('旧自主房间树一次性清空（0.53.18）', () => {
+  it('清掉所有 U*/AI* 下的 room-autonomous*/ai，保留会话记录与普通会话树', () => {
+    seedSession(join(aiRoot(1), 'room-autonomous-U1-AI1', 'ai'), 'is_r1', '旧自主')
+    seedSession(join(aiRoot(2), 'room-autonomous-U1-AI2', 'ai'), 'is_r2', '旧自主 AI2')
+    seedSession(aiDir(1), 'is_normal', '普通')
+    // 旧自主 owner 的会话记录（与 ai/ 同级）——不属于「树」，必须留下
+    const record = join(aiRoot(1), 'room-autonomous-U1-AI1', 'meta.json')
+    writeFileSync(record, '{}')
+
+    const removed = purgeLegacyAutonomousTrees(join(aiRoot(1)))
+
+    expect(removed.sort()).toEqual(
+      [
+        join(aiRoot(1), 'room-autonomous-U1-AI1', 'ai'),
+        join(aiRoot(2), 'room-autonomous-U1-AI2', 'ai')
+      ].sort()
+    )
+    expect(existsSync(join(aiRoot(1), 'room-autonomous-U1-AI1', 'ai'))).toBe(false)
+    expect(existsSync(join(aiRoot(2), 'room-autonomous-U1-AI2', 'ai'))).toBe(false)
+    expect(existsSync(record)).toBe(true)
+    expect(existsSync(join(aiDir(1), 'is_normal.json'))).toBe(true)
+  })
+
+  it('没有旧树 → 不动任何东西（幂等）', () => {
+    seedSession(aiDir(1), 'is_normal', '普通')
+    expect(purgeLegacyAutonomousTrees(join(aiRoot(1)))).toEqual([])
+    expect(existsSync(join(aiDir(1), 'is_normal.json'))).toBe(true)
   })
 })
 

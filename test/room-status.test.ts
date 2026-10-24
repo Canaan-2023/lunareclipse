@@ -242,28 +242,29 @@ describe('toRoomSnapshot：IPC 载荷 → 界面快照', () => {
       expect(snap.events).toEqual([])
       expect(snap.collectorView).toBeUndefined()
       expect(snap.landing).toBeUndefined()
-      expect(snap.sessionId).toBeUndefined()
+      expect(snap.hostSessionId).toBeUndefined()
     }
   })
 
-  it('房间自持会话 id 与落点（ADR-30 R2/R3）逐字段归一化；非法落点丢弃', () => {
+  it('承载会话与落点（ADR-30 R2 / 0.53.18）逐字段归一化；非法落点丢弃', () => {
     const snap = toRoomSnapshot(
       {
         phase: 'idle',
-        sessionId: 'room-autonomous-U1-AI1',
-        landing: { tree: 'host', internalId: 'is_a' },
+        hostSessionId: 's_chat_1',
+        landing: { internalId: 'is_a' },
         events: []
       },
       7
     )
-    expect(snap.sessionId).toBe('room-autonomous-U1-AI1')
-    expect(snap.landing).toEqual({ tree: 'host', internalId: 'is_a' })
+    expect(snap.hostSessionId).toBe('s_chat_1')
+    expect(snap.landing).toEqual({ internalId: 'is_a' })
 
-    // 树名只认 room / host（其余归一到 room）；缺 internalId 的落点整块丢弃
-    const bad = toRoomSnapshot({ landing: { tree: 'kitchen', internalId: 'is_b' } }, 0)
-    expect(bad.landing).toEqual({ tree: 'room', internalId: 'is_b' })
-    expect(toRoomSnapshot({ landing: { tree: 'room' } }, 0).landing).toBeUndefined()
-    expect(toRoomSnapshot({ sessionId: '' }, 0).sessionId).toBeUndefined()
+    // 落点只认 internalId；缺 internalId 整块丢弃
+    expect(toRoomSnapshot({ landing: { internalId: 42 } }, 0).landing).toBeUndefined()
+    expect(toRoomSnapshot({ landing: {} }, 0).landing).toBeUndefined()
+    expect(toRoomSnapshot({ hostSessionId: '' }, 0).hostSessionId).toBeUndefined()
+    // 旧字段（房间自持会话 / 两棵树）已退役：不再映射进快照
+    expect(toRoomSnapshot({ sessionId: 'room-autonomous-U1-AI1' }, 0).hostSessionId).toBeUndefined()
   })
 })
 

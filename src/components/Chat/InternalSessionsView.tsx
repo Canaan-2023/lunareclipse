@@ -27,7 +27,6 @@ import {
   X,
   Settings2
 } from 'lucide-react'
-import { DEFAULT_AI_ID } from '@shared/types'
 import { useAppStore } from '../../stores/appStore'
 import { useT } from '../../i18n/useT'
 import { buildSessionTree } from './session-chains'
@@ -36,8 +35,6 @@ import { TreeCanvas } from './internal-sessions/TreeCanvas'
 import { CreateForm } from './internal-sessions/CreateForm'
 import { DetailView } from './internal-sessions/DetailView'
 import { SessionBudgetCard } from './internal-sessions/SessionBudgetCard'
-// ADR-30 R3：归属切换器（看当前会话的树，还是看房间/自主的树）。
-import { OwnerSwitcher, type TreeOwner } from './internal-sessions/OwnerSwitcher'
 // 渲染探针（test/internal-sessions-view-render.test.tsx）仍从本入口导入 TreeCanvas：导出面保持不变。
 export { TreeCanvas } from './internal-sessions/TreeCanvas'
 
@@ -63,48 +60,20 @@ export function InternalSessionsView({ sessionId }: { sessionId: string }) {
   const loadInternalSessions = useAppStore((s) => s.loadInternalSessions)
   const createInternalSession = useAppStore((s) => s.createInternalSession)
   const setActiveInternalSession = useAppStore((s) => s.setActiveInternalSession)
-  const sessions = useAppStore((s) => s.sessions)
   const [creating, setCreating] = useState(false)
   // 详情报错提示：getInternalSession IPC 读取失败时展示原因，避免点开无响应
   const [error, setError] = useState<string | null>(null)
   // 会话上限配置小卡片展开标记
   const [budgetOpen, setBudgetOpen] = useState(false)
 
-  // ===== 归属（ADR-30 R3）：看当前会话的树，还是看房间（自主）的树 =====
-  // 房间自持会话 id 由主进程给出（`room:status` / `room:state-changed`）——**不在渲染侧拼 id**：
-  // 格式真源是主进程的 `roomSessionId()`，拼一份必然漂移。
-  const aiId = sessions.find((s) => s.id === sessionId)?.aiId ?? DEFAULT_AI_ID
-  const [owner, setOwner] = useState<TreeOwner>('current')
-  const [roomSessionId, setRoomSessionId] = useState<string | null>(null)
+  // 0.53.18：自主模式不再有独立的房间树，视图里**只有当前会话这一棵**——
+  // 归属切换器随之删除（只有一棵树时它是噪声）。切换会话时刷新列表并关闭详情。
   useEffect(() => {
-    const api = window.lunareclipse
-    let alive = true
-    // 挂载时读一次（房间可能早就在跑）；此后靠推送——**不轮询**（与 0.52.73 的口径一致）
-    void api?.roomStatus?.(aiId).then((r) => {
-      if (alive) setRoomSessionId(r?.status?.sessionId ?? null)
-    })
-    const off = api?.onRoomState?.((payload) => {
-      if (payload.aiId !== aiId) return
-      const st = payload.state as { sessionId?: unknown } | undefined
-      if (typeof st?.sessionId === 'string' && st.sessionId) setRoomSessionId(st.sessionId)
-    })
-    return () => {
-      alive = false
-      off?.()
-    }
-  }, [aiId])
-  // 房间不存在 → 回落到当前会话（切换器本身也不渲染，双保险防「切到空的房间树」）
-  const roomAvailable = roomSessionId !== null
-  const effectiveOwner: TreeOwner = owner === 'room' && roomAvailable ? 'room' : 'current'
-  const ownerSessionId = effectiveOwner === 'room' && roomSessionId ? roomSessionId : sessionId
-
-  // 切换归属：刷新列表并关闭详情
-  useEffect(() => {
-    void loadInternalSessions(ownerSessionId)
+    void loadInternalSessions(sessionId)
     setActiveInternalSession(null)
     setCreating(false)
     setBudgetOpen(false)
-  }, [ownerSessionId, loadInternalSessions, setActiveInternalSession])
+  }, [sessionId, loadInternalSessions, setActiveInternalSession])
 
   // buildSessionTree 纯函数组装「继承 × 时间 × 新话题」三边森林；useMemo 依赖 list，
   // 避免每次渲染重建树（坐标计算 O(n²)，会话多时不应在无变化时重复执行）
@@ -112,7 +81,7 @@ export function InternalSessionsView({ sessionId }: { sessionId: string }) {
 
   const openDetail = async (internalId: string) => {
     try {
-      const detail = await window.lunareclipse.getInternalSession(ownerSessionId, internalId)
+      const detail = await window.lunareclipse.getInternalSession(sessionId, internalId)
       setActiveInternalSession(detail)
       setError(null)
     } catch (err) {
@@ -132,16 +101,12 @@ export function InternalSessionsView({ sessionId }: { sessionId: string }) {
           <span className="text-body font-medium text-fg-primary">
             {t('view.tree')}
           </span>
-          {/* 归属切换（ADR-30 R3）：房间跑过才有第二棵树，故房间不可用时整块不渲染 */}
-          <OwnerSwitcher owner={effectiveOwner} roomAvailable={roomAvailable} onSelect={setOwner} />
           <span className="rounded-full bg-bg-muted/60 px-2 py-0.5 text-caption text-fg-muted">
-            {effectiveOwner === 'room'
-              ? t('view.treeRoomCount', { count: list.length })
-              : t('view.treeCount', { count: list.length })}
+            {t('view.treeCount', { count: list.length })}
           </span>
           <div className="ml-auto flex items-center gap-1.5">
             <button
-              onClick={() => void loadInternalSessions(ownerSessionId)}
+              onClick={() => void loadInternalSessions(sessionId)}
               className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted transition-all hover:bg-bg-muted hover:text-fg-secondary"
               title={t('view.refresh')}
               aria-label={t('view.refresh')}
@@ -197,7 +162,7 @@ export function InternalSessionsView({ sessionId }: { sessionId: string }) {
             <CreateForm
               onCancel={() => setCreating(false)}
               onSubmit={async (title, content) => {
-                await createInternalSession(ownerSessionId, title, content)
+                await createInternalSession(sessionId, title, content)
                 setCreating(false)
               }}
             />
@@ -208,7 +173,7 @@ export function InternalSessionsView({ sessionId }: { sessionId: string }) {
       {/* 详情视图 */}
       {active ? (
         <DetailView
-          sessionId={ownerSessionId}
+          sessionId={sessionId}
           internalId={active.id}
           onBack={() => setActiveInternalSession(null)}
         />
@@ -224,18 +189,12 @@ export function InternalSessionsView({ sessionId }: { sessionId: string }) {
                   <div className="flex items-center gap-2 text-fg-muted">
                     <ListTree size={18} />
                     <span className="text-body font-medium">
-                      {effectiveOwner === 'room' ? t('view.treeRoomEmpty') : t('view.treeEmpty')}
+                      {t('view.treeEmpty')}
                     </span>
                   </div>
                   <div className="max-w-md text-caption leading-relaxed text-fg-muted/70">
-                    {effectiveOwner === 'room' ? (
-                      t('view.treeRoomEmptyDesc')
-                    ) : (
-                      <>
-                        {t('view.treeEmptyHint')}
-                        <span className="mt-0.5 block">{t('view.treeEmptyDesc')}</span>
-                      </>
-                    )}
+                    {t('view.treeEmptyHint')}
+                    <span className="mt-0.5 block">{t('view.treeEmptyDesc')}</span>
                   </div>
                   <button
                     onClick={() => setCreating(true)}
@@ -249,7 +208,7 @@ export function InternalSessionsView({ sessionId }: { sessionId: string }) {
             ) : (
               <TreeCanvas
                 trees={trees}
-                sessionId={ownerSessionId}
+                sessionId={sessionId}
                 activeInternalId={activeInternalId}
                 onOpen={(id) => void openDetail(id)}
               />

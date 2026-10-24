@@ -21,7 +21,7 @@ import { buildPlanPrompt } from './plan-prompt'
 import { defaultCollectorView, validateCollectorView, type CollectorView } from './collector-view'
 import { WAKE_SOURCE_LABEL, type WakeSource } from './wake'
 import { createRoomSensor, type RoomSensor } from './sensor'
-import type { RoomTree, TreeIndex } from './tree-index'
+import type { TreeIndex } from './tree-index'
 import { parseLanding } from './landing'
 import type { RoomSceneDirective } from '@shared/room/room-scene'
 import { ROOM_SCENE_ACTION_LABEL } from '@shared/room/room-scene'
@@ -34,7 +34,7 @@ import {
 } from '@shared/room/sensor-policy'
 
 // 会话树索引 / 落点解析的纯函数已拆出；此处再导出保兼容。
-export { TREE_INDEX_MAX, buildTreeIndexBlock, type RoomTree, type TreeSessionLine, type TreeIndex } from './tree-index'
+export { TREE_INDEX_MAX, buildTreeIndexBlock, type TreeSessionLine, type TreeIndex } from './tree-index'
 export { parseLanding, type RoomLanding } from './landing'
 
 import type {
@@ -76,7 +76,6 @@ export { buildPlanPrompt }
 
 export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
   const now = deps.now ?? (() => Date.now())
-  const sessionId = deps.sessionId ?? 'room-autonomous'
   const events: LoopEvent[] = []
   let phase: RoomPhase = 'stopped'
   let standbyUntil: number | undefined
@@ -108,17 +107,13 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
     }
   }
   /**
-   * 上下文来源（AI 自决，见 `plan.ts` 的 `contextMode`）：
-   * - `'room'`（默认）= 房间**自持主上下文**（房间自己的会话，即引入本字段前的行为）；
-   * - `'session'` = 跟随**承载它的当前会话**（`hostSessionId`）——房间轮次落该会话与 RAW，
-   *   于是 AI 能接着用户刚说的话往下做。
-   * **房间配置**（本字段、采集视图、形象、ARM 状态）挂在 (uid, aiId) 上：**换会话不动，换 AI 才是另一个房间**。
+   * 承载会话（0.53.18）：**在哪个会话窗口开启自主，就用哪个会话已有的逆生树**。
+   * 不再有「房间自持树」这一路——规划轮、树索引、落点全部作用在它身上，与普通对话同一棵树。
+   * **房间配置**（采集视图、形象、ARM 状态）仍挂在 (uid, aiId) 上：换会话不动，换 AI 才是另一个房间。
    */
-  let contextMode: 'room' | 'session' = 'room'
-  /** 承载房间的当前会话（视图上报；仅 `contextMode==='session'` 时参与选路） */
   let hostSessionId: string | null = null
   /** 当前落点（AI 主动声明，ADR-30）；未声明过 = 沿用 `session_select` 侧的承接指针 */
-  let landing: { tree: RoomTree; internalId: string } | undefined
+  let landing: { internalId: string } | undefined
   /** AI 直接声明的房间动作（直播里「去哪 / 做什么」） */
   let scene: RoomSceneDirective | undefined
   /** AI 最近一次回应（直播字幕 + 落回会话历史） */
@@ -169,25 +164,13 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
     return text.slice(0, 4000)
   }
   const hasPendingInput = (): boolean => pendingUserMessages.length > 0
-  /** 本轮规划用哪个会话：session 模式且已知承载会话时用它，否则用房间自持会话 */
-  const effectiveSessionId = (): string => (contextMode === 'session' && hostSessionId ? hostSessionId : sessionId)
-  /** 本轮规划用的是哪棵树（与 `effectiveSessionId` 同源判定，不另立口径） */
-  const effectiveTree = (): RoomTree => (contextMode === 'session' && hostSessionId ? 'host' : 'room')
-
   /**
-   * 收集可注入的**树索引**（ADR-30）：房间树恒有；承载会话树仅在上报过承载会话时才有。
-   * 两棵都给 AI 看——「自主模式开启时有两个树，会话内的那个树，自主模式也能看到、也能选择」。
+   * 取**承载会话**的树索引（ADR-30 / 0.53.18）：只有这一棵。
+   * 未绑定承载会话 → null（不注入；**绝不回落到房间自持会话**，否则又会长出旧房间树）。
    */
-  const collectTreeIndexes = (): TreeIndex[] => {
-    if (!deps.listTreeSessions) return []
-    const out: TreeIndex[] = []
-    const room = deps.listTreeSessions('room', sessionId)
-    if (room) out.push(room)
-    if (hostSessionId && hostSessionId !== sessionId) {
-      const host = deps.listTreeSessions('host', hostSessionId)
-      if (host) out.push(host)
-    }
-    return out
+  const collectTreeIndex = (): TreeIndex | null => {
+    if (!deps.listTreeSessions || !hostSessionId) return null
+    return deps.listTreeSessions(hostSessionId)
   }
 
   /**
@@ -196,7 +179,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
   const getState = (): RoomRuntimeState => ({
     running: phase !== 'stopped',
     phase,
-    sessionId,
+    ...(hostSessionId ? { hostSessionId } : {}),
     ...(standbyUntil != null ? { standbyUntil } : {}),
     ...(lastTick ? { lastTick } : {}),
     ...(lastPlan ? { lastPlan } : {}),
@@ -209,7 +192,6 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
       mute: [...sensorPolicy.mute],
       ...(sensorPolicy.thresholds ? { thresholds: { ...sensorPolicy.thresholds } } : {})
     },
-    contextMode,
     ...(landing ? { landing } : {}),
     ...(scene ? { scene } : {}),
     ...(lastReply ? { lastReply } : {}),
@@ -306,18 +288,28 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
     // 关停守卫：stop() 只 disarm，不中断在飞的 plan/execute；驱动在关键点自检
     isStopped: () => phase === 'stopped',
     // **不再接线 `recall`**（ADR-30）：原先它只在「长线」轮注入一份「最近内部会话摘要」，
-    // 那是「宿主替 AI 列全部」。现在两棵树的索引**每轮都注入**（见 `buildPlanPrompt` 的
+    // 那是「宿主替 AI 列全部」。现在**承载会话的树索引每轮都注入**（见 `buildPlanPrompt` 的
     // 【会话树】段），候选清单与「长线先召回内部会话」的诉求一并被覆盖；
     // 记忆系统那一跳本就由 AI 在 plan 里用自己的记忆工具完成（ADR-20）。
     // `loop.ts` 的 `recall` 保留为可选扩展点（其契约与单测不变）。
     plan: async ({ text, mode, repeat }) => {
+      // 没有承载会话 = 自主模式还没在任何一个会话里开启（0.53.18：不再有房间自持会话兜底）。
+      // 不调 LLM：没有树可继承时规划出来的落点无处落地，调了只会长出一棵没人要的旧房间树。
+      if (!hostSessionId) {
+        const unbound: PlanDecision = {
+          decisions: [],
+          note: '未绑定会话：自主模式需在某个会话里开启（继承该会话的逆生树）'
+        }
+        lastPlan = unbound
+        return unbound
+      }
       // 唤醒原因只喂**这一轮**（消费一次即清），不然后续轮次会一直以为自己是刚被叫醒的
       const wake = wakeForPlan
       wakeForPlan = null
       const prompt = buildPlanPrompt({
         text,
         mode,
-        trees: collectTreeIndexes(),
+        tree: collectTreeIndex(),
         allowedTools: deps.allowedTools(),
         sensorPolicy,
         ...(wake ? { wake } : {}),
@@ -325,7 +317,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
       })
       let reply: string | null = null
       try {
-        reply = await deps.plan(prompt, effectiveSessionId())
+        reply = await deps.plan(prompt, hostSessionId)
       } catch (err) {
         // **不吞成「LLM 未回复」**——那是误诊（用户裁决：报错比兜底好）。
         // 规划链路故障（含上下文解析抛错）要如实上报并停循环，而不是静默降级。
@@ -420,37 +412,20 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
           syncSensor()
         }
       }
-      // AI 决定上下文来源（room / session）：只认这两个值，其余丢弃并留痕
-      if (parsed.contextMode !== undefined) {
-        if (parsed.contextMode === 'room' || parsed.contextMode === 'session') {
-          if (parsed.contextMode !== contextMode) {
-            contextMode = parsed.contextMode
-            pushEvent({
-              phase: 'plan',
-              ts: now(),
-              detail: `上下文来源：${contextMode === 'session' ? '跟随当前会话' : '房间自持'}`
-            })
-          }
-        } else {
-          pushEvent({ phase: 'plan', ts: now(), detail: '上下文来源未更新：只认 room / session' })
-        }
-      }
-      // AI 主动落点（ADR-30）：在**当前主树**里承接节点 / 开新线。
-      // 顺序有意：放在 `contextMode` **之后**——同一轮里先换树再落点，落到的是换后的那棵。
-      // 形状非法 = 丢弃留痕（与 contextMode 同处置）；语义非法由 applyLanding 回传原因。
+      // AI 主动落点（ADR-30）：在**承载会话的逆生树**里承接节点 / 开新线（0.53.18 起只有这一棵）。
+      // 形状非法 = 丢弃留痕；语义非法由 applyLanding 回传原因。
       if (parsed.landing !== undefined) {
         const l = parseLanding(parsed.landing)
         if (!l) {
           pushEvent({ phase: 'plan', ts: now(), detail: '落点未更新：形状非法（需要 action=continue|create）' })
         } else {
-          const tree = effectiveTree()
-          const r = await deps.applyLanding?.(tree, effectiveSessionId(), l)
+          const r = await deps.applyLanding?.(hostSessionId, l)
           if (r?.ok && r.internalId) {
-            landing = { tree, internalId: r.internalId }
+            landing = { internalId: r.internalId }
             pushEvent({
               phase: 'plan',
               ts: now(),
-              detail: `落点：${tree === 'host' ? '承载会话树' : '房间树'} → ${l.action === 'create' ? '新线' : '承接'} ${r.internalId}`
+              detail: `落点：会话树 → ${l.action === 'create' ? '新线' : '承接'} ${r.internalId}`
             })
           } else {
             pushEvent({ phase: 'plan', ts: now(), detail: `落点未更新：${r?.error ?? '未接线'}` })
@@ -646,8 +621,8 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
     const epochAtStart = armEpoch
     // **这一轮在语义上必须是 running**，包括从 stopped 发起的一次性动作。
     // 否则 `plan` 回调里的关停守卫（`phase === 'stopped'`）会把「用户点了立即行动」
-    // 误判成「房间已关停」，把整份计划连同 avatar / collectorView / contextMode /
-    // landing 一起丢掉（0.53.5 回归：15 个用例失败，全部是这条守卫的假阳性）。
+    // 误判成「房间已关停」，把整份计划连同 avatar / collectorView / landing 一起丢掉
+    // （0.53.5 回归：15 个用例失败，全部是这条守卫的假阳性）。
     phase = 'running'
     notify()
     try {
@@ -713,7 +688,13 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
       }
     },
     wake,
+    /**
+     * 绑定承载会话（0.53.18）：**在哪个会话开启自主，就继承哪个会话的逆生树**。
+     * 运行中不重新绑定——否则同一轮上下文会突然换树；换窗口必须先关停再开
+     * （`room:start-loop` 在启动前显式绑定）。
+     */
     setHostSession: (sid) => {
+      if (phase !== 'stopped') return
       hostSessionId = sid
     },
     /**
@@ -724,7 +705,8 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
       const text = content.trim().slice(0, 4000)
       if (!text) return { ok: false, error: '消息为空' }
       if (phase === 'stopped') return { ok: false, error: '房间未开启（自主模式未启动）' }
-      if (hostSid) hostSessionId = hostSid
+      // 兜底：启动路径忘了绑定时，用发消息的窗口补上；**已绑定则不动**（不静默换树）
+      if (!hostSessionId && hostSid) hostSessionId = hostSid
       if (pendingUserMessages.length >= MAX_PENDING_USER_MESSAGES) pendingUserMessages.shift()
       pendingUserMessages.push(text)
       if (phase === 'standby') {

@@ -75,6 +75,7 @@ function makeRuntime(timers: RoomTimers) {
     timers,
     now: () => 0
   })
+  rt.setHostSession('chat-1')
   return { rt, collects }
 }
 

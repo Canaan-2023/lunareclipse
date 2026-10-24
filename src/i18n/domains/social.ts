@@ -454,8 +454,7 @@ const dict = {
   // 当前落点（ADR-30 R2/R3：AI 主动声明接着哪条线）
   'room.landing.title': { zh: '上下文落点（AI 决定）', en: 'Context landing (AI-decided)' },
   'room.landing.none': { zh: '沿用 AI 自己维护的承接线', en: 'Following the AI-maintained line' },
-  'room.landing.treeRoom': { zh: '房间树', en: 'Room tree' },
-  'room.landing.treeHost': { zh: '承载会话树', en: 'Host session tree' },
+  'room.landing.tree': { zh: '会话树', en: 'Session tree' },
   // 抽屉（ADR-29 阶段 D：日记 / 授权 / 传感器 / 工具与设备 / 关于我——零新 IPC）
   'room.drawer': { zh: '房间信息', en: 'Room info' },
   'room.drawer.loading': { zh: '读取中…', en: 'Loading…' },

@@ -22,7 +22,7 @@ import { resolveBundledAsset } from '../utils/app-root'
 import { DEFAULT_AI_ID } from '../models/path-context'
 import { LLMClient } from '../api/llm'
 import { ToolResultDistiller, DEFAULT_DISTILL_CONFIG } from '../services/tool-result-distiller'
-import { InternalSessionStore, createAiScopedSessionRoots } from '../services/internal-session-store'
+import { InternalSessionStore, createAiScopedSessionRoots, purgeLegacyAutonomousTrees } from '../services/internal-session-store'
 import { initDataDirectory } from '../models/data-init'
 import { resolveScopePaths } from '../models/paths'
 import type { BaseDataPaths, MemoryScope } from '../models/paths'
@@ -377,5 +377,11 @@ export function initInternalSessionStore(deps: BootstrapDeps) {
   // AI 隔离（ADR-25 L5）：内部会话根按 owner 会话**所属 AI** 解析
   // （`sessions/U{uid}/AI{aiId}/{ownerSessionId}/ai`），不再所有 AI 共用 AI1 目录。
   const { getRoot, getLegacyRoot } = createAiScopedSessionRoots(sessionStore)
+  // 0.53.18：一次性清空**旧自主房间树**（自主模式改为继承承载会话的树；用户裁决「直接清空」）。
+  // 扫 `sessions/` 下所有 U*/AI*，不只当前作用域——房间可能在不同 AI 下跑过。
+  const purged = purgeLegacyAutonomousTrees(sessionStore.getDir())
+  if (purged.length > 0) {
+    console.log(`[internal-session] 已清空旧自主房间树 ${purged.length} 处（0.53.18 起自主模式继承承载会话的树）`)
+  }
   return new InternalSessionStore(getRoot, getLegacyRoot)
 }

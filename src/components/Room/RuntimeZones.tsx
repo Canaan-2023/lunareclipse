@@ -120,15 +120,13 @@ export function MemoryZone({ state }: { state: RoomRuntimeSnapshot }) {
           <div className="text-[11px] text-fg-muted">{t('room.collector.viewDefault')}</div>
         )}
       </div>
-      {/* 上下文落点（ADR-30 R2/R3）：AI 主动声明自己接着哪条线——哪棵树、哪个节点。
-          「不是宿主替它决定看什么」的可视化落点；未声明时显示「沿用 AI 自己维护的承接线」。 */}
+      {/* 上下文落点（ADR-30 R2/R3）：AI 主动声明自己接着哪条线。
+          0.53.18 起只有承载会话这一棵树，故只显示节点 id；未声明时显示「沿用 AI 自己维护的承接线」。 */}
       <div className="rounded-card border-2 border-border-subtle bg-bg-surface p-3">
         <div className="mb-1 font-mono text-[11px] tracking-wider text-fg-muted">{t('room.landing.title')}</div>
         {state.landing ? (
           <div className="text-[11px] text-fg-secondary">
-            <span className="font-mono text-accent">
-              {state.landing.tree === 'host' ? t('room.landing.treeHost') : t('room.landing.treeRoom')}
-            </span>
+            <span className="font-mono text-accent">{t('room.landing.tree')}</span>
             {` → ${state.landing.internalId}`}
           </div>
         ) : (

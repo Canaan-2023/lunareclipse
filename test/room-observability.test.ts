@@ -89,6 +89,7 @@ describe('SRE 门禁：无残留定时器', () => {
       allowedTools: () => ['read'],
       timers: reg
     })
+    rt.setHostSession('chat-1')
     for (let i = 0; i < 10; i++) {
       rt.start()
       await new Promise((r) => setTimeout(r, 5))
@@ -114,6 +115,7 @@ describe('SRE 门禁：无残留定时器', () => {
       sense: async () => ({ at: 0, cpuPct: 10 }),
       reportWake: () => true
     })
+    rt.setHostSession('chat-1')
     rt.start()
     await vi.waitFor(() => expect(rt.getState().sensing).toBe(true))
     expect(reg.size()).toBe(1)

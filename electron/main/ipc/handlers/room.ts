@@ -51,8 +51,8 @@ export function registerRoomIpc(configStore: ConfigStore): void {
         running: rt?.isRunning() ?? false,
         phase: rt?.getState().phase ?? 'stopped',
         aiIds: listRoomRuntimeAiIds(),
-        // 房间自持会话 id（ADR-30 R3）：逆生树视角据此切到**房间树**；无实例 = null（该 AI 还没跑过自主）
-        sessionId: rt?.getState().sessionId ?? null
+        // 承载会话（0.53.18）：自主模式继承的那个会话；无实例 = null
+        hostSessionId: rt?.getState().hostSessionId ?? null
       }
     }
   })
@@ -69,10 +69,19 @@ export function registerRoomIpc(configStore: ConfigStore): void {
     }
   })
 
-  ipcMain.handle('room:start-loop', (_e, aiId?: unknown) => {
-    const id = scopeOf(aiId)
+  /**
+   * 开启自主：`sessionId` = **用户在哪个会话视图里按下开关**（0.53.18）。
+   * 启动前先绑定承载会话——第一轮规划就要继承那个会话已有的逆生树；
+   * 已在运行时不再重新绑定（换窗口必须先关停再开，避免同一轮上下文突然换树）。
+   */
+  ipcMain.handle('room:start-loop', (_e, payload?: unknown) => {
+    const p = (payload ?? {}) as { aiId?: unknown; sessionId?: unknown }
+    const id = scopeOf(p.aiId)
     const supervisor = getRoomLoopSupervisor()
     if (!supervisor) return unavailable(id)
+    const rt = ensureRoomRuntime(id)
+    if (!rt) return unavailable(id)
+    if (!rt.isRunning() && typeof p.sessionId === 'string' && p.sessionId) rt.setHostSession(p.sessionId)
     const r = supervisor.acquire(id)
     return r.ok ? { ok: true, running: r.running } : { ok: false, error: r.error ?? unavailable(id).error }
   })
@@ -107,13 +116,17 @@ export function registerRoomIpc(configStore: ConfigStore): void {
     return rt.onUserMessage(content, sessionId)
   })
 
-  // 视图上报「房间正承载在哪个会话」：仅在 AI 选了 contextMode='session' 时参与选路。
+  // 视图上报「自主模式在哪个会话里」：**只在未运行时绑定**（0.53.18）。
+  // 运行中上报一律不接受——换窗口要显式关停再开（`room:start-loop` 会带 sessionId 绑定），
+  // 否则用户只是在别的会话里打开房间视图，就会把正在跑的上下文悄悄换掉。
   // 用 peek（无副作用）：没实例就没有上下文可选，不为了上报而创建运行时。
   ipcMain.handle('room:host-session', (_e, payload: unknown) => {
     const p = (payload ?? {}) as { aiId?: unknown; sessionId?: unknown }
     const rt = peekRoomRuntime(scopeOf(p.aiId))
-    if (!rt) return { ok: true, accepted: false }
-    rt.setHostSession(typeof p.sessionId === 'string' && p.sessionId ? p.sessionId : null)
+    if (!rt || rt.isRunning()) return { ok: true, accepted: false }
+    const sid = typeof p.sessionId === 'string' && p.sessionId ? p.sessionId : null
+    if (!sid) return { ok: true, accepted: false }
+    rt.setHostSession(sid)
     return { ok: true, accepted: true }
   })
 

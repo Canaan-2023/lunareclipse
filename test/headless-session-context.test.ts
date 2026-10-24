@@ -16,6 +16,8 @@ const ANCHOR = { internalId: 'int-1', anchorMessages: [] } as unknown as Session
 
 function makeHarness(over: Partial<HeadlessChatDeps> = {}) {
   const injectedCalls: Array<{ sessionContext: unknown; purpose?: string; ctxSessionId?: string }> = []
+  const saves: ChatMessage[][] = []
+  const raws: string[] = []
   const serverCtx: { sessionId?: string } = {}
   // 与真实 StreamSession.enqueue 同语义：串行队列（0.53.10 起 headless 整轮入队）
   let chain: Promise<unknown> = Promise.resolve()
@@ -32,7 +34,9 @@ function makeHarness(over: Partial<HeadlessChatDeps> = {}) {
     sessionStore: {
       get: () => ({ id: 'sess-1', messages: [] }),
       getOrCreate: () => ({ id: 'sess-1', messages: [] }),
-      saveMessages: () => {}
+      saveMessages: (_id: string, messages: ChatMessage[]) => {
+        saves.push(messages)
+      }
     },
     buildInjectedMessages: async (
       _m: ChatMessage[],
@@ -59,11 +63,13 @@ function makeHarness(over: Partial<HeadlessChatDeps> = {}) {
     toolExecutorsRef: { current: [] },
     makeDistillCallbacks: () => ({}),
     rowIdRef: { current: 0 },
-    writeRawMemoryForStream: () => {},
+    writeRawMemoryForStream: () => {
+      raws.push('x')
+    },
     serverCtx,
     ...over
   } as unknown as HeadlessChatDeps
-  return { runner: createHeadlessChatRunner(deps), injectedCalls, serverCtx }
+  return { runner: createHeadlessChatRunner(deps), injectedCalls, serverCtx, saves, raws }
 }
 
 describe('无头链路的内部会话锚点（逆生树）', () => {
@@ -108,5 +114,28 @@ describe('无头链路的内部会话锚点（逆生树）', () => {
     expect(injectedCalls).toHaveLength(2)
     // 队列 FIFO：A 先入队，故先看到 sess-A
     expect(injectedCalls.map((c) => c.ctxSessionId)).toEqual(['sess-A', 'sess-B'])
+  })
+})
+
+/**
+ * 0.53.18：房间规划轮**不落盘**。
+ *
+ * 为什么：规划是自主模式自己的 TODO（给 AI 自己看），不是要对用户说的话。此前规划跑在
+ * `room-autonomous` 会话里，落盘只弄脏那棵「房间会话」；继承承载会话后若照旧落盘，
+ * 每 15 秒一轮的规划提示词会以用户消息、JSON 计划会以 AI 回复的形式混进用户正常聊天。
+ */
+describe('房间规划轮不落进会话历史（0.53.18）', () => {
+  it('purpose=room → 不 saveMessages、不写 RAW（规划只服务房间，不进聊天记录）', async () => {
+    const { runner, saves, raws } = makeHarness()
+    await runner('你是自主房间（ROOM）里的执行主体。…', 'sess-1', 1, 'room')
+    expect(saves).toHaveLength(0)
+    expect(raws).toHaveLength(0)
+  })
+
+  it('普通轮次照常落盘（对照：这次豁免只针对房间规划）', async () => {
+    const { runner, saves, raws } = makeHarness()
+    await runner('你好', 'sess-1')
+    expect(saves).toHaveLength(1)
+    expect(raws).toHaveLength(1)
   })
 })

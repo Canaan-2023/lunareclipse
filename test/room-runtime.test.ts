@@ -9,10 +9,27 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { extractJsonObject, parsePlan } from '../electron/main/room/plan'
-import { buildTreeIndexBlock, buildPlanPrompt, createRoomRuntime, parseLanding, type RoomTimers } from '../electron/main/room/runtime'
+import {
+  buildTreeIndexBlock,
+  buildPlanPrompt,
+  createRoomRuntime,
+  parseLanding,
+  type RoomRuntimeDeps,
+  type RoomTimers
+} from '../electron/main/room/runtime'
 import type { Executor } from '../electron/main/room/executor'
 
 const TOOLS = ['read', 'write', 'glob']
+
+/**
+ * 这些用例都假设「自主模式已在某个会话里开启」：默认绑定承载会话（0.53.18）。
+ * 未绑定时运行时不规划（见 room-landing.test.ts），故不能省。
+ */
+function makeRuntime(deps: RoomRuntimeDeps) {
+  const rt = createRoomRuntime(deps)
+  rt.setHostSession('chat-1')
+  return rt
+}
 
 describe('extractJsonObject', () => {
   it('优先取围栏代码块', () => {
@@ -91,35 +108,29 @@ describe('parsePlan：直播回复 / 房间动作（闭集）', () => {
   })
 })
 
-describe('会话树索引与规划提示词（ADR-30）', () => {
+describe('会话树索引与规划提示词（ADR-30 / 0.53.18）', () => {
   it('buildTreeIndexBlock：无树 → 空串；有树则列出落点标记 / id / 标题 / 摘要 / 可写与否', () => {
-    expect(buildTreeIndexBlock([])).toBe('')
-    const block = buildTreeIndexBlock([
-      {
-        tree: 'room',
-        sessionId: 'room-1',
-        activeId: 'is_a',
-        sessions: [
-          { id: 'is_a', title: 'T1', summary: 'S1', gen: 2, writableTail: true, updatedAt: 1 },
-          { id: 'is_b', title: 'T2', summary: '', writableTail: false, updatedAt: 2 }
-        ]
-      }
-    ])
+    expect(buildTreeIndexBlock(null)).toBe('')
+    const block = buildTreeIndexBlock({
+      sessionId: 'chat-1',
+      activeId: 'is_a',
+      sessions: [
+        { id: 'is_a', title: 'T1', summary: 'S1', gen: 2, writableTail: true, updatedAt: 1 },
+        { id: 'is_b', title: 'T2', summary: '', writableTail: false, updatedAt: 2 }
+      ]
+    })
     expect(block).toContain('【会话树】')
-    expect(block).toContain('房间树')
+    expect(block).toContain('会话树（当前会话的逆生树）')
     expect(block).toContain('★当前落点 is_a')
     expect(block).toContain('第2代')
     expect(block).toContain('只读')
+    // 0.53.18：不再有第二棵树
+    expect(block).not.toContain('房间树')
   })
 
-  it('buildTreeIndexBlock：两棵树都渲染（「自主模式开启时有两个树」）', () => {
-    const block = buildTreeIndexBlock([
-      { tree: 'room', sessionId: 'r', activeId: null, sessions: [] },
-      { tree: 'host', sessionId: 'h', activeId: null, sessions: [] }
-    ])
-    expect(block).toContain('房间树')
-    expect(block).toContain('承载会话树')
-    expect(block).toContain('（空')
+  it('buildTreeIndexBlock：空树也渲染（显式告诉 AI 可以用 create 开第一条线）', () => {
+    const block = buildTreeIndexBlock({ sessionId: 'chat-1', activeId: null, sessions: [] })
+    expect(block).toContain('（空——可用 landing 的 create 开第一条线）')
   })
 
   it('buildPlanPrompt：含采集输入 / 分诊 / 工具白名单 / 输出契约；带树时才有【会话树】段', () => {
@@ -129,23 +140,20 @@ describe('会话树索引与规划提示词（ADR-30）', () => {
     expect(p).toContain('read')
     expect(p).toContain('decisions')
     // 契约文本本身会提到「【会话树】段」，故按**索引行**判定是否真的注入了树
-    expect(p).not.toContain('· 房间树')
+    expect(p).not.toContain('· 会话树（当前会话的逆生树）')
 
-    const withTrees = buildPlanPrompt({
+    const withTree = buildPlanPrompt({
       text: 'x',
       mode: 'immediate',
       allowedTools: [],
-      trees: [
-        {
-          tree: 'room',
-          sessionId: 'r',
-          activeId: null,
-          sessions: [{ id: 'is_a', title: 'T', summary: 'S', writableTail: true, updatedAt: 1 }]
-        }
-      ]
+      tree: {
+        sessionId: 'chat-1',
+        activeId: null,
+        sessions: [{ id: 'is_a', title: 'T', summary: 'S', writableTail: true, updatedAt: 1 }]
+      }
     })
-    expect(withTrees).toContain('【会话树】')
-    expect(withTrees).toContain('is_a')
+    expect(withTree).toContain('【会话树】')
+    expect(withTree).toContain('is_a')
 
     // 局部更新的前提：AI 必须看到当前策略，否则只能盲改或全量重写
     const withPolicy = buildPlanPrompt({
@@ -186,7 +194,7 @@ describe('createRoomRuntime：用户消息 / 直播场景（第一类输入）',
   }
 
   it('stopped 不接收消息（尊重自主开关，渲染侧退回普通会话）', () => {
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: false, error: '未开启' }),
       plan: async () => '{}',
       executor,
@@ -200,7 +208,7 @@ describe('createRoomRuntime：用户消息 / 直播场景（第一类输入）',
 
   it('采集失败也能收到用户消息；reply / scene 落状态并进事件流', async () => {
     const seen: string[] = []
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: false, error: '采集器未开启' }),
       plan: async (prompt) => {
         seen.push(prompt)
@@ -223,7 +231,7 @@ describe('createRoomRuntime：用户消息 / 直播场景（第一类输入）',
 
   it('park 之后收到用户消息仍能重新激活（回归：stopFn 必须在 drive 退出时清掉）', async () => {
     let collectCalls = 0
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => {
         collectCalls += 1
         return { ok: false, error: '无输入' }
@@ -251,7 +259,7 @@ describe('关停守卫：stop() 后仍在飞的 plan 不得继续落副作用（
     })
     let planned = false
     let executes = 0
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: true, text: '有输入' }),
       plan: async () => {
         planned = true
@@ -328,7 +336,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
     const t = fakeTimers()
     let cpu = 10
     const wakes: string[] = []
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: false, error: '无输入' }),
       plan: async () => '{"decisions":[]}',
       executor,
@@ -363,7 +371,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
     const wakes: string[] = []
     // 闭包里需要 runtime 自身（reportWake → wake）；用可变属性而不是 let 变量（lint prefer-const）
     const ref: { rt: ReturnType<typeof createRoomRuntime> | null } = { rt: null }
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: false, error: '无输入' }),
       plan: async () => '{"decisions":[]}',
       executor,
@@ -402,7 +410,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
     const t = fakeTimers()
     const seen: Array<readonly string[]> = []
     const saved: unknown[] = []
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: true, text: '有输入' }),
       plan: async () =>
         '{"decisions":[],"sensor":{"mute":["cpu"],"intervalMs":60000,"thresholds":{"cpuDeltaPct":45}}}',
@@ -430,7 +438,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
 
   it('AI 可以彻底关闭感知：sensing=false，不再排感知定时器', async () => {
     const t = fakeTimers()
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: true, text: '有输入' }),
       plan: async () => '{"decisions":[],"sensor":{"enabled":false}}',
       executor,
@@ -448,7 +456,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
   })
 
   it('启动时恢复已保存的感知策略', async () => {
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: false, error: '无输入' }),
       plan: async () => '{"decisions":[]}',
       executor,
@@ -463,7 +471,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
   it('策略文件不存在（load 返回 undefined）→ 默认策略，且**不**误报「恢复失败」', () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     try {
-      const rt = createRoomRuntime({
+      const rt = makeRuntime({
         collect: async () => ({ ok: false, error: '无输入' }),
         plan: async () => '{"decisions":[]}',
         executor,
@@ -481,7 +489,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
   it('策略文件损坏（非对象）→ 记错误并回落默认策略', () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     try {
-      const rt = createRoomRuntime({
+      const rt = makeRuntime({
         collect: async () => ({ ok: false, error: '无输入' }),
         plan: async () => '{"decisions":[]}',
         executor,
@@ -498,7 +506,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
 
   it('用户侧回收：resetSensorPolicy 把 AI 的策略复位为默认并保存', async () => {
     const saved: unknown[] = []
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: false, error: '无输入' }),
       plan: async () => '{"decisions":[]}',
       executor,
@@ -516,7 +524,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
   })
 
   it('wake(collector, detail) 记录 lastWake 并进事件流；stopped 时忽略', async () => {
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: false, error: '无输入' }),
       plan: async () => '{"decisions":[]}',
       executor,
@@ -538,7 +546,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
 
   it('running 期间到达的唤醒暂存，park 后补跑一轮（不丢事件）', async () => {
     let plans = 0
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: true, text: '有输入' }),
       plan: async () => {
         plans += 1
@@ -558,7 +566,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
 
   it('唤醒原因会进入下一轮提示词（AI 知道自己为什么醒）', async () => {
     const prompts: string[] = []
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: true, text: '有输入' }),
       plan: async (prompt) => {
         prompts.push(prompt)
@@ -581,7 +589,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
     const gate = new Promise<void>((r) => {
       release = r
     })
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: true, text: '有输入' }),
       plan: async () => {
         await gate
@@ -616,7 +624,7 @@ describe('createRoomRuntime：链路装配', () => {
 
   it('采集 → 规划 → 执行 跑通，并暴露状态', async () => {
     const { executor, executed } = makeExecutor()
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: true, text: '现在的状态怎么样' }),
       plan: async () => '```json\n{"note":"看一眼","decisions":[{"tool":"read","params":{"path":"x"}}]}\n```',
       executor,
@@ -635,7 +643,7 @@ describe('createRoomRuntime：链路装配', () => {
 
   it('规划返回非法 JSON → 无动作、不崩', async () => {
     const { executor } = makeExecutor()
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: true, text: '现在的状态' }),
       plan: async () => '我不会做',
       executor,
@@ -649,7 +657,7 @@ describe('createRoomRuntime：链路装配', () => {
 
   it('规划抛错 → 无动作、不崩', async () => {
     const { executor } = makeExecutor()
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: true, text: '现在的状态' }),
       plan: async () => {
         throw new Error('LLM 未配置')
@@ -664,7 +672,7 @@ describe('createRoomRuntime：链路装配', () => {
 
   it('采集失败 → idle', async () => {
     const { executor } = makeExecutor()
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: false, error: '采集器未开启' }),
       plan: async () => '{}',
       executor,
@@ -694,7 +702,7 @@ describe('createRoomRuntime：状态推送（取代渲染端轮询）', () => {
 
   it('每轮 tick 与启停都会推送；收尾推送的是 tick 之后的完整状态', async () => {
     const phases: string[] = []
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: true, text: '现在的状态' }),
       plan: async () => '```json\n{"note":"看一眼","decisions":[{"tool":"read"}]}\n```',
       executor: makeExecutor(),
@@ -712,7 +720,7 @@ describe('createRoomRuntime：状态推送（取代渲染端轮询）', () => {
 
   it('推送载荷与 getState() 同形（单一构造点，不两处各拼一份）', () => {
     let pushed: unknown
-    const rt = createRoomRuntime({
+    const rt = makeRuntime({
       collect: async () => ({ ok: false, error: 'x' }),
       plan: async () => '{}',
       executor: makeExecutor(),
@@ -729,7 +737,7 @@ describe('createRoomRuntime：状态推送（取代渲染端轮询）', () => {
   it('推送钩子抛错不打崩循环（但必须留痕，不静默）', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     try {
-      const rt = createRoomRuntime({
+      const rt = makeRuntime({
         collect: async () => ({ ok: true, text: '现在的状态' }),
         plan: async () => '{}',
         executor: makeExecutor(),

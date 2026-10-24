@@ -42,7 +42,7 @@ function fakeRuntime(): RoomRuntime & { running: boolean } {
     setHostSession: () => undefined,
     onUserMessage: () => ({ ok: true }),
     tick: async () => ({ phase: 'idle' as const, acted: false, executions: [] }),
-    getState: () => ({ running: rt.running, phase: rt.running ? ('idle' as const) : ('stopped' as const), sessionId: 'room-fake', events: [], avatarRev: 0 })
+    getState: () => ({ running: rt.running, phase: rt.running ? ('idle' as const) : ('stopped' as const), hostSessionId: 'chat-fake', events: [], avatarRev: 0 })
   }
   return rt
 }

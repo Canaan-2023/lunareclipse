@@ -54,7 +54,7 @@ export function DetailPanel({
   state,
   aiId,
   aiName,
-  roomSessionId
+  hostSessionId
 }: {
   open: boolean
   tab: DetailTab
@@ -63,7 +63,8 @@ export function DetailPanel({
   state: RoomRuntimeSnapshot
   aiId: number
   aiName: string
-  roomSessionId?: string
+  /** 承载会话（0.53.18：自主模式继承的那个会话的逆生树） */
+  hostSessionId?: string
 }) {
   const t = useT()
   const boxRef = useRef<HTMLDivElement>(null)
@@ -164,7 +165,7 @@ export function DetailPanel({
             </div>
           )}
           {tab === 'about' && (
-            <AboutPanel aiId={aiId} aiName={aiName} {...(roomSessionId ? { roomSessionId } : {})} />
+            <AboutPanel aiId={aiId} aiName={aiName} {...(hostSessionId ? { hostSessionId } : {})} />
           )}
         </div>
       </div>

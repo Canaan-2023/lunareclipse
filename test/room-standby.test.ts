@@ -67,6 +67,8 @@ function makeHarness(over: { collect?: CollectFn; timers?: RoomTimers } = {}) {
     allowedTools: () => ['read'],
     ...(over.timers ? { timers: over.timers } : {})
   })
+  // 0.53.18：自主模式继承承载会话；未绑定则运行时不规划
+  rt.setHostSession('chat-1')
   return { rt, collects, setReply: (f: (n: number) => string | null) => { replyOf = f } }
 }
 
@@ -134,6 +136,7 @@ describe('ROOM LLM 未回复 → 停止（不空转）', () => {
       },
       allowedTools: () => []
     })
+    rt2.setHostSession('chat-1')
     void rt
     rt2.start()
     await vi.waitFor(() => expect(rt2.getState().phase).toBe('stopped'))
@@ -201,6 +204,7 @@ describe('ROOM 待机（AI 自设时长；感知器仍可看）', () => {
       allowedTools: () => ['read'],
       timers: ft.timers
     })
+    rt.setHostSession('chat-1')
     rt.start()
     await vi.waitFor(() => expect(rt.getState().phase).toBe('standby'))
     await settle()

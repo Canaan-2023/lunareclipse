@@ -41,8 +41,16 @@ export const api = {
   },
   roomTick: (aiId?: number) =>
     ipcRenderer.invoke('room:tick', aiId) as Promise<{ ok: boolean; result?: unknown; error?: string }>,
-  roomStartLoop: (aiId?: number) =>
-    ipcRenderer.invoke('room:start-loop', aiId) as Promise<{ ok: boolean; running: boolean; error?: string }>,
+  /**
+   * 开启自主。`sessionId` = **当前会话视图**：房间继承这个会话已有的逆生树（0.53.18）。
+   * 已绑定时不改变承载会话——换窗口必须先关停再开。
+   */
+  roomStartLoop: (aiId?: number, sessionId?: string) =>
+    ipcRenderer.invoke('room:start-loop', { aiId, sessionId }) as Promise<{
+      ok: boolean
+      running: boolean
+      error?: string
+    }>,
   roomStopLoop: (aiId?: number) =>
     ipcRenderer.invoke('room:stop-loop', aiId) as Promise<{ ok: boolean; running: boolean }>,
   /** 用户侧回收：把 AI 的感知策略复位为默认（不经过 AI；0.53.3） */
@@ -58,7 +66,10 @@ export const api = {
    */
   roomUserMessage: (payload: { aiId?: number; sessionId?: string; content: string }) =>
     ipcRenderer.invoke('room:user-message', payload) as Promise<{ ok: boolean; error?: string }>,
-  /** 上报「房间正承载在哪个会话」（仅在 AI 选了 contextMode='session' 时影响选路；配置不随会话变） */
+  /**
+   * 上报「自主模式在哪个会话里开启」（0.53.18：继承那个会话的逆生树；配置不随会话变）。
+   * 运行中主进程不接受——换窗口要先关停再开。
+   */
   roomSetHostSession: (payload: { aiId?: number; sessionId: string }) =>
     ipcRenderer.invoke('room:host-session', payload) as Promise<{ ok: boolean; accepted: boolean }>,
 
@@ -156,8 +167,8 @@ export const api = {
         running: boolean
         phase: string
         aiIds: number[]
-        /** 房间自持会话 id（ADR-30 R3：逆生树视角据此切到房间树）；无实例 = null */
-        sessionId: string | null
+        /** 承载会话（0.53.18：自主模式继承的那个会话）；无实例 = null */
+        hostSessionId: string | null
       }
     }>
 }

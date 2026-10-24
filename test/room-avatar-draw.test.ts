@@ -38,6 +38,7 @@ function makeRt(reply: string, applyAvatar?: RoomRuntimeDeps['applyAvatar']) {
         }
       : {})
   })
+  rt.setHostSession('chat-1')
   return { rt, calls }
 }
 

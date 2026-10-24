@@ -15,7 +15,7 @@ import type { LoopEvent, LoopTickResult, PlanDecision } from './loop'
 import type { CollectorView } from './collector-view'
 import type { WakeSource } from './wake'
 import type { RoomSensorSnapshot } from './sensor'
-import type { RoomTree, TreeIndex } from './tree-index'
+import type { TreeIndex } from './tree-index'
 import type { RoomLanding } from './landing'
 import type { RoomSceneDirective } from '@shared/room/room-scene'
 import type { RoomSensorPolicy } from '@shared/room/sensor-policy'
@@ -35,19 +35,18 @@ export interface RoomRuntimeDeps {
   /** 规划：把提示词交给 AI，返回其文本回复（`getHeadlessChatRunner`）；空串/null = LLM 未回复 */
   plan: (prompt: string, sessionId: string) => Promise<string | null>
   /**
-   * 取某棵**会话树**的索引（ADR-30：自主模式开启时有**两棵**树——房间自持树 + 承载会话树）。
+   * 取**承载会话**的内部会话树索引（ADR-30；0.53.18 起只有这一棵）。
    * 为什么不再用「最近内部会话摘要」（原 `listInternalSessions`）：那是**宿主替 AI 列全部**；
-   * 现在两棵树的索引都进提示词，AI 自己用 `landing` 选承接哪条线。
-   * 未启用 / 该树不存在 → null（不注入该树，不报错）。
+   * 现在索引进提示词，AI 自己用 `landing` 选承接哪条线。
+   * 未绑定承载会话 / 该树不存在 → null（不注入，不报错）。
    */
-  listTreeSessions?: (tree: RoomTree, sessionId: string) => TreeIndex | null
+  listTreeSessions?: (sessionId: string) => TreeIndex | null
   /**
-   * 应用 AI 主动声明的**落点**（ADR-30）：在当前主树里承接某个节点 / 开一个新节点。
+   * 应用 AI 主动声明的**落点**（ADR-30）：在承载会话的树里承接某个节点 / 开一个新节点。
    * **调用方负责校验与应用**（复用 `session_select` 的规则：只接可写尾端、父须可写、
    * 实线继承 / 虚线新话题语义）——本层只做编排与状态回传，与 `applyAvatar` 同一分工。
    */
   applyLanding?: (
-    tree: RoomTree,
     sessionId: string,
     landing: RoomLanding
   ) => Promise<{ ok: boolean; internalId?: string; error?: string }>
@@ -55,8 +54,6 @@ export interface RoomRuntimeDeps {
   executor: Executor
   /** 计划里允许出现的工具名（白名单；`parsePlan` 据此过滤） */
   allowedTools: () => readonly string[]
-  /** 会话 id（规划用；缺省固定 ROOM 会话） */
-  sessionId?: string
   /** 定时器（**仅供待机到期**；缺省用原生 setTimeout） */
   timers?: RoomTimers
   /**
@@ -118,12 +115,11 @@ export interface RoomRuntimeState {
   running: boolean
   phase: RoomPhase
   /**
-   * 房间**自持会话 id**（`room-autonomous-U{uid}-AI{aiId}`）。
-   * 它是房间的稳定身份，**不随 `contextMode` 变**（`contextMode` 只决定用哪棵树干活）。
-   * 渲染侧据此把「逆生树视角」切到**房间树**（ADR-30 R3）——「点击切换要能看到自主模式
-   * 的 AI 自己管理的会话」。
+   * **承载会话**：自主模式是在哪个会话窗口里开启的（0.53.18）。
+   * 逆生树、规划轮、落点全部落在它身上——与普通对话共用同一棵树，不再另开房间树。
+   * 未绑定（还没在会话里开启过）→ 不带该字段。
    */
-  sessionId: string
+  hostSessionId?: string
   /** 待机到期时间戳（phase==='standby' 时有值） */
   standbyUntil?: number
   /** 最近一次 tick 结果 */
@@ -145,15 +141,10 @@ export interface RoomRuntimeState {
    */
   sensorPolicy?: RoomSensorPolicy
   /**
-   * 当前生效的**上下文来源**（AI 声明）：`'room'` = 房间自持主上下文；`'session'` = 跟随承载它的当前会话。
-   * 可选：假体/旧状态可不带（缺省即 `'room'`）。
-   */
-  contextMode?: 'room' | 'session'
-  /**
-   * 当前**落点**（AI 主动声明，ADR-30）：它落在哪棵树、哪个节点。
+   * 当前**落点**（AI 主动声明，ADR-30）：承载会话树里的哪个节点。
    * 可选：未声明过 / 假体可不带。UI 据此显示「AI 现在接着哪条线」。
    */
-  landing?: { tree: RoomTree; internalId: string }
+  landing?: { internalId: string }
   /** AI 直接声明的房间动作（直播镜头里「去哪 / 做什么」） */
   scene?: RoomSceneDirective
   /** AI 最近一次对用户/镜头的回应（直播字幕；也会由渲染侧落回会话历史） */
@@ -196,8 +187,9 @@ export interface RoomRuntime {
    */
   wake: (reason: WakeSource, detail?: string) => void
   /**
-   * 视图上报「房间正承载在哪个会话」。仅在 `contextMode === 'session'` 时参与选路
-   * （房间的**配置**挂在 (uid, aiId) 上，换会话不动配置——只有换 AI 才是另一个房间）。
+   * 绑定承载会话：**在哪个会话开启自主，就继承哪个会话已有的逆生树**（0.53.18）。
+   * 运行中不重新绑定（换窗口要先关停再开，见 `room:start-loop`）；房间**配置**仍挂在
+   * (uid, aiId) 上——换会话不动配置，只有换 AI 才是另一个房间。
    */
   setHostSession: (sessionId: string | null) => void
   /**

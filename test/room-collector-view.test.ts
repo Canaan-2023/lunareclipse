@@ -93,7 +93,7 @@ function makeFakeTimers(): RoomTimers {
 
 function makeRt(reply: string) {
   const collects: string[] = []
-  /** 每轮规划用的会话 id（断言「上下文来源」选路用） */
+  /** 每轮规划用的会话 id（断言「继承承载会话」用） */
   const planSessions: string[] = []
   const rt = createRoomRuntime({
     collect: async () => {
@@ -106,9 +106,10 @@ function makeRt(reply: string) {
     },
     executor: OK_EXECUTOR,
     allowedTools: () => ['read'],
-    timers: makeFakeTimers(),
-    sessionId: 'room-base'
+    timers: makeFakeTimers()
   })
+  // 正常路径由「开启自主」绑定承载会话（`room:start-loop`）
+  rt.setHostSession('chat-1')
   return { rt, collects, planSessions }
 }
 
@@ -139,54 +140,19 @@ describe('运行时应用 AI 的采集视图', () => {
   })
 })
 
-describe('AI 自决上下文来源（contextMode：房间自持 / 跟随当前会话）', () => {
-  it('默认（未声明）用房间自持会话', async () => {
+describe('规划固定在承载会话（0.53.18：不再有房间自持会话）', () => {
+  it('每轮规划都用绑定的承载会话', async () => {
     const { rt, planSessions } = makeRt('{"decisions":[]}')
     await rt.tick()
-    expect(planSessions).toEqual(['room-base'])
-    expect(rt.getState().contextMode).toBe('room')
+    await rt.tick()
+    expect(planSessions).toEqual(['chat-1', 'chat-1'])
   })
 
-  it('声明 session + 已上报承载会话 → 下一轮起跟随该会话', async () => {
-    const { rt, planSessions } = makeRt('{"decisions":[],"contextMode":"session"}')
-    rt.setHostSession('chat-1')
-    await rt.tick() // 本轮仍在 room 模式（声明在本轮生效）
-    await rt.tick() // 本轮起跟随 chat-1
-    expect(planSessions).toEqual(['room-base', 'chat-1'])
-    expect(rt.getState().contextMode).toBe('session')
-    expect(rt.getState().events.some((e) => e.detail?.includes('上下文来源：跟随当前会话'))).toBe(true)
-  })
-
-  it('声明 session 但未上报承载会话 → 回退自持（不崩、不空转）', async () => {
+  it('AI 声明已退役的 contextMode 字段 → 不影响选路（仍用承载会话）', async () => {
     const { rt, planSessions } = makeRt('{"decisions":[],"contextMode":"session"}')
     await rt.tick()
     await rt.tick()
-    expect(planSessions).toEqual(['room-base', 'room-base'])
-    expect(rt.getState().contextMode).toBe('session')
-  })
-
-  it('非法值 → 保留旧模式并留痕', async () => {
-    const { rt, planSessions } = makeRt('{"decisions":[],"contextMode":"global"}')
-    await rt.tick()
-    await rt.tick()
-    expect(planSessions).toEqual(['room-base', 'room-base'])
-    expect(rt.getState().contextMode).toBe('room')
-    expect(rt.getState().events.some((e) => e.detail?.includes('上下文来源未更新'))).toBe(true)
-  })
-
-  it('切回 room → 恢复自持（两种来源可来回切）', async () => {
-    const { rt, planSessions } = makeRt('{"decisions":[],"contextMode":"session"}')
-    rt.setHostSession('chat-1')
-    await rt.tick()
-    await rt.tick()
-    expect(planSessions[1]).toBe('chat-1')
-    // 换一份「切回 room」的计划再跑一轮，其后应回自持
-    const back = makeRt('{"decisions":[],"contextMode":"room"}')
-    back.rt.setHostSession('chat-9')
-    await back.rt.tick()
-    await back.rt.tick()
-    expect(back.planSessions).toEqual(['room-base', 'room-base'])
-    expect(back.rt.getState().contextMode).toBe('room')
+    expect(planSessions).toEqual(['chat-1', 'chat-1'])
   })
 })
 

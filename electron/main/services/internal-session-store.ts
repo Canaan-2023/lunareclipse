@@ -74,6 +74,52 @@ export function createAiScopedSessionRoots(src: SessionScopeSource): {
   }
 }
 
+/**
+ * 一次性清空**旧自主房间树**（0.53.18）。
+ *
+ * 为什么需要：0.53.18 起自主模式不再自持 room-autonomous-* 会话树，改为继承
+ * 「开启自主的那个会话」的树。旧树若留着，只会是一堆永远无人再读的纸——用户裁决「直接清空」。
+ *
+ * 口径：
+ * - 只删每个 room-autonomous* owner 下的 ai/ 内部会话树；owner 目录里的会话记录
+ *   （消息 / RAW）保留——那不属于「树」，删了等于丢历史。
+ * - 扫描 sessions/ 下所有用户的每个 AI 目录（U{uid}/AI{aiId}）：房间可能在不同 AI 下跑过，
+ *   只清当前用户 / 当前 AI 不够。
+ * - 返回被删的树路径（供启动日志与单测断言）；没有旧树时返回空数组。
+ */
+export function purgeLegacyAutonomousTrees(sessionDir: string): string[] {
+  const removed: string[] = []
+  const dir = sessionDir.replace(/[\\/]+$/, '')
+  const marker = /[\\/]sessions(?=$|[\\/])/i.exec(dir)
+  const base = marker ? dir.slice(0, marker.index + marker[0].length) : dir
+  if (!existsSync(base)) return removed
+  const listDirs = (p: string): string[] => {
+    try {
+      return readdirSync(p, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name)
+    } catch {
+      return []
+    }
+  }
+  for (const user of listDirs(base)) {
+    if (!/^U\d+$/.test(user)) continue
+    const userDir = join(base, user)
+    for (const ai of listDirs(userDir)) {
+      if (!/^AI\d+$/.test(ai)) continue
+      const aiDir = join(userDir, ai)
+      for (const owner of listDirs(aiDir)) {
+        if (!owner.startsWith('room-autonomous')) continue
+        const tree = join(aiDir, owner, 'ai')
+        if (!existsSync(tree)) continue
+        rmSync(tree, { recursive: true, force: true })
+        removed.push(tree)
+      }
+    }
+  }
+  return removed
+}
+
 export class InternalSessionStore {
   private writeChains: Map<string, Promise<void>> = new Map()
   /** id → 相对 aiDir 的物理路径；冷启动扫描建立，运行时由 create/delete 同步维护 */

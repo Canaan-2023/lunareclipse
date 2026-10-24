@@ -44,7 +44,6 @@ import {
   ensureRoomRuntime,
   stopAllRoomRuntimes,
   roomSessionId,
-  type RoomTree,
   type TreeIndex
 } from '../room/runtime'
 import { ToolZoneStore, routeToolName, runZoneTool } from '../room/tool-zone'
@@ -215,15 +214,16 @@ export function buildRoomSensorSample(
 }
 
 /**
- * 把某棵**会话树**渲染成**索引**（ADR-30）：只给 id / 标题 / 摘要 / 代际 / 可写与否 / 当前落点，
+ * 把**承载会话的树**渲染成**索引**（ADR-30）：只给 id / 标题 / 摘要 / 代际 / 可写与否 / 当前落点，
  * **不给正文**——正文由 AI 按需回翻（读会话文件，或用 `landing` 承接该节点）。
  * 可写尾端判定与 `session_select` 同口径：无时间下级（`timeBranchId`）且无继承子（未被 `parentId` 引用）。
+ *
+ * 0.53.18：自主模式不再有独立房间树，`sessionId` 就是开启自主的那个会话。
  *
  * 为什么抽成纯函数：它是「AI 看到什么」的唯一构造点，必须能脱离 electron 装配被单测。
  */
 export function describeTreeIndex(
   store: InternalSessionStore,
-  tree: RoomTree,
   sessionId: string
 ): TreeIndex | null {
   try {
@@ -231,7 +231,6 @@ export function describeTreeIndex(
     const childIds = new Set<string>()
     for (const s of all) if (s.parentId) childIds.add(s.parentId)
     return {
-      tree,
       sessionId,
       activeId: store.getActive(sessionId),
       sessions: all.map((s) => ({
@@ -348,15 +347,15 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
         // 会与之冲突（见 prompts/segments.ts 的 SegmentBuildCtx.purpose）
         return runner(prompt, sessionId, aiId, 'room')
       },
-      // 两棵会话树的索引（ADR-30）：房间树（owner = 房间自持会话）+ 承载会话树（owner = 承载会话）。
-      // 都走**同一个** `InternalSessionStore`（`service-assembly` 注入的共享实例）——存储、写链、
+      // 承载会话的树索引（ADR-30 / 0.53.18）：owner = 开启自主的那个会话。
+      // 走**同一个** `InternalSessionStore`（`service-assembly` 注入的共享实例）——存储、写链、
       // 继承/时间/落点指针语义零改动，房间侧只负责「读索引 / 应用落点」。
-      listTreeSessions: (tree, sid) => describeTreeIndex(opts.internalSessionStore, tree, sid),
+      listTreeSessions: (sid) => describeTreeIndex(opts.internalSessionStore, sid),
       // AI 主动落点（ADR-30）：**复用 `session_select` 工具本体**做校验与应用——
       // 承接/建档/继承/虚线的规则（只接可写尾端、父须可写、`gen` 递增）与普通对话
       // **同一份实现**，不另抄一套（抄一套必然漂移）。工具按 `ctx.sessionId` 归属树，
-      // 故「落在哪棵树」= 传入哪个 owner 会话 id。
-      applyLanding: async (tree, sid, l) => {
+      // 故落点永远落在承载会话那棵树上。
+      applyLanding: async (sid, l) => {
         const r = await new SessionSelectTool().execute(
           l.action === 'continue'
             ? { action: 'select', internalId: l.internalId ?? '' }
@@ -378,7 +377,6 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
       executor,
       // 计划可引用：注册表工具 + 启用中的工具区自造工具（两者共用同一可用集合口径）
       allowedTools: () => [...registryToolNames(), ...enabledZoneEntries().map((e) => e.name)],
-      sessionId: roomSessionId(scope),
       // 定时器**只服务 AI 自设的待机到期**（采集本身不轮询，见 room/loop.ts 头注释）；
       // 走统一注册表 → 退出时 before-quit 可清、「无残留定时器」可机械验证
       timers: getGlobalTimerRegistry(),

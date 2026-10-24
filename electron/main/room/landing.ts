@@ -11,7 +11,7 @@
  * 不删理由：删掉即落点解析回到运行时宿主里，既不可单测也会继续把宿主撑大。
  */
 
-/** AI 主动声明的落点（作用于**当前主树**，由 `contextMode` 决定是哪棵） */
+/** AI 主动声明的落点（作用于**当前会话的逆生树**；0.53.18 起只有这一棵） */
 export interface RoomLanding {
   action: 'continue' | 'create'
   /** continue 必填（目标节点）；create 可选（从哪个可写尾端分叉） */
@@ -24,7 +24,7 @@ export interface RoomLanding {
 
 /**
  * 落点形状校验（**纯函数**）：只认 `action === 'continue' | 'create'`，其余字段按需取。
- * 形状非法 → null（调用方丢弃并留痕，不抛——与 `contextMode` 同处置）。
+ * 形状非法 → null（调用方丢弃并留痕，不抛）。
  */
 export function parseLanding(raw: unknown): RoomLanding | null {
   if (!raw || typeof raw !== 'object') return null

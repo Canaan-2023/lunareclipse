@@ -69,7 +69,6 @@ const dict = {
   'view.chat': { zh: '对话', en: 'Chat' },
   'view.tree': { zh: '内部会话', en: 'Internal Sessions' },
   'view.treeCount': { zh: '本会话 {count} 份', en: '{count} in this session' },
-  'view.treeRoomCount': { zh: '房间 {count} 份', en: '{count} in the room' },
   'view.refresh': { zh: '刷新', en: 'Refresh' },
   'view.zoomIn': { zh: '放大', en: 'Zoom in' },
   'view.zoomOut': { zh: '缩小', en: 'Zoom out' },
@@ -79,12 +78,6 @@ const dict = {
   'view.treeEmpty': { zh: '暂无内部会话', en: 'No internal sessions' },
   'view.treeEmptyHint': { zh: '对话后由 AI 自动维护', en: 'Auto-maintained by AI' },
   'view.treeEmptyDesc': { zh: '对话达到容量上限或主动新建时，AI 会在此维护独立会话；上限配置见右上角按钮。', en: 'AI maintains independent sessions here when a conversation hits its limit or on demand; budget settings live in the top-right button.' },
-  // 逆生树视角的归属切换（ADR-30 R3）：看「当前会话」的树，还是看「房间（自主）」的树
-  'view.treeOwner': { zh: '看哪棵树', en: 'Which tree' },
-  'view.treeOwner.current': { zh: '当前会话', en: 'This session' },
-  'view.treeOwner.room': { zh: '房间（自主）', en: 'Room (autonomous)' },
-  'view.treeRoomEmpty': { zh: '房间还没有自主会话', en: 'The room has no sessions yet' },
-  'view.treeRoomEmptyDesc': { zh: '开启自主模式并跑过一轮后，AI 自己维护的会话会出现在这里（它属于这个 AI 的房间，不属于当前会话）。', en: 'Once autonomous mode has run a round, the sessions the AI maintains itself appear here — they belong to this AI\u2019s room, not to the current session.' },
 
   // ===== Token / 上下文 =====
   'token.approaching': { zh: '接近上限', en: 'Near limit' },

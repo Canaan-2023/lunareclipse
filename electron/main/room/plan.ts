@@ -51,13 +51,7 @@ export interface ParsedPlan {
    */
   collectorView?: unknown
   /**
-   * AI 声明的**上下文来源**（可选）：`'room'` = 房间自持主上下文（默认，即引入前的行为）；
-   * `'session'` = 跟随**承载它的当前会话**（房间轮次落该会话与 RAW，AI 能接着用户的话往下做）。
-   * 校验在应用点（`runtime.ts`）：只认这两个值，其余丢弃并留痕。
-   */
-  contextMode?: unknown
-  /**
-   * AI 主动声明的**落点**（可选，ADR-30）：在**当前主树**（由 `contextMode` 决定）里承接某个节点
+   * AI 主动声明的**落点**（可选，ADR-30）：在**承载会话的逆生树**里承接某个节点
    * 或开一个新节点。形状 `{action:'continue'|'create', internalId?, title?, summary?, newTopic?}`。
    * 同样**原样透传**——校验与应用在 `runtime.ts` → `applyLanding`（复用 `session_select` 的规则）。
    */
@@ -141,7 +135,6 @@ export function parsePlan(text: string, allowedTools: readonly string[]): Parsed
     sensor?: unknown
     avatar?: unknown
     collectorView?: unknown
-    contextMode?: unknown
     landing?: unknown
     reply?: unknown
     scene?: unknown
@@ -188,8 +181,6 @@ export function parsePlan(text: string, allowedTools: readonly string[]): Parsed
     ...(obj.avatar !== undefined ? { avatar: obj.avatar } : {}),
     // AI 决定采集什么（诉求 10）：原样透传，应用点（runtime → validateCollectorView）负责校验
     ...(obj.collectorView !== undefined ? { collectorView: obj.collectorView } : {}),
-    // AI 决定上下文来源（room / session）：原样透传，应用点只认这两个值
-    ...(obj.contextMode !== undefined ? { contextMode: obj.contextMode } : {}),
     // AI 主动落点（ADR-30）：原样透传，应用点（runtime → applyLanding）负责校验与应用
     ...(obj.landing !== undefined ? { landing: obj.landing } : {}),
     // 对用户/镜头说的话（直播字幕）：空白不写；上限 500 字符

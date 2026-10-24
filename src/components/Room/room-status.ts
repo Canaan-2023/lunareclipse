@@ -269,9 +269,8 @@ export interface RoomPlanSummary {
   note?: string
 }
 
-/** AI 主动声明的落点（ADR-30 R2）：落在哪棵树、哪个节点 */
+/** AI 主动声明的落点（ADR-30 R2 / 0.53.18：只有承载会话这一棵树，故只带节点） */
 export interface RoomLandingSummary {
-  tree: 'room' | 'host'
   internalId: string
 }
 
@@ -303,8 +302,8 @@ export interface RoomRuntimeSnapshot {
    */
   sampledAt: number
   running: boolean
-  /** 房间自持会话 id（ADR-30 R3：逆生树视角据此切到房间树）；假体/旧状态可不带 */
-  sessionId?: string
+  /** 承载会话（0.53.18：自主模式继承的那个会话）；假体/旧状态可不带 */
+  hostSessionId?: string
   /** 像素形象修订号：变化才需要重取规格（`room:avatar-get`） */
   avatarRev: number
   standbyUntil?: number
@@ -314,7 +313,7 @@ export interface RoomRuntimeSnapshot {
   collectorView?: RoomCollectorView
   /** 当前感知策略（AI 自己配置，0.53.3）；缺省 = 全部感知 */
   sensorPolicy?: RoomSensorPolicy
-  /** 当前落点（ADR-30 R2）：AI 现在接着哪条线（哪棵树 + 哪个节点） */
+  /** 当前落点（ADR-30 R2）：AI 现在接着哪条线（承载会话树里的哪个节点） */
   landing?: RoomLandingSummary
   /** AI 直接声明的房间动作（去哪 / 做什么 / 对镜头说什么） */
   scene?: RoomSceneDirective
@@ -343,7 +342,7 @@ export const EMPTY_ROOM_SNAPSHOT: RoomRuntimeSnapshot = {
 interface RawRoomState {
   phase?: RoomPhase
   running?: boolean
-  sessionId?: string
+  hostSessionId?: string
   avatarRev?: number
   standbyUntil?: number
   lastTick?: RoomTickSummary
@@ -374,7 +373,7 @@ export function toRoomSnapshot(raw: unknown, sampledAt: number): RoomRuntimeSnap
     phase: st.phase ?? 'stopped',
     sampledAt,
     running: st.running === true,
-    ...(typeof st.sessionId === 'string' && st.sessionId ? { sessionId: st.sessionId } : {}),
+    ...(typeof st.hostSessionId === 'string' && st.hostSessionId ? { hostSessionId: st.hostSessionId } : {}),
     avatarRev: st.avatarRev ?? 0,
     ...(st.standbyUntil != null ? { standbyUntil: st.standbyUntil } : {}),
     ...(st.lastTick ? { lastTick: st.lastTick } : {}),
@@ -383,7 +382,7 @@ export function toRoomSnapshot(raw: unknown, sampledAt: number): RoomRuntimeSnap
     ...(st.collectorView ? { collectorView: st.collectorView } : {}),
     ...(sensorPolicy ? { sensorPolicy } : {}),
     ...(st.landing && typeof st.landing.internalId === 'string'
-      ? { landing: { tree: st.landing.tree === 'host' ? 'host' : 'room', internalId: st.landing.internalId } }
+      ? { landing: { internalId: st.landing.internalId } }
       : {}),
     ...(scene ? { scene } : {}),
     ...(typeof st.lastReply === 'string' && st.lastReply ? { lastReply: st.lastReply } : {}),

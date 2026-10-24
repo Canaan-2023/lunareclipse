@@ -303,7 +303,11 @@ export function createHeadlessChatRunner(deps: HeadlessChatDeps): HeadlessChatRu
           purpose,
           aiId
         )
-        await persistHeadlessTurn(sessionId, history, userMsg, fullOutput, fullHeadlessReasoning)
+        await runHeadlessTurn(injectedMessages, sessionId, purpose, aiId)
+        // 房间规划轮**不落盘**（0.53.18）：规划是房间自己的 TODO（给 AI 自己看），不是一段
+        // 要对用户说的话。写进会话历史会以「提示词当成用户消息 + JSON 计划当成 AI 回复」的形式
+        // 混进用户正常聊天，且每轮循环都追加一条。上下文改由承载会话的逆生树与采集输入承担。
+        if (purpose !== 'room') await persistHeadlessTurn(sessionId, history, userMsg, fullOutput, fullHeadlessReasoning)
         output = fullOutput
       } finally {
         // 结束后清空，避免残留串扰后续请求（与 runStream 收尾一致）

@@ -62,13 +62,16 @@ function manualTimers(): { timers: RoomTimers; fire: (label?: string) => Promise
 }
 
 function makeRt(over: Partial<RoomRuntimeDeps> & Pick<RoomRuntimeDeps, 'plan'>) {
-  return createRoomRuntime({
+  const rt = createRoomRuntime({
     collect: async () => ({ ok: true, text: '平台 win32 · CPU 5%' }),
     executor: OK_EXECUTOR,
     allowedTools: () => ['read'],
     now: () => 0,
     ...over
   })
+  // 0.53.18：未绑定承载会话则不规划
+  rt.setHostSession('chat-1')
+  return rt
 }
 
 afterEach(() => {

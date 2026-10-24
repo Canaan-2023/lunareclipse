@@ -18,7 +18,6 @@ import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, it, expect } from 'vitest'
 import { TreeCanvas } from '../src/components/Chat/InternalSessionsView'
-import { OwnerSwitcher } from '../src/components/Chat/internal-sessions/OwnerSwitcher'
 import { buildSessionTree, DENSE_SUBTREE_THRESHOLD } from '../src/components/Chat/session-chains'
 import type { InternalSessionSummary } from '@shared/types'
 
@@ -123,37 +122,6 @@ describe('TreeCanvas 逆生树 v0.28 放射形渲染', () => {
     ]
     const html = renderTree(list)
     expect(html).toContain('时间副本')
-  })
-})
-
-/**
- * 归属切换器（ADR-30 R3）：逆生树视角内切「当前会话树 / 房间树」。
- * 为什么单测它而不是整个视图：视图根组件经 `useSyncExternalStore` 读 store，SSR 固定取初始
- * 空态、无法注入种子；本组件纯 props 驱动，可直渲验证三件事——**房间不可用时不渲染**（只有
- * 一棵树可看时控件是噪声）、两态都在、选中态由 `aria-pressed` 表达（不只靠颜色）。
- */
-describe('OwnerSwitcher 归属切换器（ADR-30 R3）', () => {
-  const render = (owner: 'current' | 'room', roomAvailable: boolean): string =>
-    renderToStaticMarkup(<OwnerSwitcher owner={owner} roomAvailable={roomAvailable} onSelect={() => {}} />)
-
-  it('房间不可用（该 AI 还没跑过自主）→ 整块不渲染', () => {
-    expect(render('current', false)).toBe('')
-  })
-
-  it('房间可用 → 两态都在，选中态由 aria-pressed 表达（不只靠颜色）', () => {
-    const html = render('current', true)
-    expect(html).toContain('当前会话')
-    expect(html).toContain('房间（自主）')
-    expect(html).toContain('aria-pressed="true"')
-    expect(html).toContain('aria-pressed="false"')
-    // 选中「当前会话」：true 出现在它那一颗按钮上
-    expect(html.indexOf('aria-pressed="true"')).toBeLessThan(html.indexOf('房间（自主）'))
-  })
-
-  it('切到房间 → 选中态跟着走', () => {
-    const html = render('room', true)
-    expect(html.indexOf('aria-pressed="true"')).toBeGreaterThan(html.indexOf('当前会话'))
-    expect(html).toContain('role="group"')
   })
 })
 
