@@ -45,7 +45,7 @@
     "ink": "^8.0.0",
     "js-yaml": "^5.5.0",
     "jszip": "^3.10.2",
-    "openai": "^7.39.0",
+    "openai": "^7.43.0",
     "pixi-live2d-display": "^0.4.0",
     "pixi.js": "^6.5.10",
     "playwright": "^1.64.1",
@@ -67,10 +67,10 @@
     "@vitejs/plugin-react": "^5.2.0",
     "@vitest/coverage-v8": "^5.0.5",
     "electron": "^44.9.1",
-    "electron-builder": "^26.15.3",
+    "electron-builder": "^26.18.0",
     "electron-vite": "^5.0.0",
     "eslint": "^10.13.0",
-    "lucide-react": "^1.60.0",
+    "lucide-react": "^1.61.0",
     "motion": "^13.4.1",
     "postcss": "^8.5.31",
     "prettier": "^3.9.10",
@@ -80,6 +80,6 @@
     "typescript-eslint": "^8.72.0",
     "vite": "^7.3.6",
     "vitest": "^5.0.1",
-    "zustand": "^5.0.15"
+    "zustand": "^5.0.16"
   }
 }
