@@ -39,9 +39,7 @@ export function registerAiHandlers(
     if (!paths) return null
     return new AiManager({
       registryPath: paths.aiRegistryJson,
-      aiPromptsRoot: join(paths.frontend, 'ai-prompts'),
-      // 莉莉丝虚拟内置（lilith-persona.md/lilith-session.md）派生自同一份 lilith.json
-      lilithCharacterPath: join(paths.frontend, 'character', 'lilith.json')
+      aiPromptsRoot: join(paths.frontend, 'ai-prompts')
     })
   }
 

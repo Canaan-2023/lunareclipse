@@ -5,7 +5,7 @@
  * 月蚀主进程的核心服务端：渲染进程 / headless / 消息接入的请求都汇聚到这里，
  * 集中走「组装上下文 → 调用 LLM → 执行工具 → 回流结果」的对话闭环。
  * 独立成文件是为把提示词注入、会话状态、工具循环与端点注册收拢在
- * 一个生命周期内，让莉莉丝等子链路复用其能力而不各自重造。
+ * 一个生命周期内，让无头对话等子链路复用其能力而不各自重造。
  */
 import express, { type Router } from 'express'
 import { randomBytes } from 'crypto'
@@ -47,7 +47,7 @@ import {
 import { createInternalSessionLayer } from './internal-session'
 // WS 协议层（F-7 拆分）：连接生命周期与消息路由独立模块。
 import { createWsProtocol } from './ws-protocol'
-// 服务装配层（F-7 拆分）：HTTP 端点/莉莉丝桥/消息接入/配置热同步/端口监听。
+// 服务装配层（F-7 拆分）：HTTP 端点/消息接入/配置热同步/端口监听。
 import { installServerAssembly } from './server-assembly'
 // 代码审查通道独立模块（F-4 拆分）：审查链存储/HTML 报告渲染/独立审查提示词。
 // hasReviewPass 不经本地绑定（见下方 re-export，独立语法），故不在此 import。
@@ -76,7 +76,7 @@ import { createRuntimeServices } from './runtime-services'
 import { createWsBroadcast } from './ws-broadcast'
 import { createHttpWsServer } from './http-ws-server'
 // 进程级引用容器（ADR-02 第 3 步外移）：13 个引用的唯一 owner、只读 getter 与释放链见该模块头注释。
-import { serviceRefs, releaseServiceRefs, getExtraToolExecutors, SYSTEM_INJECTED_SESSION_ID } from './service-refs'
+import { serviceRefs, releaseServiceRefs, getExtraToolExecutors, getRestrictTools } from './service-refs'
 // 对外 API 面不变：以下 5 符号仍从本入口导出（re-export），消费方导入路径与符号名零改动。
 export {
   getApiToken,
@@ -156,8 +156,8 @@ export async function startApiServer(
 
   // ===== 内部会话层（F-5 拆分：摘要配置/上下文装配/两写摘要压缩维护队列）=====
   // 见 internal-session.ts：summaryLlmClient 懒创建、getSessionSummaryCfg、buildSessionContext、
-  // internalLlmChat、enqueueInternalSessionJob、resolveStreamSessionContext 收拢为单一 Layer；
-  // server.ts 只持有 layer，runStream/lilith-endpoints 经其能力点消费，不再与主对话闭包互相纠缠。
+  // enqueueInternalSessionJob、resolveStreamSessionContext 收拢为单一 Layer；
+  // server.ts 只持有 layer，runStream 经其能力点消费，不再与主对话闭包互相纠缠。
   const internalSessionLayer = createInternalSessionLayer({
     configStore,
     sessionStore,
@@ -165,7 +165,7 @@ export async function startApiServer(
     toolCtx,
     makeLlmClient
   })
-  const { internalLlmChat, enqueueInternalSessionJob, resolveStreamSessionContext } = internalSessionLayer
+  const { enqueueInternalSessionJob, resolveStreamSessionContext } = internalSessionLayer
 
 
   // raw_memory 写入器与地理位置服务随运行时服务一起外移（见下方 createRuntimeServices 调用）。
@@ -378,6 +378,8 @@ const resolveSessionAiId = (sessionId?: string): number => resolveSessionAiIdWit
     // 用途专属工具（当前只有房间轮的区工具）：组合根经 serviceRefs 写入（§3.4 跨域装配只在 bootstrap/）。
     // 普通对话拿空数组 → 工具面与引入前逐字一致。
     extraToolExecutors: getExtraToolExecutors,
+    // 用途收窄（前置规划轮只读工具面）：与 extraToolExecutors 同走 serviceRefs（§3.4），null = 不收窄。
+    restrictTools: getRestrictTools,
     makeDistillCallbacks,
     rowIdRef,
     writeRawMemoryForStream,
@@ -436,7 +438,7 @@ const resolveSessionAiId = (sessionId?: string): number => resolveSessionAiIdWit
   wss.on('connection', attachConnection)
 
   // ===== F-7 服务装配（独立模块 server-assembly.ts）=====
-  // 为什么拆：HTTP 端点注册、莉莉丝面板桥、消息接入、配置热同步、端口监听与 WS 协议
+  // 为什么拆：HTTP 端点注册、消息接入、配置热同步、端口监听与 WS 协议
   // 生命周期不同，属于「装配」职责；收敛到 installServerAssembly 后，startApiServer
   // 只做编排（创建基础设施 → 装配 → 返回端口），协议层与装配层可独立演进与修复。
   // 跨模块共享状态经 deps 注入：ref 容器（subAgentManagerRef）与 setter 回调回写
@@ -446,19 +448,12 @@ const resolveSessionAiId = (sessionId?: string): number => resolveSessionAiIdWit
     server,
     configStore,
     sessionStore,
-    userStore,
-    toolCtx,
-    dataPaths,
-    geoService,
     streamSession,
     runHeadlessChat,
     llmClientRef,
     makeLlmClient,
     makeToolRegistry,
     pluginLoader,
-    rawMemoryWriter,
-    internalLlmChat,
-    systemInjectedSessionId: SYSTEM_INJECTED_SESSION_ID,
     toolExecutorsRef,
     buildSubAgentExecuteFn,
     subAgentManagerRef,

@@ -11,6 +11,7 @@
  */
 export type PromptPurpose =
   | 'room'
+  | 'room-preplan'
   | 'lan-chat'
   | 'lan-direct'
   | 'ai-social'

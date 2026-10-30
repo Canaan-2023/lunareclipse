@@ -25,7 +25,6 @@ import { api as codeApi } from './domains/code' // 文件工坊代码执行（�
 import { api as mcpHooksApi } from './domains/mcp-hooks' // MCP 服务 + Hooks 管理
 import { api as evalWorkflowApi } from './domains/eval-workflow' // 评测套件 + 工作流引擎（L8）
 import { api as skillWorkspaceApi } from './domains/skill-workspace' // SKILL 管理 + 工作区管理
-import { api as lilithMessagingApi } from './domains/lilith-messaging' // 莉莉丝桌宠 + 消息接入
 import { api as pluginsApi } from './domains/plugins' // 模块系统 + 函数面板
 import { api as cronCalendarApi } from './domains/cron-calendar' // 定时任务 + 日历系统
 import { api as overlayApi } from './domains/overlay' // 聊天悬浮小窗
@@ -35,6 +34,7 @@ import { api as profileApi } from './domains/profile' // 个人中心（昵称/�
 import { api as lanApi } from './domains/lan' // 局域网管理（状态/启停/拓扑/路径记录）
 import { api as roomApi } from './domains/room' // ROOM 自主模式窗口开关
 import { api as securityApi } from './domains/security' // 权限层（能力目录/告知义务确认/授予/撤回/审计）
+import { api as messagingApi } from './domains/messaging' // 消息接入（飞书等外部平台配置与状态）
 
 const api = {
   ...coreApi,
@@ -47,7 +47,6 @@ const api = {
   ...mcpHooksApi,
   ...evalWorkflowApi,
   ...skillWorkspaceApi,
-  ...lilithMessagingApi,
   ...pluginsApi,
   ...cronCalendarApi,
   ...overlayApi,
@@ -57,6 +56,7 @@ const api = {
   ...lanApi,
   ...roomApi,
   ...securityApi,
+  ...messagingApi,
 }
 
 contextBridge.exposeInMainWorld('lunareclipse', api)

@@ -49,7 +49,7 @@ export const api = {
     ipcRenderer.invoke('memoryWorkflow:diary:status') as Promise<{ enabled: boolean; running: boolean } | null>,
   // P0 可视化数据
   vizGetAll: () => ipcRenderer.invoke('viz:getAll'),
-  /** 记忆 tab 全量数据（按需加载：memories/nngTree/injections/rawMemoryList/directoryTree；aiId 指定 AI 编号 1=月蚀/2=莉莉丝） */
+  /** 记忆 tab 全量数据（按需加载：memories/nngTree/injections/rawMemoryList/directoryTree；aiId 指定 AI 编号，如 1=月蚀） */
   vizMemoryTab: (aiId?: number) => ipcRenderer.invoke('viz:memoryTab', aiId ?? 1),
   /** 目录树懒加载：某目录的直接子节点 */
   vizDirectoryChildren: (absPath: string) => ipcRenderer.invoke('viz:directoryChildren', absPath),
@@ -61,7 +61,7 @@ export const api = {
   vizTimerCancel: (id: string) => ipcRenderer.invoke('viz:timerCancel', id) as Promise<TimerInfo[]>,
   vizGetMemories: () => ipcRenderer.invoke('viz:memories'),
   vizGetNngTree: () => ipcRenderer.invoke('viz:nngTree'),
-  /** 记忆/图谱数据面板：按 AI 编号一次返回 NNG 图树 + 缓存镜像树（aiId=1 月蚀 / 2 莉莉丝） */
+  /** 记忆/图谱数据面板：按 AI 编号一次返回 NNG 图树 + 缓存镜像树（如 aiId=1 月蚀） */
   vizGetGraph: (aiId?: number) =>
     ipcRenderer.invoke('viz:graph', aiId ?? 1) as Promise<{ nng: unknown[]; cache: unknown[] } | null>,
   /** 读取记忆完整内容（可视化面板查看用） */

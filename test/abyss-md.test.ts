@@ -45,11 +45,11 @@ describe('readUserMdContent（用户级 USER.md）', () => {
 describe('readAiMdContent（AI 级 AI.md，按 aiId 定位）', () => {
   it('文件存在且有内容：返回带包装前缀的完整文本（路径含 AI2）', () => {
     mkdirSync(join(paths.abyss, 'U1', 'AI2'), { recursive: true })
-    writeFileSync(join(paths.abyss, 'U1', 'AI2', 'AI.md'), '我是莉莉丝，陪伴型角色。', 'utf-8')
+    writeFileSync(join(paths.abyss, 'U1', 'AI2', 'AI.md'), '我是二号 AI，陪伴型角色。', 'utf-8')
     const out = readAiMdContent(paths, 1, 2)
     expect(out).not.toBeNull()
     expect(out).toContain('[你的自我认知（ABYSS/U1/AI2/AI.md')
-    expect(out).toContain('我是莉莉丝')
+    expect(out).toContain('我是二号 AI')
   })
 
   it('按 aiId 隔离：U1/AI1 与 U1/AI2 各自独立', () => {

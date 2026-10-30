@@ -6,14 +6,14 @@
 
 **月相会告诉你时间，记忆会告诉她你是谁。**
 
-**v0.53.18 · AGPL-3.0-or-later · Windows x64**
+**v0.53.19 · AGPL-3.0-or-later · Windows x64**
 
 [![CI](https://github.com/Canaan-2023/lunareclipse/actions/workflows/ci.yml/badge.svg)](https://github.com/Canaan-2023/lunareclipse/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.53.18-6f5bd6?style=flat-square)](https://github.com/Canaan-2023/lunareclipse/releases)
+[![version](https://img.shields.io/badge/version-0.53.19-6f5bd6?style=flat-square)](https://github.com/Canaan-2023/lunareclipse/releases)
 [![license](https://img.shields.io/badge/license-AGPL--3.0--or--later-2ea44f?style=flat-square)](./LICENSE)
 [![platform](https://img.shields.io/badge/platform-Windows%20x64-0078D4?style=flat-square)](#快速开始)
 [![electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square)](https://www.electronjs.org/)
-[![tests](https://img.shields.io/badge/tests-3447%20passing-2ea44f?style=flat-square)](#从源码运行)
+[![tests](https://img.shields.io/badge/tests-3413%20passing-2ea44f?style=flat-square)](#从源码运行)
 
 [下载最新版](https://github.com/Canaan-2023/lunareclipse/releases) ·
 [问题反馈](https://github.com/Canaan-2023/lunareclipse/issues) ·
@@ -98,7 +98,7 @@
 | **安全工具** | 可挂载的本地安全知识库、授权策略门、MITRE ATT&CK 阶段映射；仅对已授权目标生效。 |
 | **插件 / 技能 / MCP** | 目录即插件、渐进式技能、MCP 工具并入统一注册表，同样经过权限闸门。 |
 | **房间与外观** | 月蚀立绘、按真实文件名切换的背景、GALGAME 式记录抽屉；Live2D 可自备。 |
-| **可选集成** | 莉莉丝游戏 MOD 桥（默认关闭）、飞书长连接、终端 TUI。 |
+| **可选集成** | 飞书长连接、终端 TUI。 |
 
 ## 自主模式
 
@@ -208,7 +208,7 @@ sequenceDiagram
 - **插件**：目录即插件，按约定加载。
 - **技能**：渐进式加载，按任务需要展开。
 - **MCP**：外部工具并入统一注册表，和内置工具一样经过权限闸门。
-- **可选集成**：莉莉丝游戏 MOD 桥（默认关闭）、飞书长连接、终端 TUI。
+- **可选集成**：飞书长连接、终端 TUI。
 
 ## 房间与外观
 
@@ -285,7 +285,7 @@ npm run lint       # ESLint
 npm run build      # 构建到 out/（electron-vite）
 ```
 
-当前基线：**299 文件 / 3447 用例**通过。
+当前基线：**301 文件 / 3413 用例**通过。
 
 源码版同样使用内置月蚀立绘与 `assets/room-seed` 的两张背景（`背景1.jpg` / `背景2.jpg`）：`npm run dev` 首次启动会把它们写入
 `data/abyssac_data/room/`（用户文件不会被覆盖）。你也可以把自己的素材放进 `data/abyssac_data/room/`。
@@ -365,7 +365,7 @@ T0 硬禁止不可授予，T1 需要逐项授予。这是产品边界，不是�
 
 # LunarEclipse 月蚀
 
-**v0.53.18 · AGPL-3.0-or-later · Windows x64**
+**v0.53.19 · AGPL-3.0-or-later · Windows x64**
 
 **The moon tells the time; memory tells her who you are.**
 
@@ -403,7 +403,7 @@ device access in one local workbench.
 | **Security tooling** | A mountable local knowledge base, an authorization gate and MITRE ATT&CK stage mapping; authorized targets only. |
 | **Plugins / skills / MCP** | Folder-based plugins, progressive skills, MCP tools in the same registry and behind the same gates. |
 | **Room & appearance** | LunarEclipse portrait, two manually switched backgrounds, a visual-novel-style log drawer; Live2D is bring-your-own. |
-| **Optional integrations** | The Lilith game-MOD bridge (off by default), a Lark (Feishu) long connection, and a terminal TUI. |
+| **Optional integrations** | A Lark (Feishu) long connection and a terminal TUI. |
 
 ## Autonomous mode
 
@@ -521,8 +521,7 @@ record written.
 - **Plugins**: a folder is a plugin, loaded by convention.
 - **Skills**: loaded progressively, expanded when a task needs them.
 - **MCP**: external tools join the same registry and pass through the same permission gates.
-- **Optional integrations**: the Lilith game-MOD bridge (off by default), the Lark (Feishu) long
-  connection, and a terminal TUI.
+- **Optional integrations**: a Lark (Feishu) long connection and a terminal TUI.
 
 ## Room and appearance
 
@@ -592,7 +591,7 @@ npm run lint       # ESLint
 npm run build      # build into out/ (electron-vite)
 ```
 
-Current baseline: **299 files / 3447 tests** passing.
+Current baseline: **301 files / 3413 tests** passing.
 
 The source build uses the same built-in portrait and `assets/room-seed` backgrounds:
 `npm run dev` seeds them into `data/abyssac_data/room/` on first launch (user files are not

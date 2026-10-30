@@ -8,7 +8,7 @@
  * 策略/标签五类职责，任一处改动都会与其它职责在 merge 上冲突）。
  *
  * 关键约束（协议面红线）：`TOOL_REGISTRY` 是**内置工具元数据的唯一真源**，其 `as const satisfies`
- * 声明与紧随其后的 `BuiltinToolId` / `BuiltinNonLilithToolId` 派生类型**必须同文件**——
+ * 声明与紧随其后的 `BuiltinToolId` 派生类型**必须同文件**——
  * 派生链断裂会让「新增工具漏登记实现」从编译期报错退化为运行时静默失效
  * （校验点：`electron/main/tools/tool-ctors.ts` 的正向 satisfies + 反向覆盖断言）。
  * 本文件是唯一随「新增工具」增长的文件。 */
@@ -109,13 +109,6 @@ export const TOOL_REGISTRY = [
   // resolveStreamSessionContext 显式选择优先、未选择时自动路由兜底。
   { id: 'session_select', name: '会话选择', category: 'graph', description: '选择/新建/释放当前承接的内部会话（AI 自己路由；list 查看逆生树候选清单，select/create/release/update-summary 决定承接；create=从可写尾端分叉出原样继承其内容的新会话，选择持久化生效）', defaultEnabled: true, riskLevel: 'low', agents: ['frontend'] },
 
-  // ===== 莉莉丝专属（工具边界隔离：与月蚀的工具面分开，不再互相串） =====
-  // lilith_player_memory / lilith_lore_query / lilith_emotion = 莉莉丝自己的工具（agents ['lilith']，月蚀的列表不再显示、月蚀不可调用）。
-  // lilith_emotion = 莉莉丝自己控制自己的情绪/动画（用户 明确：莉莉丝控制莉莉丝，不归月蚀）。
-  { id: 'lilith_player_memory', name: '玩家记忆', category: 'graph', description: '读写玩家记忆（她记得关于玩家的事：喜好/约定/忌讳）', defaultEnabled: false, riskLevel: 'low', agents: ['lilith'] },
-  { id: 'lilith_lore_query', name: 'lore 查询', category: 'graph', description: '查询原作 lore 知识库（设定/世界观/共同经历）', defaultEnabled: false, riskLevel: 'low', agents: ['lilith'] },
-  { id: 'lilith_emotion', name: '莉莉丝情绪', category: 'graph', description: '控制自己的情绪/动画（下一条回复按指定情绪表达，让陪伴更灵动）', defaultEnabled: false, riskLevel: 'low', agents: ['lilith'] },
-
   // ===== SKILL 自维护（2 个，仅前端 AI——AI 自主维护程序性记忆） =====
   { id: 'skill_manage', name: '技能管理', category: 'system', description: '管理技能（程序性记忆）：action=create/update/delete（delete 需用户确认）', defaultEnabled: true, riskLevel: 'low', agents: ['frontend'] },
   { id: 'curator', name: '技能库维护', category: 'system', description: '技能生命周期维护：查看使用统计/归档闲置技能', defaultEnabled: true, riskLevel: 'low', agents: ['frontend'] },
@@ -200,18 +193,12 @@ export const TOOL_REGISTRY = [
 ] as const satisfies readonly ToolMeta[]
 
 /**
- * 内置工具 id 字面量联合（由 TOOL_REGISTRY 派生，含 lilith 专属）。
+ * 内置工具 id 字面量联合（由 TOOL_REGISTRY 派生）。
  * electron/main/tools/tool-ctors.ts 用它做编译期一致性校验：ALL_TOOL_CTORS 登记表的 id 必须命中
- * BuiltinNonLilithToolId，且 TOOL_REGISTRY 中的每个非 lilith 内置工具都必须有实现登记——
+ * BuiltinToolId，且 TOOL_REGISTRY 中的每个内置工具都必须有实现登记——
  * 新增/删除内置工具漏改任一侧都会在 typecheck 阶段报错，而不是运行时静默失效。
  */
 export type BuiltinToolId = (typeof TOOL_REGISTRY)[number]['id']
-
-/** 非 lilith 的内置工具 id（lilith 专属工具面由外部注入实现，不要求 ALL_TOOL_CTORS 登记） */
-export type BuiltinNonLilithToolId = Exclude<
-  BuiltinToolId,
-  Extract<BuiltinToolId, 'lilith_player_memory' | 'lilith_lore_query' | 'lilith_emotion'>
->
 
 /** 工具 id → 元数据 映射，O(1) 查找 */
 export const TOOL_MAP: Record<string, ToolMeta> = Object.fromEntries(

@@ -38,12 +38,12 @@ describe('deepMerge / mergeConfigLayers', () => {
   })
 
   it('多层 patch 顺序应用（后覆盖先）', () => {
-    const core = { lilith: { toolPolicy: { a: { enabled: true }, b: { enabled: true } } } }
-    const p1 = { lilith: { toolPolicy: { a: { enabled: false } } } }
-    const p2 = { lilith: { toolPolicy: { b: { enabled: false } } } }
+    const core = { frontendToolPolicy: { tools: { a: { enabled: true }, b: { enabled: true } } } }
+    const p1 = { frontendToolPolicy: { tools: { a: { enabled: false } } } }
+    const p2 = { frontendToolPolicy: { tools: { b: { enabled: false } } } }
     const merged = mergeConfigLayers(core, [p1, p2]) as typeof core
-    expect(merged.lilith.toolPolicy.a.enabled).toBe(false)
-    expect(merged.lilith.toolPolicy.b.enabled).toBe(false)
+    expect(merged.frontendToolPolicy.tools.a.enabled).toBe(false)
+    expect(merged.frontendToolPolicy.tools.b.enabled).toBe(false)
   })
 
   it('受保护安全键不从补丁层合入（AI 不能经 patch 自我授权/打开采集）', () => {
@@ -134,17 +134,17 @@ describe('ConfigStore.getEffective（覆盖层合并）', () => {
 
   it('插件 config.patch 经 registry 参与合并', () => {
     const corePath = join(TEST_ROOT, 'config.json')
-    writeFileSync(corePath, JSON.stringify({ lilith: { toolPolicy: { x: { enabled: true } } } }), 'utf-8')
+    writeFileSync(corePath, JSON.stringify({ frontendToolPolicy: { tools: { x: { enabled: true } } } }), 'utf-8')
     // 模拟插件注册 configPatch
     kernelRegistry.register('configPatch', { kind: 'plugin', pluginName: 'cfg-plugin' }, {
-      lilith: { toolPolicy: { x: { enabled: false } } }
+      frontendToolPolicy: { tools: { x: { enabled: false } } }
     })
     const store = new ConfigStore(corePath, () => kernelRegistry.get('configPatch'))
     const effective = store.getEffective()
-    expect(effective.lilith!.toolPolicy!.x!.enabled).toBe(false)
+    expect(effective.frontendToolPolicy.tools.x.enabled).toBe(false)
     // 卸载插件后恢复
     kernelRegistry.disposeBySource({ kind: 'plugin', pluginName: 'cfg-plugin' })
-    expect(store.getEffective().lilith!.toolPolicy!.x!.enabled).toBe(true)
+    expect(store.getEffective().frontendToolPolicy.tools.x.enabled).toBe(true)
   })
 })
 

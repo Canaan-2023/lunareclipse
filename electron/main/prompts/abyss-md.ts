@@ -3,8 +3,8 @@
  * @summary USER.md / AI.md 读取端（单一来源）。
 
  * 写入端见 tools/abyss-md.ts（update_user_preference / update_abyss_md）。
- * 读取端统一收敛在本模块：普通会话（segments 注入段 user_md / ai_md）与桌宠链路
- * （generateLilithReply）共用同一份定位逻辑与包装格式，避免各链路手写不同版本导致漂移。
+ * 读取端统一收敛在本模块：普通会话（segments 注入段 user_md / ai_md）
+ * 共用同一份定位逻辑与包装格式，避免各链路手写不同版本导致漂移。
  */
 import { existsSync, readFileSync } from 'fs'
 import { DEFAULT_AI_ID } from '@shared/types'

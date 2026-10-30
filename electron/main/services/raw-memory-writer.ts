@@ -116,7 +116,7 @@ private scoped(): DataPaths {
    * @param timestamp 对话时间（ISO 8601），用于决定归到哪一天
    * @param userLabel 用户实名（如 Player），有则写进 ## 用户 标题
    * @param aiLabel AI 实名（如 月蚀），有则写进 ## AI 标题
-   * @param scopeOverride 显式作用域（莉莉丝链路传 {uid, aiId:2}；不传用构造 getScope）
+   * @param scopeOverride 显式作用域（如 {uid, aiId}；不传用构造 getScope）
    * @returns 写入的文件绝对路径
    */
 write(

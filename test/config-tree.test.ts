@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 配置树（阶段 5）测试：profile 继承链 / bundle 组合 / buildConfigTreeLayers
  * 层级顺序 / cordis.patch overlay / ConfigStore.getEffective() 端到端合并。
  *
@@ -250,7 +250,7 @@ describe('ConfigStore.getEffective() 端到端（核心+profile+bundle+patch+插
     const corePath = join(TEST_ROOT, 'config.json')
     writeFileSync(corePath, JSON.stringify({
       theme: 'night',
-      lilith: { toolPolicy: { base: { enabled: true } } },
+      frontendToolPolicy: { tools: { base: { enabled: true } } },
       nested: { x: 1, coreOnly: true },
       list: [1, 2]
     }), 'utf-8')
@@ -279,7 +279,7 @@ describe('ConfigStore.getEffective() 端到端（核心+profile+bundle+patch+插
 
     // 核心字段保留
     expect(eff.theme).toBe('night')
-    expect(eff.lilith!.toolPolicy!.base.enabled).toBe(true)
+    expect(eff.frontendToolPolicy.tools.base.enabled).toBe(true)
     expect(eff.nested!.x).toBe(1)
     expect(eff.nested!.coreOnly).toBe(true)
     // 每层独有键都在

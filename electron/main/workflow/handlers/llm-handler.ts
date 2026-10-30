@@ -23,6 +23,7 @@ import type { NodeHandler, NodeHandlerContext, LlmConfig } from '@shared/workflo
 import { validateConfig } from './validate'
 import { validateWithinDir } from '../../tools/security-engine/path-security'
 import { WORKFLOW_GUARDRAIL_KEY } from '../../api/message-guardrail'
+import { applyPromptPathMap } from '../../prompts/prompt-paths'
 
 export class LlmHandler implements NodeHandler {
 async handle(ctx: NodeHandlerContext): Promise<{ output: string }> {
@@ -70,7 +71,13 @@ async handle(ctx: NodeHandlerContext): Promise<{ output: string }> {
     }
 
     // 解析 prompt 模板变量
-    const resolvedPrompt = ctx.resolveTemplate(promptText)
+    // 提示词路径预替换：工作流实例 input 里带 prompt_paths（含本作用域真实绝对路径），
+    // 节点提示词里的 {记忆工作域} 一类占位符在此就地替换，AI 读到的是可直接 Read 的地址；
+    // 非记忆类工作流不带该字段 → 原样返回（快速路径）。
+    const promptPaths = (instance.context.input as Record<string, unknown> | undefined)?.prompt_paths as
+      | Record<string, string>
+      | undefined
+    const resolvedPrompt = applyPromptPathMap(ctx.resolveTemplate(promptText), promptPaths)
 
     // Chatflow 模式：构建包含对话历史的消息列表
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = []

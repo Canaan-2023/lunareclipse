@@ -74,7 +74,7 @@ export function registerVisualizationHandlers(
   )
 
   // 记忆 tab 全量数据（从 viz:getAll 拆出，按需加载——文件系统遍历重，只在记忆 tab 激活时拉）
-  // aiId 参数（多 AI）：前端切换 月蚀(1)/莉莉丝(2) 时传，各看各的记忆体系
+  // aiId 参数（多 AI）：前端切换 AI（如 1=月蚀）时传，各看各的记忆体系
   safeHandle(
     ipc, 'viz:memoryTab',
     (_event, aiId: unknown) => {
@@ -188,7 +188,7 @@ safeHandle(
   )
 
   // 记忆/图谱数据面板（MemoryGraphPanel）：按指定 AI 一次返回 NNG 图树 + 缓存镜像树
-  // 多 AI 结构：月蚀=1 / 莉莉丝=2（ai-registry 可扩展），前端切 AI 时传对应编号，各看各的图谱
+  // 多 AI 结构：月蚀=1（ai-registry 可扩展），前端切 AI 时传对应编号，各看各的图谱
   safeHandle(
     ipc, 'viz:graph',
     (_event, aiId: unknown) => {

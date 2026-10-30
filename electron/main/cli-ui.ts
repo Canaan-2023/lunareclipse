@@ -10,8 +10,8 @@
  * - 会话历史与桌面版同源（同一 data 目录、同一 sessionStore），可续接、可切会话；
  * - stdout 归 Ink 渲染；模块日志一律转 stderr。
  *
- * 与桌面版并行注意事项：API 端口优先读 config.lilith.apiPort（默认 62002），
- * 桌面版占用时 CLI 会端口冲突 —— 可用 -c 指定独立 config（apiPort 置 0 即随机端口）。
+ * 与桌面版并行注意事项：桌面版 API 端口默认 62002，CLI 使用随机端口，
+ * 与桌面版并存不会端口冲突。
  */
 import { existsSync, mkdirSync } from 'fs'
 import { Writable } from 'stream'
@@ -113,8 +113,7 @@ function printUsage(): void {
   消息区按类型着色：用户=绿色，AI=默认，思考/元信息=灰色斜体，
   工具调用=青色（✓ 已完成 / 正在调用…），错误=红色。
 
-注意: API 端口读 config.lilith.apiPort（默认 62002）；桌面版运行时请用
--c 指定 apiPort=0 的独立 config，或先退出桌面版。
+注意: 桌面版 API 端口默认 62002；CLI 使用独立随机端口，可与桌面版并存。
 `)
 }
 
@@ -211,7 +210,7 @@ async function main(): Promise<number> {
     undefined, // sharedInternalSessionStore
     undefined, // masterRouter
     undefined, // getMasterRouter
-    0 // preferredPort=0 → 随机端口意图（config.lilith.apiPort 存在时仍由配置决定）
+    0 // preferredPort=0 → 随机端口意图
   )
 
   const aiId = args.aiId && Number.isInteger(args.aiId) && args.aiId >= 1 ? args.aiId : DEFAULT_AI_ID

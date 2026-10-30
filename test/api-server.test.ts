@@ -3,7 +3,7 @@ import { WebSocket } from 'ws'
 import express from 'express'
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
-import { tmpdir, networkInterfaces } from 'os'
+import { tmpdir } from 'os'
 
 // ---- mock openai：可控流式/非流式响应 ----
 // 第一轮流式调用返回工具调用（Glob），后续轮流返回最终文本；
@@ -21,7 +21,7 @@ vi.mock('openai', () => {
   }
 })
 
-// ---- mock electron：server.ts 顶层 import { app } 仅莉莉丝路径惰性使用 ----
+// ---- mock electron：server.ts 顶层 import { app }（延迟使用的路径依赖） ----
 vi.mock('electron', () => {
   return {
     app: {
@@ -33,7 +33,7 @@ vi.mock('electron', () => {
 })
 
 import { startApiServer, closeApiServer, getHeadlessChatRunner, getApiToken, hasReviewPass } from '../electron/main/api/server'
-import { isLoopback, isLilithBypassPath, allowLilithBypass } from '../electron/main/api/server-utils'
+import { isLoopback } from '../electron/main/api/server-utils'
 import { ConfigStore } from '../electron/main/api/config-store'
 import { SessionStore } from '../electron/main/api/session-store'
 import { UserStore } from '../electron/main/models/user-store'
@@ -143,7 +143,6 @@ interface TestEnv {
 
 /** 组装依赖并启动真实 HTTP/WS server，返回临时根目录与监听端口 */
 async function startTestServer(opts?: {
-  apiPort?: number
   /** 主分系统：直挂路由（旧签名兼容，见 startApiServer 文档） */
   masterRouter?: import('express').Router
   /** 主分系统：惰性取路由（热升级修复：/api/v1 动态转发，见 server.ts 头注释） */
@@ -171,8 +170,7 @@ async function startTestServer(opts?: {
         maxTokens: 2048
       },
       aiMode: 'coding',
-      codeReview: false,
-      lilith: { apiPort: opts?.apiPort ?? 0 }
+      codeReview: false
     }),
     'utf-8'
   )
@@ -199,7 +197,12 @@ async function startTestServer(opts?: {
     undefined, // ctx
     undefined, // sharedInternalSessionStore
     opts?.masterRouter,
-    opts?.getMasterRouter
+    opts?.getMasterRouter,
+    // 动态端口（0）：不碰生产固定端口 62002。
+    // 为什么必须：本机跑着月蚀时它已监听 0.0.0.0:62002，而 Windows 允许再绑 127.0.0.1:62002
+    // （特定位优先，请求先落在测试 server）；测试 server 关闭后同一端口由月蚀应答，
+    // 「closeApiServer 后 HTTP 拒绝连接」就会拿到 200 而失败。动态端口与任何外部进程都不重合。
+    0
   )
   return { tmpRoot, port }
 }
@@ -367,82 +370,16 @@ describe('api/server.ts 可达测试网（批次 A1）', () => {
     })
   })
 
-  // 2025 安全评审回归：主实例监听 0.0.0.0 时 /api/lilith/* 对局域网任何人免令牌开放。
-  // 修复：lilith 桥接面（/api/lilith/* + /chat/completions）仍免令牌（companion 带不了令牌），
-  // 但来源必须回环，非回环 403。这里两层验证：纯函数口径（allowLilithBypass）锁定判定，
-  // 再起真实 masterRouter（监听 0.0.0.0）证明本机 companion 链路不受影响、非回环来源被拒。
-  describe('lilith 桥接面回环拦截（2025 安全评审回归）', () => {
-    it('isLilithBypassPath：仅放行 /api/lilith/* 与 /chat/completions', () => {
-      expect(isLilithBypassPath('/api/lilith/history')).toBe(true)
-      expect(isLilithBypassPath('/api/lilith/clear')).toBe(true)
-      expect(isLilithBypassPath('/api/lilith/message')).toBe(true)
-      expect(isLilithBypassPath('/api/lilith/status')).toBe(true)
-      expect(isLilithBypassPath('/chat/completions')).toBe(true)
-      // 相邻但不属于桥接面：不得误放行（精确匹配，防前缀/联想越权）
-      expect(isLilithBypassPath('/api/lilithx')).toBe(false)
-      expect(isLilithBypassPath('/api/health')).toBe(false)
-      expect(isLilithBypassPath('/reports/x.html')).toBe(false)
-    })
-
-    it('isLoopback：127.0.0.1 / ::1 / IPv4-mapped IPv6 均为回环', () => {
-      expect(isLoopback('127.0.0.1')).toBe(true)
-      expect(isLoopback('::1')).toBe(true)
-      expect(isLoopback('::ffff:127.0.0.1')).toBe(true)
-      // 局域网/公网地址与空地址一律非回环
-      expect(isLoopback('192.168.1.23')).toBe(false)
-      expect(isLoopback('10.0.0.8')).toBe(false)
-      expect(isLoopback('172.16.0.5')).toBe(false)
-      expect(isLoopback('100.64.0.1')).toBe(false)
-      expect(isLoopback(undefined)).toBe(false)
-    })
-
-    it('allowLilithBypass：本机回环放行，局域网来源拒绝（判定单源）', () => {
-      // 本机 companion（127.0.0.1）走 lilith 桥接面：放行
-      expect(allowLilithBypass('/api/lilith/history', '127.0.0.1')).toBe(true)
-      expect(allowLilithBypass('/chat/completions', '::ffff:127.0.0.1')).toBe(true)
-      // 局域网设备（主实例监听 0.0.0.0 时可达）：拒绝，即使路径在桥接面内
-      expect(allowLilithBypass('/api/lilith/history', '192.168.1.23')).toBe(false)
-      expect(allowLilithBypass('/api/lilith/clear', '10.0.0.8')).toBe(false)
-      expect(allowLilithBypass('/chat/completions', '192.168.1.23')).toBe(false)
-      // 非桥接面路径：无论来源一律不进本判定（由后续 Bearer / reports 分支处理）
-      expect(allowLilithBypass('/api/health', '127.0.0.1')).toBe(false)
-      expect(allowLilithBypass('/api/v1/hello', '127.0.0.1')).toBe(false)
-    })
-
-    it('集成：masterRouter 模式（0.0.0.0）下，本机访问 /api/lilith/status 正常，非回环来源 403', async () => {
-      env = await startTestServer({ masterRouter: makeTestMasterRouter() })
-      tmpRoots.push(env.tmpRoot)
-
-      // 本机回环来源：免令牌直达（companion 链路不被破坏；启用态不返回 enabled 字段，
-      // 以「非 403 + 未做停用声明」即证明放行成功）
-      const local = await fetch(`http://127.0.0.1:${env.port}/api/lilith/status`)
-      expect(local.status).toBe(200)
-      const body = (await local.json()) as { enabled?: boolean; brain_ready?: boolean }
-      expect(body.enabled).not.toBe(false)
-      expect(body.brain_ready).toBe(true)
-
-      // 非回环来源：取本机局域网 IPv4（Windows 桌面通常有；纯离线环境取不到时跳过集成断言，
-      // 判定本身已由上方 allowLilithBypass 纯函数锁定）。模拟"局域网设备访问主实例 0.0.0.0"：
-      // 与浏览器跨域不同，socket 层 remoteAddress 是本机 LAN IP → 非回环 → 即使带令牌也 403。
-      const lanAddrs = Object.values(networkInterfaces() as Record<
-        string,
-        Array<{ address: string; family: string | number; internal: boolean }>
-      >)
-        .flat()
-        .filter((a) => !a.internal && String(a.family).startsWith('4'))
-        .map((a) => a.address)
-      if (lanAddrs.length > 0) {
-        const fakeLan = await fetch(`http://${lanAddrs[0]}:${env.port}/api/lilith/history`, {
-          headers: { Authorization: `Bearer ${getApiToken()}` }
-        })
-        expect(fakeLan.status).toBe(403)
-        const deniedBody = (await fakeLan.json()) as { error: string }
-        expect(deniedBody.error).toBe('仅限本机回环访问')
-      } else {
-        // 无局域网地址：回环全链路仍须拿到 200，避免测试静默跳过全部断言
-        expect(local.status).toBe(200)
-      }
-    })
+  it('isLoopback：127.0.0.1 / ::1 / IPv4-mapped IPv6 均为回环', () => {
+    expect(isLoopback('127.0.0.1')).toBe(true)
+    expect(isLoopback('::1')).toBe(true)
+    expect(isLoopback('::ffff:127.0.0.1')).toBe(true)
+    // 局域网/公网地址与空地址一律非回环
+    expect(isLoopback('192.168.1.23')).toBe(false)
+    expect(isLoopback('10.0.0.8')).toBe(false)
+    expect(isLoopback('172.16.0.5')).toBe(false)
+    expect(isLoopback('100.64.0.1')).toBe(false)
+    expect(isLoopback(undefined)).toBe(false)
   })
 
   describe('hasReviewPass（code-review 通过判定：行级匹配）', () => {

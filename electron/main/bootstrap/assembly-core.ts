@@ -21,7 +21,6 @@ import type { BaseDataPaths } from '../models/paths'
 import { app, nativeTheme } from 'electron'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
-import { resolveBundledAsset } from '../utils/app-root'
 import { createWindow } from '../window'
 import { initUiZoom } from '../ui-zoom'
 import { initDataDirectory } from '../models/data-init'
@@ -167,10 +166,7 @@ export function initMainWindow(state: AppState, deps: BootstrapDeps) {
 /** 启动编排原子 ③：数据目录 + 用户存储 + 多实例底座（LAN/卫星同步） + 配置覆盖层注入 */
 export async function initUserDirsAndMulti(state: AppState, deps: BootstrapDeps, resolvedDataDir: string) {
   const { configStore, sessionStore } = deps
-      // dev: 源码树 electron/main/prompts；packaged: extraResources 复制到 resources/prompts（asar 外，可读）
-      // 形状统一由 utils/app-root 的 resolveBundledAsset 提供（ADR-10 第 3 步，避免逐站重推 dev/packaged）
-      const promptsDir = resolveBundledAsset('prompts', { onMissing: 'dev' })
-  const dataPaths = initDataDirectory(resolvedDataDir, promptsDir)
+  const dataPaths = initDataDirectory(resolvedDataDir)
       state.userStore = new UserStore(dataPaths.usersJson)
       // 主分系统：按 instance.json 装配角色（standalone/master/satellite）
       state.multiInstance = new MultiInstanceService(dataPaths.root)
@@ -245,7 +241,7 @@ export async function initUserDirsAndMulti(state: AppState, deps: BootstrapDeps,
       } catch (err) {
         console.error('[lan] 局域网直连服务启动失败:', err)
       }
-      // 修复：注册表后加的 AI（如莉莉丝）没有机会触发建目录——
+      // 修复：注册表后加的 AI 没有机会触发建目录——
       // 启动时对所有已注册用户补建骨架（ensureScope 幂等，已存在的目录跳过）
       try {
         for (const u of state.userStore.listUsers()) {

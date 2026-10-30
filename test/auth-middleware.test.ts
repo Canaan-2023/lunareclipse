@@ -8,7 +8,7 @@
  * 覆盖：
  * 1. CORS：允许来源回显 / `null`（file://）放行 / 非允许来源 403（**先于鉴权**——无令牌也不返回 401）
  * 2. CORS：无 Origin 的非浏览器客户端放行（ACAO `*`）；OPTIONS 预检 204；CORS 头齐备
- * 3. 鉴权白名单：`/api/health` 与 `/api/v1` 免令牌；`/api/lilith/*` 免令牌但限回环
+ * 3. 鉴权白名单：`/api/health` 与 `/api/v1` 免令牌
  * 4. 令牌：Bearer 正确放行 / 错误 401 / `/reports/?token=` 与 Bearer 等效
  * 5. 令牌晚绑定：`getApiTokenSecret` 每次请求现读（换令牌立即生效）
  *
@@ -153,11 +153,6 @@ describe('令牌鉴权中间件', () => {
   it('白名单：/api/health 与 /api/v1 免令牌（无令牌不为 401）', async () => {
     expect((await req(ctx.port, '/api/health')).status).toBe(200)
     expect((await req(ctx.port, '/api/v1/anything')).status).toBe(404)
-  })
-
-  it('lilith 桥接面：回环来源免令牌（404 而非 401）', async () => {
-    expect((await req(ctx.port, '/api/lilith/status')).status).toBe(404)
-    expect((await req(ctx.port, '/chat/completions', { method: 'POST' })).status).toBe(404)
   })
 
   it('令牌晚绑定：换令牌后立即生效（旧令牌失效、新令牌放行）', async () => {

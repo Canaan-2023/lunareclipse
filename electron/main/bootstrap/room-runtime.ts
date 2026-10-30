@@ -59,6 +59,7 @@ import { defaultCollectorView, viewIncludes, type CollectorView } from '../room/
 import { createWakeArbiter, registerWakeArbiter, reportRoomWake } from '../room/wake'
 import type { RoomSensorSnapshot } from '../room/sensor'
 import { SensorPolicyStore } from '../room/sensor-policy-store'
+import { PreplanStore, setPreplanAccess } from '../room/preplan-store'
 import type { RoomSensorPolicy, SensorSignal } from '@shared/room/sensor-policy'
 import { SessionSelectTool } from '../tools/session-select'
 import { RoomEventLog } from '../room/event-log'
@@ -258,6 +259,10 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
   const eventLog = new RoomEventLog(opts.toolZoneDir)
   /** AI 感知策略（0.53.3）：每房间一份，启动恢复 / 变更落盘 */
   const sensorPolicyStore = new SensorPolicyStore(join(opts.toolZoneDir, 'sensor-policy'))
+  /** 前置规划配置与滚动历史（2026-10-31 前置规划功能）：每房间一份 `{enabled, history[]}`，区自持存储 */
+  const preplanStore = new PreplanStore(opts.toolZoneDir)
+  // 注册进程级访问点（IPC `room:preplan-*` 经此读写；uid 解析器来自当前登录态）
+  setPreplanAccess(preplanStore, () => state.userStore?.getCurrentUser()?.UID ?? null)
   /** room 侧 `evaluatePolicy` 的审计落点（B-D）：采集闸门与形象门控共用同一 sink（懒建） */
   let auditRef: AuditSink | null = null
   const roomAudit = (): AuditSink => (auditRef ??= createFileAuditSink(defaultAuditFilePath()))
@@ -279,13 +284,17 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
   const enabledZoneEntries = (): ReturnType<ToolZoneStore['load']> => zoneStore.load().filter((e) => e.enabled)
   const registryToolNames = (): string[] => [...opts.toolRegistry.tools.keys()]
 
+  // 只读判定器（执行器门控与前置规划工具面**共用同一份判定**，见下方 preplanReadonlyTools 与
+  // 文件尾部 restrictToolsRef）：真源 = 注册表元数据 `behavior.readOnly`（P0-2），AI 自述无效。
+  const toolReadOnly = createToolReadOnlyResolver(() => opts.toolRegistry.tools)
+
   // 执行器：注册表工具直接执行；工具区工具按名命中后**逐步执行**（每步再过一次门控，见 ADR-17）
   let executorRef: Executor | null = null
   const executor = createExecutor({
     getGrants,
     evaluate: (req) => evaluatePolicy(req, { getGrants, now: () => Date.now() }),
     // 只读判定真源 = 工具注册表元数据（P0-2）：AI 自述的 readOnly 不再参与分流
-    isReadOnly: createToolReadOnlyResolver(() => opts.toolRegistry.tools),
+    isReadOnly: toolReadOnly,
     run: async (d) => {
       const name = d.toolName ?? ''
       const route = routeToolName(name, registryToolNames(), enabledZoneEntries())
@@ -335,6 +344,31 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
       senseAllowed: () => evaluateRoomCollectGate(configStore.get().collector, getGrants()).ok,
       loadSensorPolicy: () => sensorPolicyStore.load(roomSessionId(scope)),
       saveSensorPolicy: (policy) => sensorPolicyStore.save(roomSessionId(scope), policy),
+      // 规划者路由（前置规划功能）：读 preplan.json——启用 = 先跑前置规划轮；缺省/未启用 = 主AI自规划
+      plannerRoute: () => (preplanStore.load(scope.uid, scope.aiId).enabled ? { kind: 'preplan' } : { kind: 'self' }),
+      // 前置规划轮（两段式第一段）：前置规划会话挂在独立 sessionId（`room-preplan-U{uid}-AI{aiId}`）上，
+      // purpose='room-preplan' = **全跳过落盘**（不写会话历史、不写 RAW——前置规划永不进记忆工作流）。
+      // 链路未就绪返回空串：runtime 据此回落主AI自规划（不传播 llmFailed）。
+      runPreplan: async (prompt) => {
+        const runner = getHeadlessChatRunner()
+        if (!runner) return ''
+        return runner(prompt, `room-preplan-U${scope.uid}-AI${scope.aiId}`, aiId, 'room-preplan')
+      },
+      // 前置规划滚动历史环（自管理：append 时超环长自动砍头，见 preplan-store.ts）
+      loadPreplanHistory: () => preplanStore.load(scope.uid, scope.aiId).history,
+      appendPreplanHistory: (entry) => preplanStore.appendHistory(scope.uid, scope.aiId, entry),
+      // 前置规划提示词 identity 段「你是 X 的前置规划」；注册表读不到时用兜底名（不该打崩本轮）
+      preplanAiName: (() => {
+        try {
+          return readAiRegistry(opts.aiRegistryJson).ais.find((a) => a.id === aiId)?.name ?? `AI${aiId}`
+        } catch {
+          return `AI${aiId}`
+        }
+      })(),
+      // 前置规划本轮可用来查证的只读工具清单：与执行器门控**同一份只读判定**（上方 toolReadOnly）。
+      // 这份名单同时是文件尾部 restrictToolsRef 对 room-preplan 用途的收窄名单——提示词
+      // 【查证】段列的与无头链路实际收窄的读同一份，口径不漂移（名单外工具物理不可见）。
+      preplanReadonlyTools: () => registryToolNames().filter((n) => toolReadOnly(n)),
       // 唤醒必须走主进程单 owner：感知器只上报，去抖 / 相位判断在仲裁器与 runtime.wake
       reportWake: (source, detail) => reportRoomWake(source, aiId, undefined, detail),
       plan: async (prompt, sessionId) => {
@@ -459,6 +493,14 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
   // 无头链路经 serviceRefs 读它（§3.4：api/ 不得直连房间域，装配只在 bootstrap/）。
   // `getRoomExtraToolExecutors` 对非 'room' 用途返回空数组 → 普通对话工具面零变化。
   serviceRefs.extraToolExecutorsRef = getRoomExtraToolExecutors
+  // 用途收窄（前置规划轮只读工具面，2026-10-31 前置规划功能）：room-preplan 用途把无头链路的工具集
+  // 按名收窄到只读名单——写入/高危工具对前置规划**物理不可见**（不是门控拒绝，是清单里根本没有）。
+  // 收窄名单与提示词【查证】段同源（上方 preplanReadonlyTools 的同一份名单）。
+  // 按名过滤是 fail-closed 的交集语义：名单里但不在链路执行器集合中的名字自动失效
+  // （两侧注册表实例不同——本侧 dmn 池 / 链路侧前端池——时安全方向不反），
+  // 链路里但不在名单的工具被移除。其余用途返回 null = 工具面与引入前逐字一致。
+  serviceRefs.restrictToolsRef = (purpose) =>
+    purpose === 'room-preplan' ? registryToolNames().filter((n) => toolReadOnly(n)) : null
 
   // 上传下载监控的「本应用传输」段：中继待取件数来自多实例服务（局域网未启动时如实说明）
   setCollectorAppTransfers(() => {

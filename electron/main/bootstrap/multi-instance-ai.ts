@@ -31,7 +31,7 @@ import {
 
 /** 启动编排原子 ⑩b：四类 AI 自动回复生成器注入 + 被动日归档补扫 */
 export function initMultiInstanceAi(multiInstance: MultiInstanceService): void {
-  // 泛化：身份约定按注册表动态生成，不再写死"1=月蚀、2=莉莉丝"。
+  // 泛化：身份约定按注册表动态生成，不写死任何编号与名字。
   // 自定义 AI 顺延编号后，各生成器提示词能正确描述本机全部 AI 实体。
   const buildAiIdConvention = (): string => {
     const registries =

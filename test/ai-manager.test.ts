@@ -23,26 +23,25 @@ describe('AiManager（多 AI 子系统注册表接线）', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('初始注册表只含系统 AI（月蚀=1 frontend / 莉莉丝=2 lilith）', () => {
+  it('初始注册表只含系统 AI（月蚀=1 frontend）', () => {
     const ais = mgr.list()
-    expect(ais).toHaveLength(2)
+    expect(ais).toHaveLength(1)
     expect(ais[0]).toMatchObject({ id: 1, name: '月蚀', agent: 'frontend', kind: 'system' })
-    expect(ais[1]).toMatchObject({ id: 2, name: '莉莉丝', agent: 'lilith', kind: 'system' })
     expect(ais[0].deactivated).toBeUndefined()
   })
 
-  it('注册 custom AI：id 顺延 3、agent 自动生成 custom-3、写提示词副本', () => {
+  it('注册 custom AI：id 顺延 2、agent 自动生成 custom-2、写提示词副本', () => {
     const r = mgr.register({ name: '织梦', systemPrompt: '你是织梦，负责梦境管理。' })
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(r.record.id).toBe(3)
-    expect(r.record.agent).toBe('custom-3')
+    expect(r.record.id).toBe(2)
+    expect(r.record.agent).toBe('custom-2')
     expect(r.record.kind).toBe('custom')
     expect(r.record.createdAt).toBeTruthy()
 
     // 提示词副本落盘
-    const promptPath = mgr.getPromptPath(3)
-    expect(promptPath.endsWith(join('frontend', 'ai-prompts', 'AI3', 'system.md'))).toBe(true)
+    const promptPath = mgr.getPromptPath(2)
+    expect(promptPath.endsWith(join('frontend', 'ai-prompts', 'AI2', 'system.md'))).toBe(true)
     expect(existsSync(promptPath)).toBe(true)
     expect(readFileSync(promptPath, 'utf-8')).toBe('你是织梦，负责梦境管理。')
 
@@ -66,7 +65,7 @@ describe('AiManager（多 AI 子系统注册表接线）', () => {
     if (!a.ok || !b.ok) return
     expect(a.record.id).toBe(b.record.id)
     expect(b.existing).toBe(true)
-    expect(mgr.list()).toHaveLength(3)
+    expect(mgr.list()).toHaveLength(2)
   })
 
   it('update：改名字/简介，id 与 agent 不可改', () => {
@@ -80,7 +79,7 @@ describe('AiManager（多 AI 子系统注册表接线）', () => {
     expect(u.record.name).toBe('织梦·改')
     expect(u.record.description).toBe('改名测试')
     expect(u.record.id).toBe(reg.record.id)
-    expect(u.record.agent).toBe('custom-3')
+    expect(u.record.agent).toBe('custom-2')
     expect(u.record.kind).toBe('custom')
   })
 
@@ -161,6 +160,6 @@ describe('AiManager（多 AI 子系统注册表接线）', () => {
     const ai = fresh.list().find((a) => a.name === '织梦')
     expect(ai).toBeTruthy()
     expect(ai?.description).toBe('持久化测试')
-    expect(readAiRegistry(registryPath).ais).toHaveLength(3)
+    expect(readAiRegistry(registryPath).ais).toHaveLength(2)
   })
 })

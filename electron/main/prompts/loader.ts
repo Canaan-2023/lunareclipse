@@ -7,6 +7,9 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { basename, join } from 'path'
 import { resolveBundledAsset } from '../utils/app-root'
+import type { BaseDataPaths, MemoryScope } from '../models/paths'
+import { scopeFromRawPath } from '../models/paths'
+import { applyPromptPaths, getPromptPathMap } from './prompt-paths'
 
 /**
  * 提示词加载器（前端 AI 与记忆工作流共用）
@@ -127,9 +130,9 @@ export interface PromptLayerResult {
   }>
 }
 
-/** 虚拟内置文件（ 莉莉丝人设派生用：基底不落盘，由 lilith.json 运行时生成） */
+/** 虚拟内置文件（基底不落盘，运行时派生后供合并使用） */
 export interface VirtualBuiltinFile {
-  /** 文件名（如 lilith-persona.md，副本可用同名文件替换） */
+  /** 文件名（同名副本可替换内置内容） */
   name: string
   /** 文件内容（派生文本） */
   content: string
@@ -137,7 +140,7 @@ export interface VirtualBuiltinFile {
 
 /**
  * 按文件粒度合并「内置基底 + AI 副本目录」（ 核心语义的泛化版）：
- * - 内置基底 = 文件列表（可来自真实目录或运行时派生，见 mergePromptDir / mergeLilithPromptDir）；
+ * - 内置基底 = 文件列表（可来自真实目录或运行时派生，见 mergePromptDir）；
  * - 副本目录同名文件 → 替换内置文件内容（source 标记为 override）；
  * - 副本独有文件 → 追加进清单（source 标记为 override）；
  * - 全部按文件名自然序拼接（\n\n---\n\n），与 loadDirAsPrompt 同构。
@@ -244,6 +247,25 @@ export function loadSharedPrompts(dir?: string): string {
  */
 export function loadWorkflowSharedPrompts(dir?: string): string {
   return loadDirAsPrompt(join(dir ?? getPromptsDir(), 'workflow'), '记忆工作流提示词')
+}
+
+/**
+ * 工作流启动输入的提示词键一次算齐：共享提示词（已按作用域预替换路径占位符）+ 节点路径表。
+ * 为什么集中在这里：调度器三个启动点（dispatcher / 子 AGENT / review）必须用同一份口径，
+ * 各自拼装会漂移；scope 缺省时从 RAW 路径反推（pending 落盘恢复的场景）。
+ * 返回键名即工作流 input 契约键名，调用方直接 spread 进 input。
+ */
+export function resolveWorkflowPromptInput(
+  base: BaseDataPaths,
+  scope: MemoryScope | null | undefined,
+  rawPath?: string
+): { workflow_prompts: string; prompt_paths: Record<string, string> | undefined } {
+  const effective = scope ?? scopeFromRawPath(rawPath ?? '', base)
+  const shared = loadWorkflowSharedPrompts()
+  return {
+    workflow_prompts: effective ? applyPromptPaths(shared, base, effective) : shared,
+    prompt_paths: effective ? getPromptPathMap(base, effective) : undefined
+  }
 }
 
 /**

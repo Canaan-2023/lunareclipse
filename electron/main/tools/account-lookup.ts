@@ -12,8 +12,7 @@ import type { ToolContext, ToolResult } from './base-tool'
  * @summary 账号检索工具组（AI 侧）：search_users 按姓名/昵称/用户名检索用户 UID；
  * get_user_profile 按 UID 读取该用户的 USER.md 个人资料。
  * @note 只读 users.json + ABYSS/U{uid}/USER.md；绝不返回密码哈希/盐等敏感字段。
- * USER.md 含联系方式/联系人等个人信息——工具 description 声明边界，且加入
- * LILITH_EXCLUDED_TOOLS（角色 AI 不参与跨用户账号管理）。
+ * USER.md 含联系方式/联系人等个人信息——工具 description 声明边界。
  */
 
 const MAX_PROFILE_CHARS = 4000

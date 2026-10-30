@@ -9,7 +9,7 @@
  * 什么作用：导出五个 `initXxx`，由 `service-assembly.ts` 按序调用；`state` 与 `deps` 显式传入。
  *
  * 不删理由：删掉即这 280 行退回 `index.ts`；且 `initIpcLayer` 是**渲染进程全部能力的注册点**
- * （权限桥接、多实例、莉莉丝、cron、技能市场都经它接线），与启动编排混在一个文件里会持续冲突。
+ * （权限桥接、多实例、cron、技能市场都经它接线），与启动编排混在一个文件里会持续冲突。
  *
  * 顺序约束（迁移后仍必须按此调用）：`initIpcLayer` 必须最后（它需要 `dataPaths` / `workflowManager` /
  * `skillMarket` / `pluginLoader` / `cronScheduler` / `internalSessionStore` 全部就绪）；
@@ -18,7 +18,6 @@
 import type { AppState } from './app-state'
 import type { BootstrapDeps } from './deps'
 import { app, BrowserWindow, ipcMain } from 'electron'
-import { initLilithAdapter, initLilithAutoStart, initLilithBridge, runLilithBridgeNow } from './lilith-setup'
 import { createWindow } from '../window'
 import { initUiZoom } from '../ui-zoom'
 import { LLMClient } from '../api/llm'
@@ -28,7 +27,6 @@ import { initDataDirectory } from '../models/data-init'
 import { createToolRegistry } from '../tools'
 import { PluginLoader } from '../plugins'
 import { SkillMarket } from '../skills/market'
-import { lilithEnabled } from '../api/lilith-session'
 import { registerOverlayIpc, setOverlayMainWindow } from '../overlay-window'
 import { registerRoomIpc } from '../ipc/handlers/room'
 import { browserViewManager, registerBrowserIpcHandlers } from '../tools/browser-view-manager'
@@ -87,8 +85,6 @@ export function initIpcLayer(state: AppState, deps: BootstrapDeps, ipcDeps: {
     getSkillLoader: () => memoryWorkflowSkillLoader,
     // Skill 市场（skill:market-* 通道用）
     getSkillMarket: () => skillMarket,
-    // 莉莉丝：用户点「启动莉莉丝桌宠」前补同步一次 MOD 配置（见 runLilithBridgeNow 的不删理由）
-    onLilithBeforeLaunch: () => runLilithBridgeNow(state, deps),
     // 模块系统：PluginLoader（plugin:list/toggle 用）
     getPluginLoader: () => pluginLoader,
     // 阶段 4：内核功能插件对象表（featurePlugins:list/toggle 用）
@@ -100,24 +96,10 @@ export function initIpcLayer(state: AppState, deps: BootstrapDeps, ipcDeps: {
     // 未登录不调用 load()/startWatching()（系统强制登录后才可用，无守卫回退）；
     // 登录成功后在此按当前 uid/aiId 分层路径统一加载并热监听，
     // 保证已装技能立即可见（路径分层/未登录兜底修复）。
-    // 莉莉丝三件套也在此启动（原在 whenReady 登录前启动）：
-    // 系统强制登录后才可用，未登录阶段不拉起桌宠/不写 MOD 配置/不建适配器，
-    // 登录成功后才允许触发这些外部副作用；lilithStarted 幂等守卫防止重复登录重复启动。
     onAuthSuccess: () => {
       void state.multiInstance.startSync()
       memoryWorkflowSkillLoader.load()
       memoryWorkflowSkillLoader.startWatching()
-      if (!state.lilithStarted && lilithEnabled(configStore)) {
-        state.lilithStarted = true
-        const lilithConfig = configStore.get().lilith
-        // 「随月蚀启动」开关（config.lilith.autoStart）同时管住桥接的冷启动执行：
-        // 关闭时整条桥接（写 %APPDATA%\LilithAI\config.json + 探测/reload companion）一律不执行——
-        // 关了开关却仍去改写外部程序的配置、并探测一个没在跑的进程，会打出「失败」这种假警报。
-        // 用户主动启动桌宠时的补同步走 runLilithBridgeNow()。
-        if (lilithConfig?.autoStart === true) void initLilithBridge(state, deps, state.apiPortForLilithBridge)
-        initLilithAdapter(state, deps, configStore.get(), dataPaths)
-        void initLilithAutoStart(configStore.get())
-      }
     },
     // 评测：按需构造 EvalHarness（首次访问时创建，跟随 config 更新）
     // 按 suite 名选择：dmn-regression（记忆工作流回归，历史契约 id 保留）用后端记忆工作流

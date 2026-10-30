@@ -1,6 +1,6 @@
 /**
  * @category 核心
- * @summary 服务装配层（F-7 拆分）：HTTP 端点 / 莉莉丝面板桥 / 消息接入 / 配置热同步 / 端口监听
+ * @summary 服务装配层（F-7 拆分）：HTTP 端点 / 消息接入 / 配置热同步 / 端口监听
 
  * 为什么这个模块存在、不删的理由：
  * server.ts 原本把「WS 连接协议」与「HTTP 服务装配」混在同一函数体内（startApiServer 后半段），
@@ -19,11 +19,11 @@
  * - 端口策略调整（固定/动态/局域网绑定）：只改本模块尾部 listen 段；
  * - 配置热同步项：在 setUnsubscribeConfig 的订阅回调中追加 diff 分支。
  */
+import net from 'net'
 import type { Express, Router } from 'express'
 import type { Server } from 'http'
 import type { ConfigStore } from './config-store'
 import type { SessionStore } from './session-store'
-import type { UserStore } from '../models/user-store'
 import type { LLMClient, ToolExecutor } from './llm'
 import type { Context } from '../kernel/cordis-runtime'
 import type { ToolContext } from '../tools/base-tool'
@@ -34,12 +34,7 @@ import type { StreamSession } from './stream-session'
 import type { PluginLoader } from '../plugins'
 import type { McpClientManager } from '../mcp/client-manager'
 import type { AppConfig, LLMConfig, PromptPurpose } from '@shared/types'
-import type { BaseDataPaths } from '../models/paths'
-import type { RawMemoryWriter } from '../services/raw-memory-writer'
-import type { LightChat } from '../services/session-utils'
-import type { GeoLocationService } from '../services/geo-location'
 import { MessagingService } from '../messaging'
-import { registerLilithEndpoints } from './lilith-endpoints'
 import { toToolExecutor, clearToolDescCache } from './tool-bridge'
 import { installToolSearchBridge } from '../tools/tool-search'
 
@@ -49,19 +44,12 @@ export interface ServerAssemblyDeps {
   server: Server | null
   configStore: ConfigStore
   sessionStore: SessionStore
-  userStore: UserStore
-  toolCtx: ToolContext
-  dataPaths: BaseDataPaths
-  geoService: GeoLocationService | null
   streamSession: StreamSession
   runHeadlessChat: (text: string, sessionId: string, aiId?: number, purpose?: PromptPurpose) => Promise<string>
   llmClientRef: { current: LLMClient }
   makeLlmClient: (cfg: LLMConfig) => LLMClient
   makeToolRegistry: (c?: ToolContext, o?: ToolRegistryOptions) => ToolRegistry
   pluginLoader?: PluginLoader
-  rawMemoryWriter: RawMemoryWriter | null
-  internalLlmChat: LightChat
-  systemInjectedSessionId: string
   toolExecutorsRef: { current: ToolExecutor[] }
   buildSubAgentExecuteFn: (getLlmClient: () => LLMClient) => SubAgentExecuteFn<ToolExecutor>
   /** SubAgentManager 共享引用：配置热同步重建后，主服务 launchSubAgent 闭包须读到新实例 */
@@ -77,12 +65,38 @@ export interface ServerAssemblyDeps {
   setUnsubscribeConfig: (fn: (() => void) | null) => void
 }
 
+/**
+ * 探测固定端口是否已被本机某个服务占用（listen 前先试连一次）。
+ * 为什么不能只靠 listen 的 error 事件：Windows 允许在别的进程已绑 `0.0.0.0:端口` 时
+ * 再绑 `127.0.0.1:端口`，listen 不报 EADDRINUSE（实测），回退分支永远不触发；而特定位绑定
+ * 优先接收请求，本进程关闭后请求改由原进程应答——「端口被占用」被静默掩盖成「监听成功」。
+ * 连接探测与平台绑定差异无关：端口空闲 → 被拒（error）；已有监听方 → connect 成功。
+ * 只用于「是否该走动态端口」的判断，探测完立即断开，不产生额外常驻连接。
+ */
+function isPortInUse(port: number, host: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (port === 0) {
+      resolve(false)
+      return
+    }
+    const socket = net.connect({ port, host: host === '0.0.0.0' ? '127.0.0.1' : host })
+    const settle = (inUse: boolean) => {
+      socket.destroy()
+      resolve(inUse)
+    }
+    socket.once('connect', () => settle(true))
+    socket.once('error', () => settle(false))
+    // 迟迟连不上也按「被占用」处理：宁可去动态端口，也不和状态不明的监听方抢同一端口
+    socket.setTimeout(500, () => settle(true))
+  })
+}
+
 /** 执行服务装配；返回实际监听端口（监听失败/未创建 server 时为 0） */
 export async function installServerAssembly(deps: ServerAssemblyDeps): Promise<number> {
   const {
-    app, server, configStore, sessionStore, userStore, toolCtx, dataPaths, geoService,
+    app, server, configStore, sessionStore,
     streamSession, runHeadlessChat, llmClientRef, makeLlmClient, makeToolRegistry,
-    pluginLoader, rawMemoryWriter, internalLlmChat, systemInjectedSessionId,
+    pluginLoader,
     toolExecutorsRef, buildSubAgentExecuteFn, subAgentManagerRef, mcpClientManager,
     ctx, serverCtx, masterRouter, preferredPort, setMessagingService, setUnsubscribeConfig
   } = deps
@@ -98,49 +112,15 @@ export async function installServerAssembly(deps: ServerAssemblyDeps): Promise<n
     res.json(streamSnap ? { active: true, ...streamSnap } : { active: false })
   })
 
-  // ===== 莉莉丝会话面板（companion 代理）=====
-  // LilithPanel 前端 → 月蚀后端 → 转发 companion API（读 runtime.json 拿 port+token，绕 CORS + 注入认证）
-  // 注意：LilithPanel 轮询的 history 是 companion 自己的游戏内会话（MOD 侧记录）；
-  // 而 companion 的 fetchLunarSharedHistory 拉的是月蚀 lilith_chat 会话（月蚀记忆侧）。
-  // 两者语义不同，不能互相转发（避免循环）。
-  // 莉莉丝共享会话 ID：companion fetchLunarSharedHistory 通过 {base_url}/api/lilith/history
-  // 拉取"莉莉丝的月蚀会话历史"（唯一上下文），与 MOD 桥接 /chat/completions 写入的会话一致。
-  // 实现已拆分至 lilith-endpoints.ts（registerLilithEndpoints），此处仅注册并取回 generateLilithReply
-  // 供消息接入（MessagingService.onLilithChat）复用；llmClientRef.current 懒重建/读取经 llmRef 回传。
-  const { generateLilithReply } = registerLilithEndpoints({
-    app,
-    configStore,
-    userStore,
-    toolCtx,
-    dataPaths,
-    geoService,
-    runHeadlessChat,
-    llmRef: {
-      get: () => llmClientRef.current,
-      set: (client) => {
-        llmClientRef.current = client
-      }
-    },
-    makeLlmClient,
-    makeToolRegistry,
-    pluginLoader,
-    rawMemoryWriter,
-    internalLlmChat,
-    systemInjectedSessionId
-  })
-
-
   // ===== 消息接入：外部消息平台（飞书等）→ 月蚀大脑 =====
-  // 飞书长连接适配器 + 路由（联系人固定：月蚀 or 莉莉丝）+ 白名单 + 串行队列。
-  // 对话入口复用现有链路：月蚀 = runHeadlessChat（完整工具循环，可指挥干活），莉莉丝 = generateLilithReply（角色对话）。
+  // 飞书长连接适配器 + 白名单 + 串行队列。
+  // 对话入口复用现有链路：月蚀 = runHeadlessChat（完整工具循环，可指挥干活）。
   const ms = new MessagingService({
     configStore,
     sessionStore,
     // 外部 IM 轮次必须标为后台：否则会消费并可能把健康检查告警回给外部联系人。
     onXiChat: (text, sessionId) => runHeadlessChat(text, sessionId, undefined, 'messaging'),
-    onLilithChat: (text, playerName) => generateLilithReply(text, playerName).then((r) => r.text),
-    isLlmBusy: () => llmClientRef.current.isStreaming(),
-    getPlayerName: () => userStore.getCurrentUser()?.用户名 ?? 'Player'
+    isLlmBusy: () => llmClientRef.current.isStreaming()
   })
   // 回写模块级引用：IPC getMessagingService 与 closeApiServer 生命周期共享同一实例。
   setMessagingService(ms)
@@ -253,35 +233,35 @@ export async function installServerAssembly(deps: ServerAssemblyDeps): Promise<n
     unsubscribeMsSync()
   })
 
+  const fixedPort = preferredPort ?? 62002
+  const host = masterRouter ? '0.0.0.0' : '127.0.0.1'
+  // 固定端口已被占用 → 直接改听动态端口。
+  // 为什么不只等 listen 的 error：Windows 下别的进程绑 `0.0.0.0:62002` 时本进程仍能绑
+  // `127.0.0.1:62002` 且不报错（见 isPortInUse 注释），只等 error 会让回退永不触发。
+  const targetPort = (await isPortInUse(fixedPort, host)) ? 0 : fixedPort
+
   const port = await new Promise<number>((resolve) => {
     if (!server) {
       resolve(0)
       return
     }
-    // 莉莉丝桥接稳定性：优先用固定端口（config.lilith.apiPort），避免动态端口导致
-    // companion 配置漂移（游戏已启动时 companion 缓存的 base_url 指向旧端口）。
-    // 固定端口被占用时回退动态端口（多实例/端口冲突场景）。
     const srv = server // 局部引用：回调内 server 可能被 TS 视为 null（闭包可变），srv 不可变安全
-    const cfgNow = configStore.get()
-    const fixedPort = cfgNow.lilith?.apiPort ?? preferredPort ?? 62002
-    const onListen = (actualPort: number) => {
+    const onListen = () => {
       const addr = srv.address()
-      resolve(typeof addr === 'object' && addr ? addr.port : actualPort)
+      resolve(typeof addr === 'object' && addr ? addr.port : 0)
     }
-    srv.once('error', () => {
-      // 固定端口被占用：回退动态端口（仅监听失败时）
-      try {
-        srv.close()
-      } catch {
-        /* ignore */
-      }
-      srv.listen(0, masterRouter ? '0.0.0.0' : '127.0.0.1', () => {
-        const addr = srv.address()
-        resolve(typeof addr === 'object' && addr ? addr.port : 0)
-      })
-    })
+    // 仍需保留 error 回退：探测与 listen 之间端口可能被别的进程抢走（Linux 下 bind 会直接报错）。
+    // 不在此调用 srv.close()：监听失败的 server 并未进入 listening 态，close() 会再发一次
+    // ERR_SERVER_NOT_RUNNING error 事件（当前 error 监听已被 once 消耗 → 变成未捕获异常击穿进程）。
+    const onFixedPortError = () => {
+      srv.removeListener('error', onFixedPortError)
+      // 动态端口再失败（极端情况）也只收敛为 0（上层按"未监听"降级），不让 error 逃逸
+      srv.once('error', () => resolve(0))
+      srv.listen(0, host, onListen)
+    }
+    srv.once('error', onFixedPortError)
     // 主系统（master）须监听 0.0.0.0 供局域网内分系统接入；单机保持仅本机
-    srv.listen(fixedPort, masterRouter ? '0.0.0.0' : '127.0.0.1', () => onListen(fixedPort))
+    srv.listen(targetPort, host, onListen)
   })
 
   return port

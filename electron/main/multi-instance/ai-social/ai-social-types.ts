@@ -25,7 +25,7 @@ export interface AiSocialContact {
   avatar?: string
   /** 简介 */
   description?: string
-  /** agent 标识（frontend/lilith/custom-{id}） */
+  /** agent 标识（frontend/custom-{id}） */
   agent: string
   /** 角色类型（system/custom） */
   kind?: 'system' | 'custom'

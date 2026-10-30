@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 批次 A2：appStore 测试网
 
  * 覆盖：
@@ -46,7 +46,6 @@ function makeFakeStore(overrides: Partial<AppState> = {}) {
     lastUsage: null,
     currentSessionModel: null,
     currentSessionCodeReview: false,
-    lilithChatOpen: false,
     activeToolCalls: [],
     todos: [],
     visualization: null,

@@ -1,6 +1,6 @@
 /**
  * 为什么存在：记忆工作流（记忆处理）的工具策略需与主会话分开管理，且要支持按分类批量开关，
- * 单独抽成可复用组件供莉莉丝等子模块使用。
+ * 单独抽成可复用组件供各子模块使用。
  * 作用：按分类渲染记忆工作流工具清单，支持 per-tool 与整分类启用/禁用，写回 toolPolicy。
  */
 import type { ToolPolicy, ToolCategory } from '@shared/types'

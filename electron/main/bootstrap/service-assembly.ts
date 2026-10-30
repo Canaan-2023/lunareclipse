@@ -295,9 +295,6 @@ const wfState = initWorkflowEngine(state, deps, { dataPaths, mcpClientManager: s
   })
   initMultiInstanceAi(state.multiInstance)
   state.collaborationScheduler = initCollaborationScheduler(state, state.activationManager, state.multiInstance, state.userStore)
-  // 莉莉丝链路已移至 onAuthSuccess（登录成功后）启动——系统强制登录后才可用，
-  // 未登录阶段不写 MOD 桥接、不启适配器、不拉起桌宠；此处仅保留端口记录供桥接使用。
-  state.apiPortForLilithBridge = port
   initApiPortIpc(port)
   // ROOM 自主运行时（B8/B10）：必须在 API server 起好后装配（规划依赖无头对话链路）
   // 每个 AI 一个房间实例（ADR-25 L3）：按 (uid, aiId) 分实例，会话 id 含 AI

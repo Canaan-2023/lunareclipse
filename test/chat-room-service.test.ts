@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -487,10 +487,10 @@ it('防伪造：聊天室主 sync 可正常覆盖；admin 聊天室信息更新�
     const root = newRoot()
     const deps = new FakeDeps(root)
     deps.identity = { uid: 1, 用户名: '主' }
-    // 注册表档案：1 号 = 月蚀（头像 emoji），2 号 = 莉莉丝；99 号不存在
+    // 注册表档案：1 号 = 月蚀（头像 emoji），2 号 = 星尘；99 号不存在
     const profileMap = new Map<number, { uid: number; aiId: number; name: string; avatar?: string }>([
       [1, { uid: 1, aiId: 1, name: '月蚀', avatar: '🌙' }],
-      [2, { uid: 1, aiId: 2, name: '莉莉丝', avatar: '🌸' }]
+      [2, { uid: 1, aiId: 2, name: '星尘', avatar: '🌸' }]
     ])
     const svc = new ChatRoomService({
       root: deps.root,
@@ -512,10 +512,10 @@ it('防伪造：聊天室主 sync 可正常覆盖；admin 聊天室信息更新�
     expect(member.aiName).toBe('月蚀')
     expect(member.aiAvatar).toBe('🌙')
 
-    // 同一 uid 下 2 号 AI（莉莉丝）也可同室进场
+    // 同一 uid 下 2 号 AI（星尘）也可同室进场
     const added2 = svc.addAiSpeaker(gid, '', 2)
     expect(added2.ok).toBe(true)
-    expect(added2.name).toBe('莉莉丝')
+    expect(added2.name).toBe('星尘')
 
     // 未注册的 aiId 被拒绝（防伪造 AI 身份进场）
     expect(svc.addAiSpeaker(gid, '黑客', 99).ok).toBe(false)

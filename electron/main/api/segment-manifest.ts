@@ -23,7 +23,6 @@ import type { ToolRegistry } from '../tools'
 import { DEFAULT_AI_ID } from '@shared/types'
 import { createSegmentManifest } from '../prompts/segments'
 import { readUserMdContent, readAiMdContent } from '../prompts/abyss-md'
-import { loadLore, retrieveLore, formatLoreContext } from '../services/lilith-adapter'
 import { buildSelfAwarenessSection } from '../kernel/introspection'
 import { getWorkspaceContext } from '../services/workspace-state'
 import { getDefaultWorkspaceConfigPath, getActiveWorkspace } from '../services/workspace-config'
@@ -31,7 +30,6 @@ import { listTopicPrompts } from '../prompts/loader'
 import { buildLifecycleInjection } from './restart-pending'
 import { buildToolDescription } from './tool-bridge'
 import { chatModePrompt, TASK_LEAD_PROMPT } from './chat-envelope'
-import { safePaths } from './tool-ctx-safe'
 
 /** 段清单类型（生产签名派生，避免重复声明） */
 export type SegmentManifest = ReturnType<typeof createSegmentManifest>
@@ -115,15 +113,13 @@ export function createSegments(deps: SegmentManifestDeps): SegmentManifest {
       const cfg = configStore.get()
       const aiId = resolveSessionAiId(sessionId)
       let aiName = cfg.aiName || '月蚀'
-      let agent: string | undefined
       try {
         const record = findAiById(readAiRegistry(dataPaths.aiRegistryJson), aiId)
         if (record?.name) aiName = record.name
-        agent = record?.agent
       } catch {
         // 注册表异常时身份卡退化为只有名字
       }
-      return { aiId, aiName, agent }
+      return { aiId, aiName }
     },
     // 多 AI 社交黑话闭环：主会话注入本机 AI 编号→名字清单（chat-room/friend/publish 工具
     // description 要求 AI「编号先看本机 AI 编号列表」）。与 initMultiInstanceAi 的
@@ -150,16 +146,13 @@ export function createSegments(deps: SegmentManifestDeps): SegmentManifest {
     getSysPrompt: (sessionId?: string) =>
       new AiManager({
         registryPath: dataPaths.aiRegistryJson,
-        aiPromptsRoot: join(dataPaths.frontend, 'ai-prompts'),
-        // 莉莉丝单一来源：普通会话提示词基底派生自同一份 character/lilith.json（桌宠同源）
-        lilithCharacterPath: join(dataPaths.frontend, 'character', 'lilith.json')
+        aiPromptsRoot: join(dataPaths.frontend, 'ai-prompts')
       }).readPrompt(resolveSessionAiId(sessionId)),
     // shared 层按 AI 文件粒度注入：有 AI 副本 shared/* → 合并文本；无 → 回退 boot 常量
     getSharedPrompts: (sessionId?: string) =>
       new AiManager({
         registryPath: dataPaths.aiRegistryJson,
-        aiPromptsRoot: join(dataPaths.frontend, 'ai-prompts'),
-        lilithCharacterPath: join(dataPaths.frontend, 'character', 'lilith.json')
+        aiPromptsRoot: join(dataPaths.frontend, 'ai-prompts')
       }).readSharedPrompt(resolveSessionAiId(sessionId)) ?? SHARED_PROMPTS,
     frontendPrompt: FRONTEND_AI_PROMPT,
     sharedPrompts: SHARED_PROMPTS,
@@ -181,21 +174,19 @@ export function createSegments(deps: SegmentManifestDeps): SegmentManifest {
       if (!u) return null
       return readAiMdContent(dataPaths, u.UID, resolveSessionAiId(sessionId))
     },
-    // 普通会话莉莉丝 lore 检索注入：与桌宠 generateLilithReply 同一份 lore 索引/检索/格式化；
-    // 无 lore 文件或无命中返回 null（不注入）。魔术路径与桌宠 lilith-endpoints 的同源路径保持一致。
-    buildLoreContext: (message: string) => {
-      const root = safePaths(toolCtx)?.root
-      if (!root) return null
-      const lore = loadLore(join(root, 'frontend', 'character', 'lore', 'index.json'))
-      const text = formatLoreContext(retrieveLore(message, lore)).trim()
-      return text || null
-    },
     buildToolDescription: (policy, mcp, cfg) =>
       buildToolDescription(policy, mcp as McpClientManager | undefined, cfg),
     mcpClientManager,
     skillLoader,
     listTopicPrompts,
     toolCtx,
+    // 提示词路径预替换：提示词文件里的 `{记忆工作域}` 等占位符，按「当前用户 + 会话所属 AI」
+    // 解析成真实绝对路径（manifest 在注入前统一替换）。未登录返回 null → 原样注入。
+    resolvePromptPaths: (sessionId?: string) => {
+      const u = userStore.getCurrentUser()
+      if (!u || u.UID == null) return null
+      return { base: dataPaths, scope: { uid: u.UID, aiId: resolveSessionAiId(sessionId) } }
+    },
     activationManager,
     onActivationConsumed: (content) => {
       activationContentRef.current = content

@@ -5,7 +5,7 @@
  * （useLlmConfigState）与保存/关闭流程。
  */
 import { useState, useEffect, useRef } from 'react'
-import { X, KeyRound, Database, Gauge, Server, Activity, Layers, Cat, Lock, Network, Webhook, Folder, Heart, MessageSquare, Languages, Share2, Wand2, ShieldCheck } from 'lucide-react'
+import { X, KeyRound, Database, Gauge, Server, Activity, Layers, Cat, Lock, Network, Webhook, Folder, MessageSquare, Languages, Share2, Wand2, ShieldCheck } from 'lucide-react'
 import type { AppConfig } from '@shared/types'
 import { useAppStore } from '../../stores/appStore'
 import { AiChatSection } from './AiChatSection'
@@ -14,7 +14,6 @@ import { useT } from '../../i18n/useT'
 import { LANGUAGES } from '../../i18n/locales'
 import { EvalPanel } from './sections/EvalPanelSection'
 import { WorkspaceConfigSection } from './sections/WorkspaceSection'
-import { LilithConnectSection } from './sections/LilithSection'
 import { MessagingSection } from './sections/MessagingSection'
 import { MultiInstanceSection } from './sections/MultiInstanceSection'
 import { LanMapSection } from './sections/LanMapSection'
@@ -32,7 +31,7 @@ import { ThemeSection } from './sections/ThemeSection'
 import { DataSection } from './sections/DataSection'
 import { SecurityPanel } from '../Security/SecurityPanel'
 
-type Tab = 'frontend-llm' | 'backend-llm' | 'character' | 'theme' | 'data' | 'memory-workflow' | 'mcp' | 'hooks' | 'eval' | 'workspace' | 'lilith' | 'messaging' | 'ai-chat' | 'generation' | 'multi' | 'lan' | 'room' | 'security'
+type Tab = 'frontend-llm' | 'backend-llm' | 'character' | 'theme' | 'data' | 'memory-workflow' | 'mcp' | 'hooks' | 'eval' | 'workspace' | 'messaging' | 'ai-chat' | 'generation' | 'multi' | 'lan' | 'room' | 'security'
 
 export function SettingsPanel() {
   const open = useAppStore((s) => s.settingsOpen)
@@ -176,7 +175,6 @@ export function SettingsPanel() {
               { id: 'eval' as Tab, label: t('settings.tab.eval'), icon: Gauge },
               { id: 'theme' as Tab, label: t('settings.tab.theme'), icon: Layers },
               { id: 'workspace' as Tab, label: t('settings.tab.workspace'), icon: Folder },
-              { id: 'lilith' as Tab, label: t('settings.tab.lilith'), icon: Heart },
               { id: 'messaging' as Tab, label: t('settings.tab.messaging'), icon: MessageSquare },
               { id: 'ai-chat' as Tab, label: t('settings.tab.aiChat'), icon: MessageSquare },
               { id: 'generation' as Tab, label: t('settings.tab.generation'), icon: Wand2 },
@@ -304,11 +302,6 @@ export function SettingsPanel() {
             {/* ====== 工作区（AI 专属工作区管理）====== */}
             {tab === 'workspace' && (
               <WorkspaceConfigSection />
-            )}
-
-            {/* ====== 莉莉丝桌宠连接 ====== */}
-            {tab === 'lilith' && (
-              <LilithConnectSection config={local} onChange={setLocal} />
             )}
 
             {/* ====== 消息接入（飞书等外部平台 → 月蚀大脑） ====== */}

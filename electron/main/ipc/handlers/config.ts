@@ -48,7 +48,7 @@ const ALLOWED_CONFIG_KEYS = new Set<string>([
   'userProfileManualEdited', 'liteMemoryManualEdited',
   'contextMdManualEdited', 'contextWindow', 'messageWidth',
   'frontendToolPolicy', 'eval',
-'permissionGreenlight', 'lilith', 'messaging',
+'permissionGreenlight', 'messaging',
   'imageGen', 'aiAssist', 'codeReview',
   'governance', 'browser', 'uiZoom',
   // 命令安全规则层 / 工具级权限覆写：设置页保存走通用 saveConfig → config:set 链路持久化，

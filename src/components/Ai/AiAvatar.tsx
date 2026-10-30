@@ -17,15 +17,15 @@
  */
 import { useState, useRef } from 'react'
 import { ImagePlus, Trash2, Loader2 } from 'lucide-react'
-import { DEFAULT_AI_ID, LILITH_AI_ID } from '@shared/types'
+import { DEFAULT_AI_ID } from '@shared/types'
 import { useT } from '../../i18n/useT'
 
 /** 默认头像图标集（内置可选，不落图片文件） */
 export const AI_AVATAR_CHOICES = ['✨', '🌙', '🦊', '🐱', '🐉', '🌸', '⚡', '🌿', '🌟', '🐺', '🍀', '🌺']
 
-/** 默认头像兜底：系统月蚀=1 🌙、系统莉莉丝=2 💗、其余 🤖（头像选择/会话头/新建选择器共用，口径统一） */
+/** 默认头像兜底：系统月蚀=1 🌙、其余 🤖（头像选择/会话头/新建选择器共用，口径统一） */
 export function aiAvatarFallback(aiId: number | undefined): string {
-  return aiId === DEFAULT_AI_ID ? '🌙' : aiId === LILITH_AI_ID ? '💗' : '🤖'
+  return aiId === DEFAULT_AI_ID ? '🌙' : '🤖'
 }
 
 /** img: 前缀 → lune-media:// 媒体 URL（无前缀返回 null） */

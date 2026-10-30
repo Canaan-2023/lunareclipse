@@ -25,8 +25,6 @@ export type RawSourceKind =
   | 'ai-social'
   /** 自主模式（ROOM 规划/执行轮次） */
   | 'autonomous'
-  /** 莉莉丝桌宠 */
-  | 'lilith'
   /** 外部平台接入（飞书等） */
   | 'messaging'
 
@@ -38,7 +36,6 @@ export const RAW_SOURCE_LABELS: Record<RawSourceKind, string> = {
   'lan-board': '局域网公示板',
   'ai-social': 'AI 社交',
   autonomous: '自主模式',
-  lilith: '莉莉丝桌宠',
   messaging: '外部平台接入'
 }
 
@@ -56,7 +53,6 @@ const PREFIX_MAP: ReadonlyArray<[string, RawSourceKind]> = [
   ['lan-publish-board-', 'lan-board'],
   ['ai-social-', 'ai-social'],
   [AUTONOMOUS_OWNER_PREFIX, 'autonomous'],
-  ['lilith', 'lilith'],
   ['messaging-', 'messaging'],
   ['msg-', 'messaging']
 ]

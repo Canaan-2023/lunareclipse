@@ -24,7 +24,7 @@ export interface CacheMemoryEntry {
   精炼内容?: string
   关联文件?: string[]
   备注: string
-  /** AI 身份（说话人：月蚀/莉莉丝，从记忆读取） */
+  /** AI 身份（说话人：AI 名字，从记忆读取） */
   AI身份?: string
   /** 用户身份（UID+用户名，从记忆读取） */
   用户?: MemoryUser

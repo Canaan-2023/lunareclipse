@@ -26,8 +26,6 @@ export * from './permission'
 export * from './model-router'
 // 采集器（ROOM 记忆区输入源）
 export * from './collector'
-// 莉莉丝桌宠
-export * from './lilith'
 // AI 元搜索
 export * from './ai-assist'
 // 图像/多模态生成

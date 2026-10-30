@@ -53,7 +53,7 @@ export interface ServerCtxDeps {
 
 /**
  * 构造主对话工具上下文。
- * 多 AI（P2）：主对话工具路径按「当前登录用户 + 会话所属 AI」动态解析（复制莉莉丝样板，aiId 动态化）。
+ * 多 AI（P2）：主对话工具路径按「当前登录用户 + 会话所属 AI」动态解析（aiId 动态化）。
  * 工具读 ctx.paths.xxx 时自动落 memory/U{uid}/AI{aiId} 对应记忆域，实现双 AI 记忆/注入隔离。
  */
 export function createServerCtx(deps: ServerCtxDeps): ToolContext {
@@ -208,7 +208,7 @@ export function createServerCtx(deps: ServerCtxDeps): ToolContext {
       }
     }
   }
-  // 多 AI（P2）：主对话工具路径按「当前登录用户 + 会话所属 AI」动态解析（复制莉莉丝样板，aiId 动态化）。
+  // 多 AI（P2）：主对话工具路径按「当前登录用户 + 会话所属 AI」动态解析（aiId 动态化）。
   // 注意：展开用 spreadToolCtx 跳过 paths（避免 getter 在展开期被求值抛错——未登录场景），
   // 此处 defineProperty 是 paths 唯一挂载点（动态 getter，登录后才可解析）。
   // sessions 同样走 scoped 作用域（{root}/sessions/U{uid}/AI{aiId}）：session-search 检索历史会话时应

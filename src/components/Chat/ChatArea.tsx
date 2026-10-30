@@ -17,7 +17,6 @@ import { InputArea } from '../Input/InputArea'
 import { WorkflowStatusBar } from './WorkflowStatusBar'
 import { InternalSessionsView } from './InternalSessionsView'
 import { RoomView } from '../Room/RoomView'
-import { LilithPanel } from '../Lilith/LilithPanel'
 import { useT } from '../../i18n/useT'
 
 
@@ -37,7 +36,6 @@ export function ChatArea() {
   // 会话正文宽度档位（config.messageWidth，设置页可调；旧配置缺省时回退 medium）
   const messageWidth = useAppStore((s) => s.config?.messageWidth ?? 'medium')
   const currentSessionId = useAppStore((s) => s.currentSessionId)
-  const lilithChatOpen = useAppStore((s) => s.lilithChatOpen)
   const status = useAppStore((s) => s.status)
   const errorMessage = useAppStore((s) => s.errorMessage)
   const contextWarning = useAppStore((s) => s.contextWarning)
@@ -138,11 +136,6 @@ export function ChatArea() {
   useEffect(() => {
     if (chatViewMode === 'normal') scrollToBottom()
   }, [chatViewMode])
-
-// 莉莉丝会话：主聊天窗口与桌宠对话（与游戏内共享上下文）
-  if (lilithChatOpen) {
-    return <LilithPanel />
-  }
 
   if (!currentSessionId) {
     return (

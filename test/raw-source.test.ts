@@ -23,10 +23,9 @@ describe('sourceOfSession：会话 id 前缀 → 来源', () => {
     expect(sourceOfSession('lan-publish-board-art-1')).toBe('lan-board')
   })
 
-  it('AI 社交 / 自主模式 / 莉莉丝 / 外部接入', () => {
+  it('AI 社交 / 自主模式 / 外部接入', () => {
     expect(sourceOfSession('ai-social-3-2')).toBe('ai-social')
     expect(sourceOfSession('room-autonomous-U1-AI1')).toBe('autonomous')
-    expect(sourceOfSession('lilith-session')).toBe('lilith')
     expect(sourceOfSession('messaging-feishu-1')).toBe('messaging')
   })
 
@@ -47,8 +46,8 @@ describe('sourceHeaderLine：RAW 头部来源行', () => {
     expect(sourceHeaderLine(undefined)).toBeNull()
   })
 
-  it('八类来源都有可读名', () => {
-    const kinds = ['user-session', 'lan-friend', 'lan-group', 'lan-board', 'ai-social', 'autonomous', 'lilith', 'messaging'] as const
+  it('七类来源都有可读名', () => {
+    const kinds = ['user-session', 'lan-friend', 'lan-group', 'lan-board', 'ai-social', 'autonomous', 'messaging'] as const
     for (const k of kinds) {
       expect(RAW_SOURCE_LABELS[k]).toBeTruthy()
       expect(sourceHeaderLine(k)).toContain(RAW_SOURCE_LABELS[k])

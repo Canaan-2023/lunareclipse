@@ -71,6 +71,13 @@ export interface HeadlessChatDeps {
    * 省略 = 不追加任何工具（与引入前逐字一致）。
    */
   extraToolExecutors?: (purpose: PromptPurpose | undefined, aiId?: number) => ToolExecutor[]
+  /**
+   * **用途收窄**（前置规划功能）：返回非 null 名单时，本轮工具集按名**收窄**到名单内——
+   * 收窄 = 名单外工具**物理不可见**（不出现在本轮工具清单里，模型无从调用），而非门控拒绝。
+   * 与 `extraToolExecutors` 的方向相反：一个加、一个减；组合根按 purpose 决定用哪个。
+   * 返回 null / 未注入 = 不收窄（普通轮次行为与引入前逐字一致）。
+   */
+  restrictTools?: (purpose: PromptPurpose | undefined, aiId?: number) => readonly string[] | null
   makeDistillCallbacks: () => DistillCallbacks
   /** 行协议行 id 全局递增计数器（与主路径共用，重试时不得重置） */
   rowIdRef: { current: number }
@@ -140,12 +147,18 @@ export function createHeadlessChatRunner(deps: HeadlessChatDeps): HeadlessChatRu
     aiId?: number,
     purpose?: PromptPurpose
   ): Promise<{ history: ChatMessage[]; userMsg: ChatMessage; injectedMessages: ChatMessage[] }> => {
+    // 前置规划轮（room-preplan）**不落 sessionStore、不走逆生树路由**（2026-10-31 裁决：
+    // 前置规划持久体只有 preplan.json 滚动环）。建会话记录会让它出现在用户会话列表里，
+    // 路由会为它建档内部会话节点——两者都与「影子、自管理」的定位冲突。
+    // 作用域解析不依赖会话记录：ai-scope 直接解析自描述 id（room-preplan-U{uid}-AI{aiId}）。
     const session =
-      sessionStore.get(sessionId) ??
-      // 多 AI 泛化：headless 会话按调用方声明归属 AI（AI 社交/公示板传 aiId，
-      // 记忆/RAW/工具 seeds 落该 AI 域；缺省 NaN → 回退 1 月蚀，兼容聊天室/私聊旧行为）
-      sessionStore.getOrCreate(sessionId, `消息接入会话 ${sessionId.slice(0, 10)}`, aiId)
-    const history = session.messages ?? []
+      purpose === 'room-preplan'
+        ? undefined
+        : sessionStore.get(sessionId) ??
+          // 多 AI 泛化：headless 会话按调用方声明归属 AI（AI 社交/公示板传 aiId，
+          // 记忆/RAW/工具 seeds 落该 AI 域；缺省 NaN → 回退 1 月蚀，兼容聊天室/私聊旧行为）
+          sessionStore.getOrCreate(sessionId, `消息接入会话 ${sessionId.slice(0, 10)}`, aiId)
+    const history = session?.messages ?? []
     const userMsg: ChatMessage = {
       id: `ext_u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       role: 'user',
@@ -157,9 +170,13 @@ export function createHeadlessChatRunner(deps: HeadlessChatDeps): HeadlessChatRu
     // 必须区分两种「没有锚点」：
     // - **返回 null** = 机制自己声明「未启用 / 无路由」→ 合法状态，走线性管线；
     // - **抛错** = 真出了问题 → **让它抛**，由上层看见（静默降级成简陋的线性管线才是「不干净」）。
-    const sessionContext = deps.resolveSessionContext
-      ? await deps.resolveSessionContext(sessionId, [...history, userMsg])
-      : null
+    // 前置规划轮固定 null：连续性来自 preplan.json（提示词【近期节奏】段），不走路由（见上）。
+    const sessionContext =
+      purpose === 'room-preplan'
+        ? null
+        : deps.resolveSessionContext
+          ? await deps.resolveSessionContext(sessionId, [...history, userMsg])
+          : null
     const injectedMessages = await buildInjectedMessages([...history, userMsg], sessionId, sessionContext, purpose)
     // 注入全量注入（与 runStream 同语义）：headless 接入同样不实施注入截断
     lastInjectedEstimateRef.current = estimateMessagesTokens(injectedMessages)
@@ -171,7 +188,8 @@ export function createHeadlessChatRunner(deps: HeadlessChatDeps): HeadlessChatRu
    * 完成后统一抛出给 messaging 层处理。
    * **调用方必须已在 streamSession 队列内**（见编排入口）：serverCtx.sessionId 是全局单例，
    * 只有把「组装 + 流 + 持久化」整体串行，才不会与 WS 主链路/其它无头轮互相覆盖。
-   * 工具集 = 前端工具集 + **该用途专属工具**（`extraToolExecutors`；房间轮才有，普通对话为空）。
+   * 工具集 = （前端工具集 + **该用途专属工具**，见 `extraToolExecutors`）再按 `restrictTools` 收窄
+   * （前置规划轮才有收窄，普通对话名单为 null、零变化）。
    */
   const runHeadlessTurn = async (
     injectedMessages: ChatMessage[],
@@ -182,7 +200,11 @@ export function createHeadlessChatRunner(deps: HeadlessChatDeps): HeadlessChatRu
     let fullOutput = ''
     let fullHeadlessReasoning = ''
     const extraTools = deps.extraToolExecutors?.(purpose, aiId) ?? []
-    const executors = extraTools.length > 0 ? [...toolExecutorsRef.current, ...extraTools] : toolExecutorsRef.current
+    const combined = extraTools.length > 0 ? [...toolExecutorsRef.current, ...extraTools] : toolExecutorsRef.current
+    // 用途收窄（前置规划功能）：名单非 null 时按名收窄——名单外工具本轮**物理不可见**。
+    // 收窄作用于合并后的集合（含用途专属追加），否则追加会成为绕过收窄的口子。
+    const restrict = deps.restrictTools?.(purpose, aiId) ?? null
+    const executors = restrict ? combined.filter((t) => restrict.includes(t.name)) : combined
     let streamError: Error | null = null
     // 无头路径不推 WS，清掉转发器防止把子 agent 事件误推给残留的旧 WS stream。
     // 此时已在队列任务内，前一个 stream 已完成，清掉不会丢它的子 agent 事件。
@@ -303,11 +325,27 @@ export function createHeadlessChatRunner(deps: HeadlessChatDeps): HeadlessChatRu
           purpose,
           aiId
         )
-        await runHeadlessTurn(injectedMessages, sessionId, purpose, aiId)
-        // 房间规划轮**不落盘**（0.53.18）：规划是房间自己的 TODO（给 AI 自己看），不是一段
-        // 要对用户说的话。写进会话历史会以「提示词当成用户消息 + JSON 计划当成 AI 回复」的形式
-        // 混进用户正常聊天，且每轮循环都追加一条。上下文改由承载会话的逆生树与采集输入承担。
-        if (purpose !== 'room') await persistHeadlessTurn(sessionId, history, userMsg, fullOutput, fullHeadlessReasoning)
+        // 修复（2026-10-31）：此处曾把 runHeadlessTurn 重复调用第二次且丢弃返回值——
+        // 每轮规划实际发起两次完整 LLM 调用（双倍 token 消耗）。已删，不得加回。
+        // 落盘三分支（2026-10-31 前置规划功能裁决）：
+        // - `room-preplan`（前置规划轮）：**全跳过**——不写会话历史、不写 RAW。前置规划是主AI的专属
+        //   影子，不占 aiId、不进记忆工作流（防与主AI记忆重复）；它的指令经主AI规划提示词的
+        //   【前置规划】段随主AI轮次计入 RAW（「在主AI上下文内所以计入」），自己永不落笔。
+        // - `room`（房间规划轮）：**不写会话历史**（0.53.18：规划是房间自己的 TODO，写进会话历史
+        //   会以「提示词当成用户消息 + JSON 计划当成 AI 回复」的形式混进用户正常聊天），
+        //   但**照常写 RAW**（2026-10-31 用户裁决，覆盖 0.53.18 的 RAW 部分）。
+        // - 其余：会话历史与 RAW 都写（普通轮次，行为不变）。
+        if (purpose === 'room-preplan') {
+          // 全跳过：前置规划不落笔
+        } else if (purpose === 'room') {
+          try {
+            writeRawMemoryForStream(false, fullOutput, false, [...history, userMsg])
+          } catch (err) {
+            console.error('[messaging] room 轮 RAW 记忆写入失败:', (err as Error).message)
+          }
+        } else {
+          await persistHeadlessTurn(sessionId, history, userMsg, fullOutput, fullHeadlessReasoning)
+        }
         output = fullOutput
       } finally {
         // 结束后清空，避免残留串扰后续请求（与 runStream 收尾一致）

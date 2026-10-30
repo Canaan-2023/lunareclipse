@@ -24,9 +24,9 @@ function buildDeps(overrides: Partial<SegmentDeps> = {}): SegmentDeps {
     getConfig: () => ({ persona: '', aiName: '月蚀', aiMode: 'chat' }) as never,
     getCurrentUser: () => ({ UID: 7, 用户名: '测试用户' }) as never,
     getAiIdentity: (sessionId?: string) =>
-      sessionId === 's_ai2' ? { aiId: 2, aiName: '莉莉丝' } : { aiId: 1, aiName: '月蚀' },
+      sessionId === 's_ai2' ? { aiId: 2, aiName: 'AI2' } : { aiId: 1, aiName: '月蚀' },
     getSysPrompt: (sessionId?: string) =>
-      sessionId === 's_ai2' ? '莉莉丝系统提示词（副本）' : null,
+      sessionId === 's_ai2' ? 'AI2 系统提示词（副本）' : null,
     frontendPrompt: '内置前端提示词',
     sharedPrompts: '',
     getActiveWorkspace: () => null,
@@ -35,7 +35,7 @@ function buildDeps(overrides: Partial<SegmentDeps> = {}): SegmentDeps {
     buildSelfAwarenessSection: () => null,
     readUserMd: () => '用户资料卡（USER.md 内容）',
     readAiMd: (sessionId?: string) =>
-      sessionId === 's_ai2' ? '莉莉丝的 AI.md' : '月蚀的 AI.md',
+      sessionId === 's_ai2' ? 'AI2 的 AI.md' : '月蚀的 AI.md',
     buildToolDescription: () => '工具描述',
     mcpClientManager: undefined,
     skillLoader: {
@@ -63,7 +63,7 @@ describe('segments 注入链按会话 aiId 泛化（P2）', () => {
     const ai1 = await assembleSegments(segments, { messages: [], sessionId: 's_ai1' })
     const ai2 = await assembleSegments(segments, { messages: [], sessionId: 's_ai2' })
     const id1 = ai1.prefix.find((m) => m.content.includes('月蚀'))
-    const id2 = ai2.prefix.find((m) => m.content.includes('莉莉丝'))
+    const id2 = ai2.prefix.find((m) => m.content.includes('AI2'))
     expect(id1).toBeTruthy()
     expect(id2).toBeTruthy()
     expect((id1!.content as string).includes('AIID=1')).toBe(true)
@@ -89,7 +89,7 @@ describe('segments 注入链按会话 aiId 泛化（P2）', () => {
     const ai1 = await assembleSegments(segments, { messages: [], sessionId: 's_ai1' })
     const ai2 = await assembleSegments(segments, { messages: [], sessionId: 's_ai2' })
     expect(ai1.prefix.some((m) => m.content === '内置前端提示词')).toBe(true)
-    expect(ai2.prefix.some((m) => m.content === '莉莉丝系统提示词（副本）')).toBe(true)
+    expect(ai2.prefix.some((m) => m.content === 'AI2 系统提示词（副本）')).toBe(true)
   })
 
   it('sys_prompt 段：副本为空字符串（非 null）时不注入也不回退内置（锁定 ?? 语义）', async () => {
@@ -118,7 +118,7 @@ describe('segments 注入链按会话 aiId 泛化（P2）', () => {
     expect(userTail1).toBeTruthy()
     expect(userTail2).toBeTruthy()
     // ai_md：各自会话读各自 AI.md
-    const aiTail2 = ai2.suffix.find((m) => m.content === '莉莉丝的 AI.md')
+    const aiTail2 = ai2.suffix.find((m) => m.content === 'AI2 的 AI.md')
     expect(aiTail2).toBeTruthy()
     const aiTail1 = ai1.suffix.find((m) => m.content === '月蚀的 AI.md')
     expect(aiTail1).toBeTruthy()
@@ -159,101 +159,6 @@ describe('segments 注入链按会话 aiId 泛化（P2）', () => {
     const segments = createSegmentManifest(buildDeps())
     const ai1 = await assembleSegments(segments, { messages: [], sessionId: 's_ai1' })
     expect(ai1.suffix.some((m) => m.content.includes('当前环境'))).toBe(false)
-  })
-
-  it('T5 莉莉丝剥离：agent=lilith 会话不注入 shared/kernel/mode_branch，其他功能段保留', async () => {
-    const deps = buildDeps({
-      sharedPrompts: '内置通用机制（boot 常量）',
-      getSharedPrompts: () => 'AI2 通用副本（文件粒度）',
-      buildSelfAwarenessSection: () => '月蚀自我认知段（kernel）',
-      getAiIdentity: (sessionId?: string) =>
-        sessionId === 's_ai2'
-          ? { aiId: 2, aiName: '莉莉丝', agent: 'lilith' }
-          : { aiId: 1, aiName: '月蚀', agent: 'frontend' }
-    })
-    const segments = createSegmentManifest(deps)
-    const ai2 = await assembleSegments(segments, { messages: [], sessionId: 's_ai2' })
-    // 剥离：月蚀 shared 通用机制（无论副本还是 boot 常量）不注入
-    expect(ai2.prefix.some((m) => m.content === 'AI2 通用副本（文件粒度）')).toBe(false)
-    expect(ai2.prefix.some((m) => m.content === '内置通用机制（boot 常量）')).toBe(false)
-    // 剥离：kernel 自我认知段不注入
-    expect(ai2.prefix.some((m) => m.content.includes('月蚀自我认知段'))).toBe(false)
-    // 剥离：mode_branch（chat/task/coding 纪律）不注入
-    expect(ai2.suffix.some((m) => m.content.includes('聊天模式'))).toBe(false)
-    expect(ai2.suffix.some((m) => m.content.includes('输出纪律'))).toBe(false)
-    // 保留：身份卡 / 系统提示词（派生人设）/ 用户资料卡 / 自我认知（AI.md）
-    expect(ai2.prefix.some((m) => (m.content as string).includes('莉莉丝'))).toBe(true)
-    expect(ai2.prefix.some((m) => m.content === '莉莉丝系统提示词（副本）')).toBe(true)
-    expect(ai2.suffix.some((m) => m.content === '用户资料卡（USER.md 内容）')).toBe(true)
-    expect(ai2.suffix.some((m) => m.content === '莉莉丝的 AI.md')).toBe(true)
-  })
-
-  it('T5 非莉莉丝不受影响：自定义 AI（agent 非 lilith）仍继承月蚀通用段', async () => {
-    const deps = buildDeps({
-      sharedPrompts: '内置通用机制（boot 常量）',
-      getSharedPrompts: () => null,
-      buildSelfAwarenessSection: () => '月蚀自我认知段（kernel）',
-      getAiIdentity: () => ({ aiId: 3, aiName: '自定义AI', agent: 'custom-3' }),
-      getSysPrompt: () => '自定义AI系统提示词'
-    })
-    const segments = createSegmentManifest(deps)
-    const ai3 = await assembleSegments(segments, { messages: [], sessionId: 's_ai3' })
-    // 月蚀 shared 回退 boot 常量仍注入
-    expect(ai3.prefix.some((m) => m.content === '内置通用机制（boot 常量）')).toBe(true)
-    // kernel 自我认知仍注入
-    expect(ai3.prefix.some((m) => m.content.includes('月蚀自我认知段'))).toBe(true)
-    // mode_branch（chat 模式）仍注入
-    expect(ai3.suffix.some((m) => m.content.includes('聊天模式'))).toBe(true)
-  })
-
-  it('T6 lore_ctx：莉莉丝会话按最近用户消息检索注入、放历史之后', async () => {
-    const deps = buildDeps({
-      getAiIdentity: (sessionId?: string) =>
-        sessionId === 's_ai2'
-          ? { aiId: 2, aiName: '莉莉丝', agent: 'lilith' }
-          : { aiId: 1, aiName: '月蚀', agent: 'frontend' },
-      buildLoreContext: (msg: string) => `## 原作记忆（关于「${msg}」的检索结果）`
-    })
-    const segments = createSegmentManifest(deps)
-    const ai2 = await assembleSegments(segments, {
-      messages: [
-        { id: 'h1', role: 'user', content: '之前聊过的事', createdAt: 1 },
-        { id: 'h2', role: 'assistant', content: '嗯嗯', createdAt: 2 },
-        { id: 'h3', role: 'user', content: '你还记得霜之哀伤吗', createdAt: 3 }
-      ],
-      sessionId: 's_ai2'
-    })
-    const lore = ai2.suffix.find((m) => m.content.includes('原作记忆'))
-    expect(lore).toBeTruthy()
-    expect((lore!.content as string)).toContain('你还记得霜之哀伤吗')
-    // 用最后一条用户消息检索（而非历史第一条）
-    expect((lore!.content as string)).not.toContain('之前聊过的事')
-  })
-
-  it('T6 lore_ctx：无命中（buildLoreContext 返回 null）时不注入', async () => {
-    const deps = buildDeps({
-      getAiIdentity: () => ({ aiId: 2, aiName: '莉莉丝', agent: 'lilith' }),
-      buildLoreContext: () => null
-    })
-    const segments = createSegmentManifest(deps)
-    const ai2 = await assembleSegments(segments, {
-      messages: [{ id: 'm1', role: 'user', content: 'hello', createdAt: 1 }],
-      sessionId: 's_ai2'
-    })
-    expect(ai2.suffix.some((m) => m.content.includes('原作记忆'))).toBe(false)
-  })
-
-  it('T6 lore_ctx：非莉莉丝会话不触发 lore 检索', async () => {
-    const deps = buildDeps({
-      getAiIdentity: () => ({ aiId: 1, aiName: '月蚀', agent: 'frontend' }),
-      buildLoreContext: (msg: string) => `不应注入的 lore：${msg}`
-    })
-    const segments = createSegmentManifest(deps)
-    const ai1 = await assembleSegments(segments, {
-      messages: [{ id: 'm1', role: 'user', content: 'hello', createdAt: 1 }],
-      sessionId: 's_ai1'
-    })
-    expect(ai1.suffix.some((m) => m.content.includes('不应注入的 lore'))).toBe(false)
   })
 })
 

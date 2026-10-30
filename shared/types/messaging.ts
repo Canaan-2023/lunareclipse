@@ -30,8 +30,6 @@ export interface MessagingContact {
   name: string
   /** 私聊 or 群聊 */
   type: 'p2p' | 'group'
-  /** 固定路由到的 agent：xi=月蚀（完整工具，可指挥干活）；lilith=莉莉丝（角色对话，记忆工具） */
-  agent: 'xi' | 'lilith'
   /** 月蚀模式会话 ID（首次对话时生成，持久化到映射表） */
   sessionId?: string
 }

@@ -67,8 +67,8 @@ module.exports = {
       filter: ['node.cmd'],
     },
     {
-      // bundled 插件：4 个通用化插件（coding/computer-use/headless-browser/
-      // lilith）。契约见 test/plugin-bundled-contract.test.ts。
+      // bundled 插件：3 个通用化插件（coding/computer-use/headless-browser）。
+      // 契约见 test/plugin-bundled-contract.test.ts。
       // web-llm-gateway、novel-writing 已被用户删除，若重新出现将被门禁拦截。
       from: 'electron/main/plugins/bundled',
       to: 'plugins/bundled',

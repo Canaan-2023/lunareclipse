@@ -30,7 +30,7 @@ export interface CreateMemoryToolParams {
   备注: string
   关联文件?: string[]
   时间戳?: string
-  /** AI 身份（说话人：月蚀/莉莉丝）。选填——不传则由工具从 RAW 路径作用域自动解析（AI 编号 → 名字） */
+  /** AI 身份（说话人：AI 名字）。选填——不传则由工具从 RAW 路径作用域自动解析（AI 编号 → 名字） */
   AI身份?: string
   /** 用户身份 {UID, 用户名}。选填——不传则由工具从 RAW 路径作用域自动解析（UID → 查 users.json） */
   用户?: { UID: number; 用户名: string }
@@ -50,7 +50,7 @@ export function rawSeqFromPath(rawPath: string): number | null {
 /**
  * 从 RAW 路径作用域自动解析记忆归属身份（走编号）：
  * - user：scope.uid → users.json 查用户名 → {UID, 用户名}
- * - AI身份：scope.aiId → ai-registry.json 查名字（月蚀/莉莉丝，改名不影响编号归属）
+ * - AI身份：scope.aiId → ai-registry.json 查名字（改名不影响编号归属）
  * RAW 路径格式 {root}/memory/U{uid}/AI{aiId}/raw_memory/...，作用域天然带身份，无需 AI 从标题识别。
  * 解析失败返回空对象（回退 ctx.user / 不填）。
  */
@@ -94,7 +94,7 @@ export class CreateMemoryTool implements Tool<CreateMemoryToolParams> {
     { name: '备注', type: 'string' as const, description: '必填。写记忆的生成场景、生成原因、声明了什么内容（对该记忆的备注说明）', required: true },
     { name: '关联文件', type: 'array' as const, description: '关联的外部文件实际路径数组（选填）', required: false },
     { name: '时间戳', type: 'string' as const, description: 'ISO 8601 时间戳（选填）。记忆工作流处理 raw_memory 时传入 raw_memory 的时间戳，memory 归到对话发生日期；不传则用当前时间', required: false },
-    { name: 'AI身份', type: 'string' as const, description: 'AI 身份（说话人：月蚀/莉莉丝）。通常不用填——工具从 RAW 路径作用域自动解析（AI 编号 → 名字）；仅特殊场景显式传', required: false },
+    { name: 'AI身份', type: 'string' as const, description: 'AI 身份（说话人：AI 名字）。通常不用填——工具从 RAW 路径作用域自动解析（AI 编号 → 名字）；仅特殊场景显式传', required: false },
     { name: '用户', type: 'object' as const, description: '用户身份 {UID, 用户名}。通常不用填——工具从 RAW 路径作用域自动解析（UID → 查 users.json）；仅特殊场景显式传', required: false }
   ]
 

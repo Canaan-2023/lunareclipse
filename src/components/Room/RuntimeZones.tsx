@@ -42,6 +42,16 @@ export function PlanZone({ aiId, state }: { aiId: number; state: RoomRuntimeSnap
         <div className="flex items-center gap-2 font-mono text-caption tracking-wider text-fg-muted">
           <Compass size={12} />
           {t('room.zone.plan')}
+          {/* 规划者徽标（2026-10-31 前置规划功能）：谁在规划——前置规划给方向 / 主AI自规划。
+              缺省（旧状态不带 planner）按 self 显示，与主进程回落语义一致。 */}
+          <span
+            className={`rounded-btn border border-border-subtle px-1 py-0 text-micro ${
+              state.planner?.kind === 'preplan' ? 'text-accent' : 'text-fg-muted'
+            }`}
+            title={t('room.planner.hint')}
+          >
+            {state.planner?.kind === 'preplan' ? t('room.planner.preplan') : t('room.planner.self')}
+          </span>
         </div>
         <div className="flex items-center gap-1">
           <button

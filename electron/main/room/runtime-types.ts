@@ -19,6 +19,25 @@ import type { TreeIndex } from './tree-index'
 import type { RoomLanding } from './landing'
 import type { RoomSceneDirective } from '@shared/room/room-scene'
 import type { RoomSensorPolicy } from '@shared/room/sensor-policy'
+import type { PreplanHistoryEntry } from './preplan-store'
+
+/**
+ * 规划者路由（前置规划功能，2026-10-31）：
+ * - `self`：主AI自规划（缺省，行为与引入前置规划前逐字一致）；
+ * - `preplan`：先跑前置规划轮——主AI的专属影子给方向性指令，注入主AI规划轮的
+ *   【前置规划】段，主AI仍产出完整计划协议并承担全部执行副作用。
+ * 前置规划不占 aiId、不写 RAW、不进记忆工作流（裁决：防与主AI记忆重复）。
+ */
+export type PlannerRoute = { kind: 'self' } | { kind: 'preplan' }
+
+/**
+ * 房间事件（LoopEvent + 可选规划者标记）。
+ * 为什么加 `planner`（M5 可追溯）：前置规划轮产生的事件条目带 `planner: 'preplan'`，
+ * 随事件环落进 room-events.jsonl 后可逐条追溯「这条出自前置规划」——文本前缀「前置规划：」
+ * 是给人看的，结构化字段是给排障与回放用的。`loop.ts` 的 `LoopEvent` 不动
+ * （红线：不动结构），扩展以交叉类型落在本文件。
+ */
+export type RoomEvent = LoopEvent & { planner?: 'preplan' }
 
 /** 定时器接口：**只用于 AI 自设的待机到期**（采集本身不轮询，见 `loop.ts` 头注释）。 */
 export interface RoomTimers {
@@ -54,6 +73,29 @@ export interface RoomRuntimeDeps {
   executor: Executor
   /** 计划里允许出现的工具名（白名单；`parsePlan` 据此过滤） */
   allowedTools: () => readonly string[]
+  /**
+   * 规划者路由（前置规划功能）：每轮规划前读一次——配置即时生效（不缓存），
+   * 与 sensorPolicy 的「授权变化即时生效」同口径。缺省 / 返回 self = 主AI自规划。
+   */
+  plannerRoute?: () => PlannerRoute
+  /**
+   * 前置规划轮调用（前置规划功能）：把前置规划提示词交给前置规划会话（`room-preplan` purpose，
+   * 不落盘、不写 RAW——前置规划永不进记忆工作流）。返回指令文本；空串/null = 前置规划未回复
+   * （调用方回落主AI自规划，**不传播 llmFailed**——前置规划挂了不该把主AI的循环停掉）。
+   * 缺省 = 前置规划能力未接线，`preplan` 路由直接回落 self。
+   */
+  runPreplan?: (prompt: string) => Promise<string | null>
+  /** 读前置规划滚动历史环（旧→新；自管理，超环长自动删减——见 preplan-store.ts） */
+  loadPreplanHistory?: () => PreplanHistoryEntry[]
+  /** 追加一条前置规划历史（指令 + 执行结果摘要） */
+  appendPreplanHistory?: (entry: PreplanHistoryEntry) => void
+  /** 主AI名字（前置规划提示词 identity 段「你是 X 的前置规划」用） */
+  preplanAiName?: string
+  /**
+   * 前置规划本轮可用来查证的**只读工具**名清单（M3 前可返回空 = 提示词不列工具）。
+   * 真源与执行器同源（注册表元数据 `behavior.readOnly`），不采信 AI 自述。
+   */
+  preplanReadonlyTools?: () => readonly string[]
   /** 定时器（**仅供待机到期**；缺省用原生 setTimeout） */
   timers?: RoomTimers
   /**
@@ -126,8 +168,8 @@ export interface RoomRuntimeState {
   lastTick?: LoopTickResult
   /** 最近一次规划（结构化） */
   lastPlan?: PlanDecision
-  /** 事件环（最近 N 条） */
-  events: LoopEvent[]
+  /** 事件环（最近 N 条；前置规划轮条目带 `planner: 'preplan'`，见 RoomEvent） */
+  events: RoomEvent[]
   /**
    * 像素形象修订号：每次 AI 成功重画 +1（P3）。渲染侧据此**只在变化时**重取规格
    * （`room:avatar-get`），避免无谓轮询。
@@ -160,6 +202,16 @@ export interface RoomRuntimeState {
   lastWake?: { source: WakeSource; detail?: string; at: number }
   /** 最近一次采集到的内容（截断；界面「感知」页据此显示它看到了什么） */
   lastCollect?: { text: string; at: number }
+  /**
+   * 当前规划者（前置规划功能）：`preplan` = 前置规划给方向、主AI执行；`self` = 主AI自规划。
+   * 界面「行动」页据此显示规划者徽标。可选：假体/旧状态可不带（渲染侧按 self 处理）。
+   */
+  planner?: { kind: 'self' | 'preplan' }
+  /**
+   * 前置规划滚动历史条数（**仅 preplan 路由时带**）：界面「已记节奏」随快照下发，
+   * 不必为看一个数字另开 IPC；self 路由不带——self 模式零额外读盘。
+   */
+  preplanHistoryCount?: number
 }
 
 export interface RoomRuntime {

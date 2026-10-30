@@ -49,7 +49,7 @@ describe('user-scope-skeleton：运行期新增 AI 即插即用', () => {
   })
 
   it('登录骨架：为一个用户补建全部已注册 AI 的骨架（含 AI{3} 等新 AIID）', () => {
-    // 注册表默认 [1,2]，模拟未来又顺延注册了 AI 3、4 —— 无需任何白名单，全量遍历
+    // 注册表默认 [1]，模拟未来又顺延注册了 AI 2、3、4 —— 无需任何白名单，全量遍历
     // （registerCustomAi 是 "现有最大 id + 1"，这里直接写盘模拟已发生的注册）
     mkdirSync(dirname(paths.aiRegistryJson), { recursive: true })
     writeFileSync(
@@ -59,9 +59,9 @@ describe('user-scope-skeleton：运行期新增 AI 即插即用', () => {
         updated_at: new Date().toISOString(),
         ais: [
           { id: 1, name: '月蚀', agent: 'frontend', kind: 'system' },
-          { id: 2, name: '莉莉丝', agent: 'lilith', kind: 'system' },
-          { id: 3, name: '织梦', agent: 'custom-3', kind: 'custom' },
-          { id: 4, name: '晨星', agent: 'custom-4', kind: 'custom' }
+          { id: 2, name: '织梦', agent: 'custom-2', kind: 'custom' },
+          { id: 3, name: '晨星', agent: 'custom-3', kind: 'custom' },
+          { id: 4, name: '夜莺', agent: 'custom-4', kind: 'custom' }
         ]
       }),
       'utf-8'
@@ -81,21 +81,21 @@ describe('user-scope-skeleton：运行期新增 AI 即插即用', () => {
   })
 
   it('运行期注册新 AI：注册表写入后再次补建，新 AI 骨架立即可用（旧 AI 不动）', () => {
-    // 先建基础骨架（注册表只有 1、2）
+    // 先建基础骨架（注册表只有 1）
     ensureUserScopeSkeleton(paths, 7)
-    expect(existsSync(resolveScopePaths(paths, { uid: 7, aiId: 2 }).sessions)).toBe(true)
-    expect(existsSync(resolveScopePaths(paths, { uid: 7, aiId: 3 }).sessions)).toBe(false)
+    expect(existsSync(resolveScopePaths(paths, { uid: 7, aiId: 1 }).sessions)).toBe(true)
+    expect(existsSync(resolveScopePaths(paths, { uid: 7, aiId: 2 }).sessions)).toBe(false)
 
-    // 运行期新注册 AI 3（模拟 ai:register / create_ai 写入注册表后）
+    // 运行期新注册 AI 2（模拟 ai:register / create_ai 写入注册表后）
     mkdirSync(dirname(paths.aiRegistryJson), { recursive: true })
     const reg = readAiRegistry(paths.aiRegistryJson)
-    reg.ais.push({ id: 3, name: '新分身', agent: 'custom-3', kind: 'custom' })
+    reg.ais.push({ id: 2, name: '新分身', agent: 'custom-2', kind: 'custom' })
     writeFileSync(paths.aiRegistryJson, JSON.stringify(reg), 'utf-8')
 
     ensureUserScopeSkeleton(paths, 7)
 
-    for (const dir of SKELETON_DIRS(7, 3)) {
-      expect(existsSync(dir), `新 AI3 缺目录 ${dir}`).toBe(true)
+    for (const dir of SKELETON_DIRS(7, 2)) {
+      expect(existsSync(dir), `新 AI2 缺目录 ${dir}`).toBe(true)
     }
   })
 
@@ -120,7 +120,7 @@ describe('user-scope-skeleton：运行期新增 AI 即插即用', () => {
     const rr = r as { ok: boolean; record?: { id: number } }
     expect(rr.ok).toBe(true)
     const newId = rr.record!.id
-    expect(newId).toBeGreaterThan(2) // 默认注册表 [1,2]，顺延到 3
+    expect(newId).toBeGreaterThan(1) // 默认注册表 [1]，顺延到 2
 
     // 新 AI 骨架立即可见（不用等重启/下次登录）
     const uid = store.getCurrentUser()!.UID
@@ -152,7 +152,7 @@ describe('user-scope-skeleton：运行期新增 AI 即插即用', () => {
     expect(r.ok).toBe(true)
     if (!r.ok) return
     const newId = (r as { ok: true; data: { record: { id: number } } }).data.record.id
-    expect(newId).toBeGreaterThan(2)
+    expect(newId).toBeGreaterThan(1)
 
     const uid = store.getCurrentUser()!.UID
     for (const dir of SKELETON_DIRS(uid, newId)) {
@@ -169,7 +169,7 @@ describe('user-scope-skeleton：运行期新增 AI 即插即用', () => {
 
   it('注册表损坏/缺失：降级不抛错（其他 AI 骨架不受影响）', () => {
     expect(() => ensureUserScopeSkeleton(paths, 7)).not.toThrow()
-    // 缺失注册表时返回默认 [1,2]，骨架照建
-    expect(existsSync(resolveScopePaths(paths, { uid: 7, aiId: 2 }).sessions)).toBe(true)
+    // 缺失注册表时返回默认 [1]，骨架照建
+    expect(existsSync(resolveScopePaths(paths, { uid: 7, aiId: 1 }).sessions)).toBe(true)
   })
 })

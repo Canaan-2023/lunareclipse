@@ -45,7 +45,7 @@ export interface PluginToolMetaDecl {
   /** 风险等级 low/medium/high */
   riskLevel?: 'low' | 'medium' | 'high'
   /** 可见 agent（默认 ['frontend']） */
-  agents?: Array<'frontend' | 'dmn' | 'lilith'>
+  agents?: Array<'frontend' | 'dmn'>
   /** 声明式能力要求：工具所需能力标签（如 'filesystem:write'/'network'），供 CapabilityGuard 声明式校验 */
   caps?: string[]
 }

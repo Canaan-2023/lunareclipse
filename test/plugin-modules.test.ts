@@ -189,7 +189,7 @@ describe('插件 prompts.md / config.patch.json 模块', () => {
   it('config.patch.json 注册配置覆盖 → 卸载回滚', async () => {
     makePlugin('patch-plugin', {
       'plugin.json': JSON.stringify({ name: 'patch-plugin', description: 'patch 测试', version: '0.1.0' }),
-      'config.patch.json': JSON.stringify({ lilith: { toolPolicy: { test_tool: { enabled: true } } } })
+      'config.patch.json': JSON.stringify({ ui: { toolPolicy: { test_tool: { enabled: true } } } })
     })
 
     setPathContext(TEST_ROOT, () => null)
@@ -199,7 +199,7 @@ describe('插件 prompts.md / config.patch.json 模块', () => {
     expect(plugin!.errors).toEqual([])
     expect(plugin!.loadedModules).toContain('config.patch.json')
     const patches = kernelRegistry.get<Record<string, unknown>>('configPatch')
-    expect(patches.some((p) => (p as { lilith?: unknown }).lilith)).toBe(true)
+    expect(patches.some((p) => (p as { ui?: unknown }).ui)).toBe(true)
 
     loader.destroy()
     expect(kernelRegistry.get('configPatch')).toHaveLength(0)

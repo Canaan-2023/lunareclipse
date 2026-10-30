@@ -4,7 +4,7 @@
 
  * 从 server.ts 拆出（纯搬移，不改行为；提供 createInternalSessionLayer(deps) 工厂注入依赖）。
  * 为什么存在：AI 后台自维护的会话池（v11 双层会话上下文层）承载「内部会话 → LLM 注入上下文」
- * 与「两写/摘要/超限继承延迟维护」两件事，跨 runStream / runHeadlessChat / lilith-endpoints 消费。
+ * 与「两写/摘要/超限继承延迟维护」两件事，跨 runStream / runHeadlessChat 消费。
  * 独立成文件：把读 monitor 配置、摘要预算推导、锚点/缓存索引装配、单飞+末次合并的维护队列
  * 收拢为单一 Layer，调用方只拿五个能力点（internalLlmChat / buildSessionContext /
  * getSessionSummaryCfg / enqueueInternalSessionJob / resolveStreamSessionContext），

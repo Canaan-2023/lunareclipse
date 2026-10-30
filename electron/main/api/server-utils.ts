@@ -51,26 +51,11 @@ export function resolveSummaryBudgetChars(model: string, configured?: number): n
 /**
  * 判定请求来源是否为回环地址（本机进程直连）。
  * 覆盖 IPv4 与 IPv6 的常见回环形态：127.0.0.1、::1、IPv4-mapped IPv6（::ffff:127.0.0.1）。
- * 为什么放这里而不是各模块私有：server.ts（lilith 面回环放行）与 master-router.ts
- * （/api/v1 requireLoopback）都需要同一判定口径——两处各自实现会在补漏时出现分叉，
+ * 为什么放这里而不是各模块私有：master-router.ts（/api/v1 requireLoopback）需要同一判定口径，
  * 提取单源保证「回环」语义全程一致。
  */
 export function isLoopback(addr: string | undefined): boolean {
   return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1'
-}
-
-/** 是否属于「lilith 桥接面、免令牌」的路径（本机游戏 companion / ♥ 窗口 / MOD 桥接）。 */
-export function isLilithBypassPath(path: string): boolean {
-  return path.startsWith('/api/lilith/') || path === '/chat/completions'
-}
-
-/**
- * lilith 桥接面统一准入判定：路径命中 且 来源必须回环。
- * 为什么需要独立函数：server.ts（lilith 面中间件）与安全回归测试共用同一口径，
- * 避免「中间件改了一处、测试按旧语义断言」的分叉；非回环来源一律拒绝（403）。
- */
-export function allowLilithBypass(path: string, addr: string | undefined): boolean {
-  return isLilithBypassPath(path) && isLoopback(addr)
 }
 
 /**

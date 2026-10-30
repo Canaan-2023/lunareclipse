@@ -21,6 +21,7 @@ import { DEFAULT_AI_ID } from '@shared/types'
 import { ensureRoomRuntime, peekRoomRuntime, listRoomRuntimeAiIds } from '../../room/runtime'
 import { getRoomLoopSupervisor } from '../../room/loop-supervisor'
 import { reportRoomWake } from '../../room/wake'
+import { getPreplanAccess } from '../../room/preplan-store'
 
 export function registerRoomIpc(configStore: ConfigStore): void {
   // 所有通道都带 `aiId`（缺省月蚀）——房间按 AI 分实例，各自独立会话与配置。
@@ -137,4 +138,25 @@ export function registerRoomIpc(configStore: ConfigStore): void {
     ok: true,
     fired: reportRoomWake('user-present', scopeOf(aiId))
   }))
+
+  // ===== 前置规划配置（2026-10-31 前置规划功能）=====
+  // 前置规划 = 当前主AI的专属影子（不占 aiId、不进记忆工作流）：只给方向性指令，主AI执行。
+  // 配置按 (uid, aiId) 作用域；uid 来自当前登录态（装配侧注入的解析器）。
+  ipcMain.handle('room:preplan-get', (_e, aiId?: unknown) => {
+    const access = getPreplanAccess()
+    const uid = access?.getUid() ?? null
+    if (!access || uid == null) return { ok: false, error: '前置规划配置不可用（未登录 / 未装配）' }
+    const cfg = access.store.load(uid, scopeOf(aiId))
+    return { ok: true, enabled: cfg.enabled, historyCount: cfg.history.length }
+  })
+
+  ipcMain.handle('room:preplan-set', (_e, payload?: unknown) => {
+    const p = (payload ?? {}) as { aiId?: unknown; enabled?: unknown }
+    const access = getPreplanAccess()
+    const uid = access?.getUid() ?? null
+    if (!access || uid == null) return { ok: false, error: '前置规划配置不可用（未登录 / 未装配）' }
+    if (typeof p.enabled !== 'boolean') return { ok: false, error: 'enabled 必须是布尔值' }
+    access.store.setEnabled(uid, scopeOf(p.aiId), p.enabled)
+    return { ok: true, enabled: p.enabled }
+  })
 }

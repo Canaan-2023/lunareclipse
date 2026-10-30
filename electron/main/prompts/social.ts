@@ -13,7 +13,7 @@
 
 /**
  * AIID 约定行：描述本机 AI 编号与名字的映射，完全由调用方读取注册表生成，不写死任何编号。
- * @param conventionText 本机已注册 AI 的编号与名字清单（如 "2 是 莉莉丝、3 是 助手X"，由调用方读取 registry 生成；空串表示暂无）
+ * @param conventionText 本机已注册 AI 的编号与名字清单（如 "1 是 月蚀、2 是 助手X"，由调用方读取 registry 生成；空串表示暂无）
  */
 export function buildAiIdConventionLine(conventionText: string): string {
   return conventionText || '本机暂无已编号的 AI'

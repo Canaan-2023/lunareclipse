@@ -32,6 +32,7 @@ import type { WorkflowManager } from '../workflow/manager'
 import type { WorkflowEngineEvent } from '@shared/workflow/types'
 import type { TimerRegistry, TimerHandle } from './timer-registry'
 import { loadWorkflowSharedPrompts } from '../prompts/loader'
+import { applyPromptPaths, getPromptPathMap } from '../prompts/prompt-paths'
 import { computeBackoffDelay } from '@shared/utils/backoff'
 
 export interface DiaryWorkflowConfig {
@@ -314,7 +315,8 @@ export class DiaryWorkflowScheduler {
     this.writePendingDiary(pending)
     this.setScopeProvider?.(target.scope)
 
-    const workflowPrompts = loadWorkflowSharedPrompts()
+    // 提示词路径预替换：按 target.scope 把占位符换成真实绝对路径（提示词里不写死 U{uid}/AI{aiId}）
+    const workflowPrompts = applyPromptPaths(loadWorkflowSharedPrompts(), this.paths, target.scope)
     this.callbacks.onStart?.()
     this.running = true
 
@@ -323,6 +325,7 @@ export class DiaryWorkflowScheduler {
         templateId: 'wf_default_diary_writer',
         input: {
           workflow_prompts: workflowPrompts,
+          prompt_paths: getPromptPathMap(this.paths, target.scope),
           date: target.date,
           raw_dir: target.rawDir,
           raw_contents: rawContents,
@@ -354,13 +357,14 @@ export class DiaryWorkflowScheduler {
       // 无实例（启动前崩溃）→ 重新启动
       this.running = true
       this.callbacks.onStart?.()
-      const workflowPrompts = loadWorkflowSharedPrompts()
+      const workflowPrompts = applyPromptPaths(loadWorkflowSharedPrompts(), this.paths, pending.scope)
       this.setScopeProvider?.(pending.scope)
       try {
         const instance = await wm.runInstance({
           templateId: 'wf_default_diary_writer',
           input: {
             workflow_prompts: workflowPrompts,
+            prompt_paths: getPromptPathMap(this.paths, pending.scope),
             date: pending.date,
             raw_dir: pending.rawDir,
             raw_contents: pending.rawContents,

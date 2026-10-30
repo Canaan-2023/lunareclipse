@@ -7,7 +7,6 @@ import { coeffectRegistry } from '../electron/main/kernel/coeffect'
 import { createRegistrar, kernelRegistry } from '../electron/main/kernel'
 import { LLMClient } from '../electron/main/api/llm'
 import { browserManager } from '../electron/main/tools/browser-manager'
-import { LilithAdapter } from '../electron/main/services/lilith-adapter'
 import { SubAgentManager } from '../electron/main/sub-agent'
 import { CronScheduler } from '../electron/main/cron/scheduler'
 import type { LLMConfig } from '@shared/types'
@@ -180,12 +179,6 @@ describe('月蚀 Cordis 运行时：核心服务（阶段 3a）', () => {
     const ctx = await bootCtx()
     expect(ctx.browser.manager).toBeDefined()
     expect(ctx.browser.manager).toBe(browserManager)
-  })
-
-  it('ctx.lilith.create 返回 LilithAdapter 实例（工厂，不启动）', async () => {
-    const ctx = await bootCtx()
-    const adapter = ctx.lilith.create({ port: 6186, dataRoot: tmpdir(), appDataDir: tmpdir() } as never)
-    expect(adapter).toBeInstanceOf(LilithAdapter)
   })
 
   it('ctx.cron.create 返回 CronScheduler 实例（工厂，不启动）', async () => {

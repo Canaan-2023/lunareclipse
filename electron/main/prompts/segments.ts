@@ -16,10 +16,11 @@
  */
 
 import type { ChatMessage, AppConfig, CurrentUser, WorkspaceItem, FrontendToolPolicy, SessionContext, PromptPurpose } from '@shared/types'
+import { applyPromptPaths } from './prompt-paths'
 import type { TopicPromptEntry } from '../prompts/loader'
 import type { SkillMetadata, SkillSource } from '../skills/types'
 import type { ToolVisibleConfig } from '@shared/tools/registry'
-import type { BaseDataPaths } from '../models/paths'
+import type { BaseDataPaths, MemoryScope } from '../models/paths'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { resolveMonitorConfigDir } from '../monitor/monitor-config'
@@ -53,30 +54,15 @@ export interface SegmentBuildCtx {
    *
    * 取值：**省略 = 前台交互轮**（WS 主链路，唯一消费全局激活事件的轮次）；
    * 其它任何值 = 后台轮（不消费激活事件、不覆盖前台自激活来源），其中 `'room'` 额外注入
-   * ROOM 输出纪律与契约段。新增无头调用**必须显式传值**，见 `shared/types/prompt.ts`。
+   * ROOM 输出纪律与契约段，`'room-preplan'`（前置规划轮）不注入任何输出纪律/模式分支/契约段
+   * （它输出给主AI的自由文本指令，身份卡改说「你是前置规划在查证」）。
+   * 新增无头调用**必须显式传值**，见 `shared/types/prompt.ts`。
    */
   purpose?: PromptPurpose
 }
 
 /** Segment build 函数返回值：null 表示该段本轮不注入 */
 export type SegmentBuildResult = ChatMessage | null
-
-/**
- * agent 特化策略（段级声明）。
- * 为什么存在：此前特化 agent（如 lilith）的注入/剥离判断散落各 segment 的 build 内部
- * （shared_prompts/kernel/mode_branch 各写 return null，lore_ctx 反向判断），
- * 每加一个特化 agent 就要在所有段里插入分支，清单可审计性差。
- * 作用：segment 通过 agentPolicy 声明本段对哪些 agent 跳过（skipFor）或仅注入（onlyFor），
- * 由 createSegmentManifest 统一包装 build 实现过滤。
- * 不删理由：manifest 是注入链的单一可审计入口，特化策略收敛在此处；
- *   过滤结果被 test/p2-aiid-segments.test.ts 的 T5/T6 用例锁定。
- */
-export interface AgentPolicy {
-  /** 对这些 agent 的会话跳过本段（不注入） */
-  skipFor?: string[]
-  /** 仅对这些 agent 的会话注入本段；不设置表示所有 agent 均可注入 */
-  onlyFor?: string[]
-}
 
 /** 声明式 segment 定义 */
 export interface Segment {
@@ -86,8 +72,6 @@ export interface Segment {
   tier: Tier
   /** 注入消息角色（均为 system） */
   role: 'system'
-  /** agent 特化策略（可选）：声明后由 manifest 统一包装过滤，build 内部不再写 agent 分支 */
-  agentPolicy?: AgentPolicy
   /** 构建：接收 per-call 上下文，返回消息或 null（不注入） */
   build: (ctx: SegmentBuildCtx) => SegmentBuildResult | Promise<SegmentBuildResult>
 }
@@ -108,8 +92,8 @@ export interface SegmentDeps {
   getCurrentUser: () => CurrentUser | null
   // 动态身份：按会话所属 AI（ai-registry.json 查 id + 记录 name；未指定回退 1/月蚀）
   // 多 AI（P2）：sessionId → 会话 aiId → registry id；旧会话/无 aiId 回退 1
-  getAiIdentity: (sessionId?: string) => { aiId: number | null; aiName: string; agent?: string }
-  // 多 AI 社交：本机 AI 编号→名字清单（如 "1 是 月蚀、2 是 莉莉丝"；空串=暂无编号 AI）。
+  getAiIdentity: (sessionId?: string) => { aiId: number | null; aiName: string }
+  // 多 AI 社交：本机 AI 编号→名字清单（如 "1 是 月蚀"；空串=暂无编号 AI）。
   // 为什么注入主会话：chat-room-manage / friend-manage / publish-board-manage 的 description
   // 都以「编号先看本机 AI 编号列表」为前提区分 AI 与真人身份（UID-AIID 黑话）；若主会话
   // 不注入这份清单，AI 在社交场景无法把编号对应到名字，就会误判发言者身份或虚构编号。
@@ -133,9 +117,6 @@ export interface SegmentDeps {
   // ABYSS：用户级 USER.md（所有 AI 会话共享）与 AI 级 AI.md（按会话 aiId）分开注入
   readUserMd: (sessionId?: string) => string | null
   readAiMd: (sessionId?: string) => string | null
-  // 莉莉丝 lore 检索注入：按本轮用户消息返回格式化后的档次上下文（无命中返回 null）；
-  // 实现侧复用 lilith-adapter 的 loadLore/retrieveLore/formatLoreContext（与桌宠同源）。
-  buildLoreContext?: (message: string) => string | null
   // Tools
   buildToolDescription: (policy: FrontendToolPolicy, mcp: unknown, cfg: ToolVisibleConfig) => string
   mcpClientManager: unknown
@@ -148,6 +129,9 @@ listTopicPrompts: (dir?: string) => TopicPromptEntry[]
   toolCtx: {
     paths?: BaseDataPaths
   }
+  // 提示词路径预替换：按会话返回当前作用域（base + uid/aiId）。提示词里的 `{记忆工作域}`
+  // 等占位符在注入前由 manifest 统一替换成真实绝对路径；未提供时原样注入（测试/无路径装配）。
+  resolvePromptPaths?: (sessionId?: string) => { base: BaseDataPaths; scope: MemoryScope } | null
   // 中继异步传输运行时信息（可选）：由装配层注入「RelayService 是否真实装配」及实际下载位置/保留天数。
   // 为什么存在：relay_cfg 段（config tier）的注入前提是协作模式（master/satellite）下中继服务已装配；
   // standalone 单机无对端、中继未装配时返回 null → 该段不注入，避免 AI 把「并不存在的中继能力」
@@ -204,7 +188,7 @@ export async function assembleSegments(
 
 * 段顺序（即注入顺序）：
  * [prefix] identity → sys_prompt → shared_prompts → output_discipline → tools → ai_workspace → kernel → skills_idx
- * [suffix] env_context → system_events → mode_branch → lore_ctx → user_md → ai_md
+ * [suffix] env_context → system_events → mode_branch → user_md → ai_md
 
  * 段合并映射：
  * - geo_env + sys_state + workspace → env_context (turn)
@@ -212,23 +196,22 @@ export async function assembleSegments(
  * - chat_mode / task_mode / coding_discipline → mode_branch (turn)
  */
 export function createSegmentManifest(deps: SegmentDeps): Segment[] {
-  // agent 特化策略统一包装：Segment.agentPolicy（skipFor/onlyFor）声明式生效。
-  // 为什么这样做：历史实现把特化 agent（lilith）的判断散落在各 segment 的 build 内部
-  // （shared/kernel/mode_branch 各写一行 if return null，lore_ctx 相反），新增特化 agent
-  // 时容易漏改或误伤其他段；声明式 agentPolicy 让"本段对哪些 agent 生效"在段定义上一目了然，
-  // 过滤逻辑收敛在 assemble 前的统一包装点，新增 agent 只改段声明不动 build。
-  // 不删理由：agent 特化是注入链的横切关注点，收敛到此处避免逐段散落分支；
-  //   行为由 test/p2-aiid-segments.test.ts 的 T5/T6 用例锁定（lilith 剥离/非 lilith 保留）。
-  const applyAgentPolicy = (seg: Segment): Segment => {
-    if (!seg.agentPolicy) return seg
+  // 路径占位符预替换（注入边界唯一替换点）：提示词文件只写 `{记忆工作域}` 一类占位符，
+  // 按当前会话的作用域替换成真实绝对路径，模型读到的就是可直接 Read 的地址。
+  // 为什么要在这里而不是各段内部：占位符是横切关注点，逐段替换会漏改；
+  // 替换是单次正则且无 IO（占位符表按作用域缓存），不含占位符的段直接原样返回。
+  const applyPathTokens = (seg: Segment): Segment => {
+    if (!deps.resolvePromptPaths) return seg
+    const original = seg.build
     return {
       ...seg,
-      build: (ctx: SegmentBuildCtx): SegmentBuildResult | Promise<SegmentBuildResult> => {
-        const agent = deps.getAiIdentity(ctx.sessionId).agent
-        const policy = seg.agentPolicy
-        if (policy?.skipFor?.includes(agent as string)) return null
-        if (policy?.onlyFor && !policy.onlyFor.includes(agent as string)) return null
-        return seg.build(ctx)
+      build: async (ctx: SegmentBuildCtx): Promise<SegmentBuildResult> => {
+        const msg = await original(ctx)
+        if (!msg) return null
+        const target = deps.resolvePromptPaths?.(ctx.sessionId)
+        if (!target) return msg
+        const content = applyPromptPaths(msg.content, target.base, target.scope)
+        return content === msg.content ? msg : { ...msg, content }
       }
     }
   }
@@ -246,12 +229,18 @@ export function createSegmentManifest(deps: SegmentDeps): Segment[] {
         const userName = user?.用户名 ?? '用户'
         const uidPart = user?.UID != null ? `（UID=${user.UID}）` : ''
         const aiIdPart = aiId != null ? `（AIID=${aiId}）` : ''
-        // ROOM 规划轮不是与用户对话：身份卡必须说清「你在自主运行」，
-        // 否则通用身份句会让模型把本轮当成聊天、输出对话文本而不是计划 JSON。
-        let content =
-          ctx.purpose === 'room'
-            ? `你是「${aiName}」${aiIdPart}，当前在自己的自主房间（ROOM）中自主运行${uidPart}。本轮没有用户插话；具体任务、工具与输出契约见本轮规划消息。`
-            : `你是「${aiName}」${aiIdPart}，正在与用户「${userName}」${uidPart}对话。`
+        let content: string
+        if (ctx.purpose === 'room') {
+          // ROOM 规划轮不是与用户对话：身份卡必须说清「你在自主运行」，
+          // 否则通用身份句会让模型把本轮当成聊天、输出对话文本而不是计划 JSON。
+          content = `你是「${aiName}」${aiIdPart}，当前在自己的自主房间（ROOM）中自主运行${uidPart}。本轮没有用户插话；具体任务、工具与输出契约见本轮规划消息。`
+        } else if (ctx.purpose === 'room-preplan') {
+          // 前置规划轮（2026-10-31 前置规划功能）：前置规划是主AI的专属影子——只给方向、不执行。
+          // 身份卡必须说清「你是前置规划在查证」，否则它会把自己当成主AI、试图输出计划 JSON 或直接动手。
+          content = `你是「${aiName}」的前置规划${uidPart}——${aiName} 的专属影子规划者，正在为它的自主房间（ROOM）做规划前查证。本轮没有用户插话，你也不执行任何动作：看环境、给方向即可；具体职责见本轮前置规划消息。`
+        } else {
+          content = `你是「${aiName}」${aiIdPart}，正在与用户「${userName}」${uidPart}对话。`
+        }
         // 多 AI 社交黑话闭环：社交工具 description 依赖「本机 AI 编号列表」区分 AI/真人，
         // 主会话此处注入与 social.ts 同格式的编号清单（无编号 AI 时注入空串，不污染身份卡）。
         const conventionLine = deps.getAiIdConventionLine?.() ?? ''
@@ -293,12 +282,10 @@ export function createSegmentManifest(deps: SegmentDeps): Segment[] {
 
     // shared_prompts: 通用层（shared/），按会话 AI 文件粒度注入；
     // 无 AI 副本（getSharedPrompts 返回 null）→ 回退 boot 常量（历史行为）
-    // agentPolicy.skipFor=['lilith']：莉莉丝走独立提示词体系，不注入月蚀 shared 通用机制
     {
       id: 'shared_prompts',
       tier: 'boot',
       role: 'system',
-      agentPolicy: { skipFor: ['lilith'] },
       build: (ctx) => {
         const shared = deps.getSharedPrompts?.(ctx.sessionId) ?? deps.sharedPrompts
         if (!shared) return null
@@ -329,6 +316,11 @@ export function createSegmentManifest(deps: SegmentDeps): Segment[] {
         // 硬约束）优先级更高；本段文案自身也声明了适用边界，双保险不冲突。
         // ROOM 规划轮：正文是计划 JSON，不是「对用户输入的回复」——用 ROOM 版纪律替换，
         // 保留「思考不进正文/上下文」的机制要求（见 room-discipline.ts）。
+        // 前置规划轮（room-preplan）**不注入**输出纪律：它的正文是给主AI的自由文本指令
+        // （形状由前置规划提示词自带【输出】段定义）——ROOM 版要求「正文必须是 JSON」会污染
+        // 指令文本，通用版面向「对用户输入的回复」同样不匹配；机制层（思考不进上下文）
+        // 对前置规划无意义——它不落盘、不写 RAW（见 run-headless-chat.ts 落盘三分支）。
+        if (ctx.purpose === 'room-preplan') return null
         return {
           id: `output_discipline_${Date.now()}`,
           role: 'system',
@@ -404,13 +396,11 @@ export function createSegmentManifest(deps: SegmentDeps): Segment[] {
       }
     },
 
-// kernel: 自我认知段（AI 知道自己能改什么/不能改什么，代码拼装无数量统计）
-    // agentPolicy.skipFor=['lilith']：莉莉丝不注入月蚀自我认知段（由 AI.md 与 lilith.json 派生承载）
+    // kernel: 自我认知段（AI 知道自己能改什么/不能改什么，代码拼装无数量统计）
     {
       id: 'kernel',
       tier: 'session',
       role: 'system',
-      agentPolicy: { skipFor: ['lilith'] },
       build: (_ctx) => {
         // 构建为确定性纯函数（静态文案 + registry 读取，无时间戳注入），
         // 输出天然字节稳定，直接注入即可进入 DeepSeek 前缀缓存命中区。
@@ -599,15 +589,14 @@ export function createSegmentManifest(deps: SegmentDeps): Segment[] {
     },
 
     // mode_branch: chat / task / coding 模式分支合并（移到结尾强区，靠近用户消息）
-    // agentPolicy.skipFor=['lilith']：莉莉丝不注入月蚀模式分支纪律，对话规范由派生提示词「输出要求」段承载
     // purpose==='room'：房间规划轮**不注入任何对话纪律**（它输出计划契约，不是对话回复）——见 SegmentBuildCtx.purpose
+    // purpose==='room-preplan'：前置规划轮同样不注入（它输出给主AI的自由文本指令，不是对话回复）
     {
       id: 'mode_branch',
       tier: 'turn',
       role: 'system',
-      agentPolicy: { skipFor: ['lilith'] },
       build: (ctx) => {
-        if (ctx.purpose === 'room') return null
+        if (ctx.purpose === 'room' || ctx.purpose === 'room-preplan') return null
         const cfg = deps.getConfig()
         if (cfg.aiMode === 'chat') {
           return {
@@ -630,30 +619,6 @@ export function createSegmentManifest(deps: SegmentDeps): Segment[] {
           id: `coding_discipline_${Date.now()}`,
           role: 'system',
           content: CODING_DISCIPLINE_PROMPT,
-          createdAt: Date.now()
-        }
-      }
-    },
-
-    // lore_ctx: 普通会话莉莉丝的 lore 检索注入——复用桌宠同一份 lore 索引/检索/格式化，
-    // 仅对 agent==='lilith' 的会话按本轮最近一条用户消息检索；无命中或非莉莉丝不注入。
-    // agentPolicy.onlyFor=['lilith']：仅 lilith 会话注入本段，其余 agent 由 manifest 统一过滤
-    {
-      id: 'lore_ctx',
-      tier: 'turn',
-      role: 'system',
-      agentPolicy: { onlyFor: ['lilith'] },
-      build: (ctx) => {
-        const lastUser = [...ctx.messages].reverse().find((m) => m.role === 'user')
-        const text =
-          lastUser && typeof lastUser.content === 'string'
-            ? (deps.buildLoreContext?.(lastUser.content) ?? null)
-            : null
-        if (!text) return null
-        return {
-          id: `lore_ctx_${Date.now()}`,
-          role: 'system',
-          content: text,
           createdAt: Date.now()
         }
       }
@@ -712,5 +677,5 @@ export function createSegmentManifest(deps: SegmentDeps): Segment[] {
       }
     }
   ]
-  return segments.map(applyAgentPolicy)
+  return segments.map(applyPathTokens)
 }

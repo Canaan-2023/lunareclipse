@@ -130,9 +130,6 @@ const dict = {
     zh: '会话「{name}」及其全部消息将被永久删除，此操作不可撤销。',
     en: 'The session "{name}" and all its messages will be permanently deleted. This action cannot be undone.'
   },
-  'sidebar.lilith': { zh: '莉莉丝', en: 'Lilith' },
-  'sidebar.lilithDesktop': { zh: '桌宠', en: 'Desktop pet' },
-  'sidebar.lilithShared': { zh: '与游戏内共享上下文', en: 'Shared context with game' },
   'sidebar.time.justNow': { zh: '刚刚', en: 'Just now' },
   'sidebar.time.minutesAgo': { zh: '{n}分钟前', en: '{n}m ago' },
   'sidebar.time.hoursAgo': { zh: '{n}小时前', en: '{n}h ago' },
@@ -148,7 +145,6 @@ const dict = {
   'settings.tab.eval': { zh: '评测', en: 'Eval' },
   'settings.tab.theme': { zh: '主题', en: 'Theme' },
   'settings.tab.workspace': { zh: '工作区', en: 'Workspace' },
-  'settings.tab.lilith': { zh: '莉莉丝', en: 'Lilith' },
   'settings.tab.messaging': { zh: '消息接入', en: 'Messaging' },
   'settings.tab.aiChat': { zh: '浏览器配置', en: 'Browser Config' },
   'settings.tab.data': { zh: '数据', en: 'Data' },

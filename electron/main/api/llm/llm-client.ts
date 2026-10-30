@@ -331,7 +331,7 @@ export class LLMClient {
 
     // ⚠️ 2026-08-10 修复：原实现把 controller 存到实例字段 this.currentController——
     // 该字段是全实例共享的（流式 stream 的 abort 语义），chatWithTools 覆盖它会让：
-    // ① 并发场景（onDone 重试/滚动摘要/莉莉丝/子 agent）互相清空对方 controller；
+    // ① 并发场景（onDone 重试/滚动摘要/子 agent）互相清空对方 controller；
     // ② 外层 streamWithTools 的 finally 清掉 chatWithTools 的 controller → 重试失去超时/abort。
     // 非流式请求自带 60/180s 总超时兜底，不需要全局 abort 支持——改用局部变量隔离。
     const ctrl = new AbortController()

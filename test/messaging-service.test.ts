@@ -1,10 +1,9 @@
-﻿/**
+/**
  * MessagingService 路由层回归测试
 
- * 覆盖用户硬性要求「健康监控的消息发给月蚀，不要发给莉莉丝，但不能给吞了」：
- * - 系统注入/健康检查类文本：即使联系人配置为 lilith，也必须强制路由到月蚀（onXiChat），
- *   回复原路发回平台（不吞）；
- * - 普通文本：仍按联系人配置路由（lilith 联系人走莉莉丝），防误伤回归。
+ * 覆盖用户硬性要求「健康监控的消息必须给月蚀处理，但不能给吞了」：
+ * - 系统注入/健康检查类文本：仍走月蚀完整工具链（onXiChat），回复原路发回平台；
+ * - 外部消息不因「看起来像系统消息」被丢弃或静默失败。
 
  * mock 飞书适配器（不建真实长连接），通过 adapter.start 捕获的 handler 直接注入入站消息。
  */
@@ -70,33 +69,28 @@ function makeSessionStore(): SessionStore {
   } as unknown as SessionStore
 }
 
-type Call = { kind: 'xi' | 'lilith'; text: string; extra: string }
+type Call = { text: string; sessionId: string }
 
 function makeService() {
   const calls: Call[] = []
   const deps = {
     configStore: {
       get: () => ({
-        // 联系人 health-monitor 固定路由到莉莉丝（刻意配置成"会踩雷"的场景）
         messaging: {
           enabled: true,
           feishu: { appId: 'test-app', appSecret: 'test-secret' },
-          contacts: [{ type: 'p2p', id: 'u-health-monitor', agent: 'lilith' as const }],
+          // 联系人会话固定映射：验证 sessionId 从配置生效
+          contacts: [{ type: 'p2p', id: 'u-health-monitor', sessionId: 'msg_feishu_p2p_health' }],
           allowFrom: []
         }
       })
     },
     sessionStore: makeSessionStore(),
     onXiChat: async (text: string, sessionId: string): Promise<string> => {
-      calls.push({ kind: 'xi', text, extra: sessionId })
+      calls.push({ text, sessionId })
       return '月蚀完整处理结果'
     },
-    onLilithChat: async (text: string, playerName: string): Promise<string> => {
-      calls.push({ kind: 'lilith', text, extra: playerName })
-      return '莉莉丝回复'
-    },
-    isLlmBusy: () => false,
-    getPlayerName: () => 'Player'
+    isLlmBusy: () => false
   }
   const service = new MessagingService(deps as never)
   return { service, calls, deps }
@@ -115,8 +109,8 @@ async function injectAndSettle(service: MessagingService, msg: InboundMessage): 
   }
 }
 
-describe('MessagingService 路由层（系统注入强制转月蚀）', () => {
-  it('系统注入/健康检查消息：联系人配置为 lilith 也强制路由月蚀，回复发回平台（不吞）', async () => {
+describe('MessagingService 路由层（外部消息走月蚀完整链路）', () => {
+  it('系统注入/健康检查消息：走月蚀完整工具链，回复发回平台（不吞）', async () => {
     const { service, calls } = makeService()
     const injected =
       '【系统注入：本条为系统激活消息，非用户真实发言，请优先响应并明确其来源】\n' +
@@ -129,16 +123,17 @@ describe('MessagingService 路由层（系统注入强制转月蚀）', () => {
       senderOpenId: 'u-health-monitor',
       text: injected
     })
-    // 路由到月蚀完整工具链，绝不进莉莉丝
-    expect(calls.map((c) => c.kind)).toEqual(['xi'])
+    expect(calls).toHaveLength(1)
     expect(calls[0].text).toBe(injected)
+    // 联系人配置的 sessionId 生效（用户可控制会话分组）
+    expect(calls[0].sessionId).toBe('msg_feishu_p2p_health')
     // 回复原路发回平台——消息没有被吞
     expect(mocks.state.sent).toHaveLength(1)
     expect(mocks.state.sent[0].text).toContain('月蚀完整处理结果')
     expect(mocks.state.sent[0].chatId).toBe('c-1')
   })
 
-  it('普通消息：仍按联系人配置路由（lilith 联系人 → 莉莉丝），不误伤正常对话', async () => {
+  it('普通消息同样走月蚀链路', async () => {
     const { service, calls } = makeService()
     await injectAndSettle(service, {
       platform: 'feishu',
@@ -146,10 +141,10 @@ describe('MessagingService 路由层（系统注入强制转月蚀）', () => {
       chatId: 'c-1',
       chatType: 'p2p',
       senderOpenId: 'u-health-monitor',
-      text: '莉莉丝在吗，今天天气怎么样？'
+      text: '今天天气怎么样？'
     })
-    expect(calls.map((c) => c.kind)).toEqual(['lilith'])
-    expect(calls[0].text).toBe('莉莉丝在吗，今天天气怎么样？')
-    expect(mocks.state.sent[0].text).toContain('莉莉丝回复')
+    expect(calls).toHaveLength(1)
+    expect(calls[0].text).toBe('今天天气怎么样？')
+    expect(mocks.state.sent[0].text).toContain('月蚀完整处理结果')
   })
 })

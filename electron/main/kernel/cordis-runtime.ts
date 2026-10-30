@@ -9,7 +9,7 @@
 
  * 真 fiber 化（G3，对应实施计划 P1-A G3）：
  * - 同步阶段（createRootContext）：只注册 3 基础 + 6 核心 + featurePlugins 服务；
- * 功能服务（memory/workflow/monitor/lilith/browser/subagent/mcp/skills/cron/governance）
+ * 功能服务（memory/workflow/monitor/browser/subagent/mcp/skills/cron/governance）
  * 不再在此同步 new（避免模块顶层 createRootContext 在 dataRoot 就绪前构造读空状态）。
  * - 异步阶段（mountFeatureServices）：在 whenReady 里 dataRoot 就绪后调用，
  * 由 FeaturePluginsService.mountAll() 按状态文件逐项 `ctx.plugin()` 挂载为独立 fiber；

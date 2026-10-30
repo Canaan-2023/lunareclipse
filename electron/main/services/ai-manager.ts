@@ -17,11 +17,8 @@ import {
   getPromptsDir,
   loadFrontendPromptForAi,
   loadSharedPromptsForAi,
-  mergePromptFiles,
-  type PromptLayerResult,
-  type VirtualBuiltinFile
+  type PromptLayerResult
 } from '../prompts/loader'
-import { buildLilithSessionPersona } from './lilith-adapter'
 
 /**
  * AI 管理服务（多 AI 子系统 P1：注册表接线）。
@@ -35,7 +32,7 @@ import { buildLilithSessionPersona } from './lilith-adapter'
  * 兼容旧 system.md 整包：AI{aiId}/system.md 存在且无 frontend/ 子目录时整包覆盖 frontend 层。
  * - sys_prompt 注入读 frontend 层合并结果，非空用副本，否则回退内置 frontend 模板；
  * shared 层同理（无副本回退内置 shared 常量）。
- * - 系统 AI（frontend/lilith）只读：kind='system' 不可停用、不可改 agent/kind/id
+ * - 系统 AI（frontend）只读：kind='system' 不可停用、不可改 agent/kind/id
 
  * 无状态：每次读写直接落到文件，构造只收路径（轻量，IPC 每次调用 new 即可）。
  */
@@ -60,9 +57,6 @@ export interface AiManagerOptions {
   registryPath: string
   /** {root}/frontend/ai-prompts（提示词副本根，AI{aiId}/system.md） */
   aiPromptsRoot: string
-  /** 莉莉丝角色文件（{root}/frontend/character/lilith.json；桌宠链路同一份文件）。
-   * 未配置时默认从 aiPromptsRoot 推导（join(aiPromptsRoot, '..', 'character', 'lilith.json')）。 */
-  lilithCharacterPath?: string
 }
 
 export class AiManager {
@@ -196,7 +190,7 @@ export class AiManager {
 
   /**
    * 删除 custom AI：注册表记录 + 提示词副本目录（AI{id}/）一并移除。
-   * - system AI 拒绝（内置月蚀/莉莉丝不可删）
+   * - system AI 拒绝（内置月蚀不可删）
    * - 历史会话只存 aiId，删除后 resolveSessionAiId 回退到 1（月蚀），无悬挂引用
    */
   remove(id: number): { ok: true } | { ok: false; error: string } {
@@ -259,13 +253,8 @@ export class AiManager {
     return this.readLayer(aiId, 'shared')
   }
 
-  /** 读取某层合并文本：副本子层存在 → 文件粒度合并；莉莉丝 frontend 走派生基底；否则旧 system.md 整包兼容（仅 frontend）；否则 null */
+  /** 读取某层合并文本：副本子层存在 → 文件粒度合并；否则旧 system.md 整包兼容（仅 frontend）；否则 null */
   private readLayer(aiId: number, layer: PromptLayer): string | null {
-    // 莉莉丝特殊化：frontend 层基底 = lilith.json 派生（恒非空，不回落月蚀 frontend 模板）
-    if (layer === 'frontend' && this.isLilithAi(aiId)) {
-      const merged = this.mergeLilithLayer(aiId)
-      return merged.text.trim() ? merged.text : null
-    }
     if (this.hasLayerFiles(aiId, layer)) {
       const merged = this.mergeLayer(aiId, layer)
       return merged.text.trim() ? merged.text : null
@@ -283,47 +272,9 @@ export class AiManager {
 
   /** 某层文件粒度合并（内置基底 + 副本覆盖），供运行时注入与面板预览 */
   private mergeLayer(aiId: number, layer: PromptLayer): PromptLayerResult {
-    if (layer === 'frontend' && this.isLilithAi(aiId)) {
-      return this.mergeLilithLayer(aiId)
-    }
     return layer === 'frontend'
       ? loadFrontendPromptForAi(this.opts.aiPromptsRoot, aiId)
       : loadSharedPromptsForAi(this.opts.aiPromptsRoot, aiId)
-  }
-
-  // ===== 莉莉丝特殊化（普通会话与桌宠共用同一份 lilith.json） =====
-
-  /** 是否莉莉丝 AI（按注册表 agent 判定，不硬编码 id=2） */
-  private isLilithAi(aiId: number): boolean {
-    return findAiById(readAiRegistry(this.opts.registryPath), aiId)?.agent === 'lilith'
-  }
-
-  /** 莉莉丝角色文件路径（默认从 aiPromptsRoot 推导 {root}/frontend/character/lilith.json） */
-  private lilithCharacterFile(): string {
-    return this.opts.lilithCharacterPath ?? join(join(this.opts.aiPromptsRoot, '..', 'character'), 'lilith.json')
-  }
-
-  /** 读取莉莉丝角色 JSON（解析失败/不存在返回 null，派生函数内部回退默认人设） */
-  private readLilithCharacter(): Record<string, unknown> | null {
-    const p = this.lilithCharacterFile()
-    if (!existsSync(p)) return null
-    try {
-      return JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>
-    } catch (err) {
-      console.warn(`[ai-manager] lilith.json 解析失败，使用默认人设: ${err}`)
-      return null
-    }
-  }
-
-  /** 莉莉丝 frontend 层虚拟内置基底（不落盘，由 lilith.json 单源派生；可被同名副本替换） */
-  private lilithVirtualBuiltins(): VirtualBuiltinFile[] {
-    const character = this.readLilithCharacter()
-    return [{ name: 'lilith-persona.md', content: buildLilithSessionPersona(character) }]
-  }
-
-  /** 莉莉丝 frontend 层文件粒度合并：虚拟内置基底 + 副本目录覆盖（有副本用副本） */
-  private mergeLilithLayer(aiId: number): PromptLayerResult {
-    return mergePromptFiles(this.lilithVirtualBuiltins(), this.layerDir(aiId, 'frontend'), `莉莉丝人设(AI${aiId})`)
   }
 
   /** 列出某 AI frontend/shared 层参与合并的文件清单（含内置基底与副本标记），面板文件级编辑用 */
@@ -344,19 +295,11 @@ export class AiManager {
     return content.length > 0 ? content : null
   }
 
-  /** 读取内置模板某层某文件内容（供 UI「建立副本」复制基底）；无此内置文件返回 null。
-   * lilith-persona.md / lilith-session.md 是莉莉丝虚拟内置（lilith.json 派生，不落盘），
-   * 传入 aiId 后返回推导文本，允许前端对其建立副本覆盖。 */
-  readBuiltinPromptFile(layer: PromptLayer, name: string, aiId?: number): string | null {
+  /** 读取内置模板某层某文件内容（供 UI「建立副本」复制基底）；无此内置文件返回 null */
+  readBuiltinPromptFile(layer: PromptLayer, name: string): string | null {
     const err = this.validatePromptFileName(name)
     if (err) return null
     const trimmed = name.trim()
-    // 莉莉丝虚拟内置：仅 frontend 层
-    if (layer === 'frontend' && aiId !== undefined && this.isLilithAi(aiId)) {
-      const virtual = this.lilithVirtualBuiltins().find((f) => f.name === trimmed)
-      if (virtual) return virtual.content.trim() || null
-      return null
-    }
     const p = join(getPromptsDir(), layer, trimmed)
     if (!existsSync(p)) return null
     const content = readFileSync(p, 'utf-8').trim()
@@ -370,7 +313,7 @@ export class AiManager {
     name: string
   ): { content: string | null; builtin: string | null; source: 'override' | 'builtin' } {
     const override = this.readPromptFile(aiId, layer, name)
-    const builtin = this.readBuiltinPromptFile(layer, name, aiId)
+    const builtin = this.readBuiltinPromptFile(layer, name)
     return { content: override, builtin, source: override != null ? 'override' : 'builtin' }
   }
 

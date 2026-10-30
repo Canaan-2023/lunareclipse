@@ -6,8 +6,7 @@
  * 入站管线：适配器收消息（毫秒级入队，满足飞书 3 秒限制）
  * → 串行队列（同一时间只处理一条外部消息，LLM 单实例串行）
  * → 白名单检查（空 = 默认开放全部；群聊按 chat_id、私聊按 open_id）
- * → 路由（联系人映射表：固定到月蚀 or 莉莉丝；未配置默认月蚀）
- * → 对话（月蚀 = headless runStream 完整工具循环；莉莉丝 = generateLilithReply）
+ * → 对话（月蚀 = headless runStream 完整工具循环）
  * → 回复发回平台（引用回复）
 
  * 并发保护：外部消息进来时若 LLM 正在跑（桌面聊天/其他任务），
@@ -16,7 +15,6 @@
 import type { ConfigStore } from '../api/config-store'
 import type { SessionStore } from '../api/session-store'
 import { FeishuAdapter, type FeishuInboundMessage } from './feishu'
-import { isSystemInjectedText } from '../services/lilith-adapter'
 
 /** 外部消息统一结构（平台解耦后的最小集） */
 export interface InboundMessage {
@@ -34,12 +32,8 @@ export interface MessagingDeps {
   sessionStore: SessionStore
   /** 月蚀对话：headless runStream（完整上下文 + 工具循环），返回最终回复文本 */
   onXiChat: (text: string, sessionId: string) => Promise<string>
-  /** 莉莉丝对话：generateLilithReply（人设 + lore + 玩家记忆 + companion sessions） */
-  onLilithChat: (text: string, playerName: string) => Promise<string>
   /** LLM 是否忙碌（外部消息与桌面聊天并发保护） */
   isLlmBusy: () => boolean
-  /** 玩家名（莉莉丝 persona 的 {playerName} 占位符；默认 Player） */
-  getPlayerName?: () => string
 }
 
 export class MessagingService {
@@ -106,16 +100,6 @@ export class MessagingService {
     }
   }
 
-  /** 会话映射：联系人固定路由（未配置默认月蚀，能干活） */
-  private resolveAgent(msg: InboundMessage): 'xi' | 'lilith' {
-    const cfg = this.deps.configStore.get().messaging
-    const contacts = cfg?.contacts ?? []
-    const key = msg.chatType === 'group' ? msg.chatId : msg.senderOpenId
-    const type = msg.chatType === 'group' ? 'group' : 'p2p'
-    const contact = contacts.find((c) => c.type === type && c.id === key)
-    return contact?.agent ?? 'xi'
-  }
-
   /** 白名单：空 = 默认开放全部；非空时私聊看 open_id、群聊看 chat_id */
   private isAllowed(msg: InboundMessage): boolean {
     const cfg = this.deps.configStore.get().messaging
@@ -158,15 +142,7 @@ export class MessagingService {
       return
     }
 
-const agent = this.resolveAgent(msg)
-    // 系统注入/健康检查消息强制分流到月蚀：即使联系人配置为 lilith，也绝不进莉莉丝
-    // 人设链路（莉莉丝没有工具，无法真正处理系统事件），而是交给月蚀完整工具链。
-    // 只改路由不改内容——消息不被吞掉，月蚀处理后回复原路返回。
-    const routingAgent = isSystemInjectedText(msg.text) ? 'xi' : agent
-    if (routingAgent !== agent) {
-      console.log(`[messaging] 系统注入/健康检查消息强制路由月蚀（联系人 agent=${agent}）: "${msg.text.slice(0, 60)}"`)
-    }
-    console.log(`[messaging] 处理: ${msg.chatType} 会话标识${msg.senderOpenId || msg.chatId ? '已设置' : '缺失'} → agent=${routingAgent} text="${msg.text.slice(0, 30)}"`)
+    console.log(`[messaging] 处理: ${msg.chatType} 会话标识${msg.senderOpenId || msg.chatId ? '已设置' : '缺失'} text="${msg.text.slice(0, 30)}"`)
 
     // 并发保护：LLM 正在跑（桌面聊天等）→ 礼貌拒绝，不并发抢占
     if (this.deps.isLlmBusy()) {
@@ -176,13 +152,8 @@ const agent = this.resolveAgent(msg)
     }
 
     try {
-let reply: string
-      if (routingAgent === 'lilith') {
-        reply = await this.deps.onLilithChat(msg.text, this.deps.getPlayerName?.() ?? 'Player')
-      } else {
-        const sessionId = this.sessionIdFor(msg)
-        reply = await this.deps.onXiChat(msg.text, sessionId)
-      }
+      const sessionId = this.sessionIdFor(msg)
+      const reply = await this.deps.onXiChat(msg.text, sessionId)
       // 空回复：LLM 返回空 content / 工具循环耗尽时，暴露问题而非发空消息
       if (!reply || !reply.trim()) throw new Error('LLM returned empty reply')
       console.log(`[messaging] 回复 ${reply.length} 字: "${reply.slice(0, 40)}..."`)

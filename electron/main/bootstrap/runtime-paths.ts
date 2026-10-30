@@ -2,8 +2,7 @@
  * @category 核心
  * @summary 运行期路径工具（组合根）：日志路径脱敏（**本文件当前只有这一个函数**）
  *
- * 为什么存在：`redactUserPath` 被两处需要——`index.ts` 顶层的 userData 重定向/实例解析日志，
- * 与 `bootstrap/lilith-setup.ts` 的 MOD 配置读写日志。留在 `index.ts` 会让后者反向依赖入口模块，
+ * 为什么存在：`redactUserPath` 供 `index.ts` 顶层的 userData 重定向/实例解析日志脱敏使用，
  * 故随 ADR-01 第 2 步先行抽出。
  *
  * 什么作用：把日志/错误文本里的真实用户目录段（`C:\Users\<名>`、`/Users/<名>`、`/home/<名>`）

@@ -89,7 +89,7 @@ export function registerAuthHandlers(
       if (result.ok && result.user) {
         getRoomLoopSupervisor()?.stopAll()
         await switchSessionToUser(result.user.UID)
-        // 与 AuthService 分支一致：登录成功必须触发成功回调（lilith 桌宠启动等依赖它）
+        // 与 AuthService 分支一致：登录成功必须触发成功回调（后续装配依赖它）
         onAuthSuccess?.()
       }
       return result

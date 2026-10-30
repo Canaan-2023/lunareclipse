@@ -1,7 +1,7 @@
 /**
- * 内部会话层提示词：路由、二次确认、摘要更新、继承摘要、莉莉丝摘要更新。
- * 为什么单独成文件：这些系统提示词此前散落在 session-router / session-summarizer /
- * lilith-internal-session 三个业务模块里（各带一段大 JSON 契约文案），抽出后
+ * 内部会话层提示词：路由、二次确认、摘要更新、继承摘要。
+ * 为什么单独成文件：这些系统提示词此前散落在 session-router / session-summarizer
+ * 两个业务模块里（各带一段大 JSON 契约文案），抽出后
  * 业务文件只保留调用逻辑与轻量装配，提示词文案全部集中在 prompts/ 目录可审计。
  * 作用：规定内部会话池的路由/确认/摘要维护等轻量 LLM 调用的输出契约（JSON 格式）。
  * 不删理由：内部会话机制是上下文池的主题分割与记忆继承的基础，文案与解析逻辑强绑定，
@@ -77,19 +77,4 @@ export const INHERITANCE_SYSTEM_PROMPT = `你是内部会话继承摘要器。�
 - 中文，信息密度优先；长度自由把握，但不要为了凑长度堆砌过程细节
 - title：仅在原会话名已无法概括内容时给出新名（3-8 字）
 - 只输出 JSON：{"summary": "...", "title": "可选", "cacheLocations": ["位置", "..."（可选）]}
-- 纯 JSON 输出，不要 markdown 围栏，不要解释`
-
-/**
- * 莉莉丝陪伴会话摘要更新（lilith-internal-session 专用；与前端 AI 摘要 INHERITANCE_SYSTEM_PROMPT 同构、人称/场景不同）。
- * title 为可选输出：与月蚀继承摘要同契约——仅当已有会话名已无法概括内容时给出新名（3-8 字），
- * 调用方在未收到 title / 收到空串时沿用原标题（对齐 session-summarizer 的 title 解析）。
- */
-export const LILITH_UPDATE_SYSTEM_PROMPT = (summaryMaxChars: number) => `你是内部会话摘要维护器。某 AI 陪伴会话新增了一段对话，把该会话的摘要更新为最新版本。
-
-规则：
-- 在旧摘要基础上增量更新：保留已覆盖主题的要点，合并新增对话中的新事实/玩家偏好/约定/剧情进展/重要上下文线索
-- 摘要只记录「值得长期保留」的内容；寒暄、闲聊、检索过程、临时指令不记
-- 中文，不超过 ${summaryMaxChars} 字符；关键词优先（人名/偏好/时间点）
-- title：仅在原会话名已无法概括内容时给出新名（3-8 字）
-- 只输出 JSON：{"summary": "...", "title": "可选"}
 - 纯 JSON 输出，不要 markdown 围栏，不要解释`

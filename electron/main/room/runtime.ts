@@ -15,9 +15,10 @@
  * - `execute`：B5 执行器（自身过 `t1.executor-high-risk` 等）
  */
 import type { ExecutorDecision, ExecutorResult } from './executor'
-import { createAutonomousLoop, type AutonomousLoop, type LoopEvent, type LoopTickResult, type PlanDecision } from './loop'
+import { createAutonomousLoop, type AutonomousLoop, type LoopTickResult, type PlanDecision } from './loop'
 import { parsePlan } from './plan'
 import { buildPlanPrompt } from './plan-prompt'
+import { recordPreplanTickToHistory, runPreplanTurn } from './preplan-turn'
 import { defaultCollectorView, validateCollectorView, type CollectorView } from './collector-view'
 import { WAKE_SOURCE_LABEL, type WakeSource } from './wake'
 import { createRoomSensor, type RoomSensor } from './sensor'
@@ -38,6 +39,7 @@ export { TREE_INDEX_MAX, buildTreeIndexBlock, type TreeSessionLine, type TreeInd
 export { parseLanding, type RoomLanding } from './landing'
 
 import type {
+  RoomEvent,
   RoomPhase,
   RoomRuntime,
   RoomRuntimeDeps,
@@ -46,6 +48,7 @@ import type {
 
 // 运行时公共类型已拆出；此处再导出保兼容（消费方 import 路径不变）。
 export type {
+  RoomEvent,
   RoomPhase,
   RoomRuntime,
   RoomRuntimeDeps,
@@ -76,7 +79,7 @@ export { buildPlanPrompt }
 
 export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
   const now = deps.now ?? (() => Date.now())
-  const events: LoopEvent[] = []
+  const events: RoomEvent[] = []
   let phase: RoomPhase = 'stopped'
   let standbyUntil: number | undefined
   let lastTick: LoopTickResult | undefined
@@ -136,6 +139,12 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
    * （两条链路并发采集/执行）。先记下来，`onResult` / 手动 tick 收尾时统一应用。
    */
   let pendingStandbyMs: number | null = null
+  /**
+   * 本轮 tick 生效的前置规划指令（两段式第一段产出）。
+   * plan 回调里设置，tick 收尾（onResult / 手动 tick 两处）写入前置规划历史环后清零；
+   * null = 本轮没有前置规划参与——历史环只记「前置规划真的给了方向」的轮次。
+   */
+  let preplanInstructionForTick: string | null = null
   /** 手动 tick 单飞：一轮未结束时不允许第二条链路并发采集/规划 */
   let ticking = false
   /**
@@ -176,32 +185,39 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
   /**
    * 当前状态（**单一构造点**）：推送与 IPC 读取共用同一形状，避免两处各拼一份而漂移。
    */
-  const getState = (): RoomRuntimeState => ({
-    running: phase !== 'stopped',
-    phase,
-    ...(hostSessionId ? { hostSessionId } : {}),
-    ...(standbyUntil != null ? { standbyUntil } : {}),
-    ...(lastTick ? { lastTick } : {}),
-    ...(lastPlan ? { lastPlan } : {}),
-    events: [...events],
-    avatarRev,
-    collectorView,
-    // 返回副本：状态会被推送 / 序列化给渲染侧，任何消费者都不应能改到运行时的策略对象
-    sensorPolicy: {
-      ...sensorPolicy,
-      mute: [...sensorPolicy.mute],
-      ...(sensorPolicy.thresholds ? { thresholds: { ...sensorPolicy.thresholds } } : {})
-    },
-    ...(landing ? { landing } : {}),
-    ...(scene ? { scene } : {}),
-    ...(lastReply ? { lastReply } : {}),
-    ...(lastReplyAt != null ? { lastReplyAt } : {}),
-    // `sensing` 对用户要诚实：被闸门拦下时感知器仍在排期，但**看不到任何东西**——
-    // 界面不能显示「感知中」，否则「未感知原因」提示永远不可达（0.53.1 评审 P1）。
-    sensing: sensing && deps.senseAllowed?.() !== false,
-    ...(lastWake ? { lastWake } : {}),
-    ...(lastCollect ? { lastCollect } : {})
-  })
+  const getState = (): RoomRuntimeState => {
+    // 规划者徽标与历史条数同源：实时读路由——配置即时生效，UI 不显示过期身份
+    const route = deps.plannerRoute?.() ?? ({ kind: 'self' } as const)
+    return {
+      running: phase !== 'stopped',
+      phase,
+      ...(hostSessionId ? { hostSessionId } : {}),
+      ...(standbyUntil != null ? { standbyUntil } : {}),
+      ...(lastTick ? { lastTick } : {}),
+      ...(lastPlan ? { lastPlan } : {}),
+      events: [...events],
+      avatarRev,
+      collectorView,
+      // 返回副本：状态会被推送 / 序列化给渲染侧，任何消费者都不应能改到运行时的策略对象
+      sensorPolicy: {
+        ...sensorPolicy,
+        mute: [...sensorPolicy.mute],
+        ...(sensorPolicy.thresholds ? { thresholds: { ...sensorPolicy.thresholds } } : {})
+      },
+      ...(landing ? { landing } : {}),
+      ...(scene ? { scene } : {}),
+      ...(lastReply ? { lastReply } : {}),
+      ...(lastReplyAt != null ? { lastReplyAt } : {}),
+      // `sensing` 对用户要诚实：被闸门拦下时感知器仍在排期，但**看不到任何东西**——
+      // 界面不能显示「感知中」，否则「未感知原因」提示永远不可达（0.53.1 评审 P1）。
+      sensing: sensing && deps.senseAllowed?.() !== false,
+      ...(lastWake ? { lastWake } : {}),
+      ...(lastCollect ? { lastCollect } : {}),
+      planner: { kind: route.kind },
+      // 前置规划历史条数随快照下发（界面免开 IPC）；仅 preplan 路由读这一次——self 模式零额外读盘
+      ...(route.kind === 'preplan' ? { preplanHistoryCount: deps.loadPreplanHistory?.().length ?? 0 } : {})
+    }
+  }
 
   /** 状态变了就推（安静期零开销）；推送失败不阻断循环，但必须留痕。 */
   const notify = (): void => {
@@ -213,7 +229,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
   }
 
   /** 事件入环（带裁剪）。提成函数是因为「重画形象」也要进事件流（不只 loop 的相位事件）。 */
-  const pushEvent = (ev: LoopEvent): void => {
+  const pushEvent = (ev: RoomEvent): void => {
     events.push(ev)
     if (events.length > EVENT_RING_MAX) events.splice(0, events.length - EVENT_RING_MAX)
     try {
@@ -275,6 +291,18 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
     notify()
   }
 
+  /**
+   * 前置规划历史环落笔：一轮 tick 收尾时把「指令 + 执行结果摘要」写入滚动环。
+   * 两条收尾路径（驱动 `onResult` / 手动 `tick` 的 try 块）共用——手动 tick 不走 onResult，
+   * 只挂一处会让手动触发的轮次在历史里凭空消失。
+   */
+  const recordPreplanTick = (r: LoopTickResult): void => {
+    if (preplanInstructionForTick == null) return
+    const instruction = preplanInstructionForTick
+    preplanInstructionForTick = null
+    recordPreplanTickToHistory(deps, instruction, r, lastPlan?.decisions, now)
+  }
+
   const loop: AutonomousLoop = createAutonomousLoop({
     // 每轮读**当时**的采集视图（AI 可能在上一轮改了它）；
     // 顺手记下「它看到了什么」（截断），界面「感知」页与排障都靠这句
@@ -293,8 +321,11 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
     // 记忆系统那一跳本就由 AI 在 plan 里用自己的记忆工具完成（ADR-20）。
     // `loop.ts` 的 `recall` 保留为可选扩展点（其契约与单测不变）。
     plan: async ({ text, mode, repeat }) => {
+      // 规划者路由（前置规划功能）：每轮实时读，配置即时生效。
+      const route = deps.plannerRoute?.() ?? { kind: 'self' as const }
       // 没有承载会话 = 自主模式还没在任何一个会话里开启（0.53.18：不再有房间自持会话兜底）。
       // 不调 LLM：没有树可继承时规划出来的落点无处落地，调了只会长出一棵没人要的旧房间树。
+      // 前置规划轮同理跳过：主AI都不会动，给方向没有意义。
       if (!hostSessionId) {
         const unbound: PlanDecision = {
           decisions: [],
@@ -303,6 +334,11 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
         lastPlan = unbound
         return unbound
       }
+      // 两段式第一段（前置规划轮）：前置规划看**同一轮采集输入**给出方向性指令。
+      // 失败/未接线 = 本轮无指令、回落主AI自规划——前置规划的故障不许弄停主AI（不传播 llmFailed）。
+      const preplanInstruction =
+        route.kind === 'preplan' ? await runPreplanTurn(deps, text, pushEvent, now) : null
+      preplanInstructionForTick = preplanInstruction
       // 唤醒原因只喂**这一轮**（消费一次即清），不然后续轮次会一直以为自己是刚被叫醒的
       const wake = wakeForPlan
       wakeForPlan = null
@@ -313,7 +349,8 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
         allowedTools: deps.allowedTools(),
         sensorPolicy,
         ...(wake ? { wake } : {}),
-        ...(repeat ? { repeat } : {})
+        ...(repeat ? { repeat } : {}),
+        ...(preplanInstruction ? { preplanInstruction } : {})
       })
       let reply: string | null = null
       try {
@@ -444,6 +481,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
     },
     onResult: (r) => {
       lastTick = r
+      recordPreplanTick(r)
       // LLM 未回复 = AI 出了问题：停驱动 + 回 stopped（不再空转），状态里留痕供 UI 显示
       if (r.llmFailed) {
         stopFn?.()
@@ -628,6 +666,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
     try {
       const r = await loop.tick()
       lastTick = r
+      recordPreplanTick(r)
       if (r.llmFailed) {
         // 手动「立即行动」也走同一处置：LLM 出问题就停，不空转
         // （进入本函数时已保证没有驱动在跑，故不需要 stopFn）

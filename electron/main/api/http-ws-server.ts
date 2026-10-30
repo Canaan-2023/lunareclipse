@@ -42,6 +42,13 @@ export function createHttpWsServer(app: Express): HttpWsServer {
       }
     }
   })
+  // ws 会把 http server 的 'error' 事件转发为自身 'error'；wss 若无监听者，
+  // EventEmitter 会在 emit 时同步抛出，打断同一 server 上后续 error 监听的执行——
+  // 端口被占用时的动态端口回退（server-assembly 的 once('error')）正是这样一个后续监听。
+  // 这里补一个监听者让错误继续传递（不吞掉，仅记录），否则固定端口占用会击穿进程。
+  wss.on('error', (e: Error) => {
+    console.error('[server] WS 服务错误：', e?.message ?? e)
+  })
   serviceRefs.wss = wss
 
   return { server, wss }

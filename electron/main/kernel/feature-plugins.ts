@@ -1,7 +1,7 @@
 /**
  * 月蚀功能插件对象表（阶段 4 → P1-A G3 真 fiber 化）
 
- * 十大功能模块（memory/workflow/monitor/lilith/browser/subagent/mcp/skills/cron/governance）
+ * 九大功能模块（memory/workflow/monitor/browser/subagent/mcp/skills/cron/governance）
  * 以「代码内 Cordis 插件对象表」形态演进：每个功能模块登记一个 mounter（挂载器），
  * 由 FeaturePluginsService 按启用状态 `ctx.plugin()` 挂载为独立 Cordis fiber。
 
@@ -28,7 +28,6 @@ import {
   SkillsService,
   McpService,
   BrowserService,
-  LilithService,
   SubAgentService,
   CronService,
   WorkflowService,
@@ -64,7 +63,7 @@ export interface FeaturePluginMeta {
 }
 
 /**
- * 功能插件声明表（阶段 4 十项；新增功能模块在此登记 mounter 即可进面板 + 参与装卸）。
+ * 功能插件声明表（阶段 4 九项；新增功能模块在此登记 mounter 即可进面板 + 参与装卸）。
  * serviceKey 与各 Service 构造的注册名保持一致（真相源是 mounter.apply 的实际构造）。
  */
 export const FEATURE_PLUGINS: readonly FeaturePluginMeta[] = [
@@ -83,10 +82,6 @@ export const FEATURE_PLUGINS: readonly FeaturePluginMeta[] = [
   {
     id: 'browser', name: '浏览器管理器', description: '模块级单例浏览器实例门面', version: '1.0.0', serviceKey: 'browser',
     mounter: () => ({ apply: (ctx) => { new BrowserService(ctx) } })
-  },
-  {
-    id: 'lilith', name: '莉莉丝适配器', description: '桌宠链路 B 适配器工厂（多实例）', version: '1.0.0', serviceKey: 'lilith',
-    mounter: () => ({ apply: (ctx) => { new LilithService(ctx) } })
   },
   {
     id: 'subagent', name: '子 Agent 管理器', description: '子代理执行器工厂（前端 / 记忆工作流各一）', version: '1.0.0', serviceKey: 'subagent',
@@ -246,7 +241,7 @@ export class FeaturePluginsService extends Service {
    * 批量挂载所有功能插件（启动链 mountFeatureServices 使用）。
    * 先重读状态文件：dataRoot 此时已就绪（setPathContext 在 mountFeatureServices 之前），
    * 修复「状态文件在 createRootContext 同步期读不到 → 用户关闭的插件被重新挂载」的问题。
-   * 返回全部 10 项结果：关闭项不挂载（mounted=false），调用方可见完整装卸状态。
+   * 返回全部 9 项结果：关闭项不挂载（mounted=false），调用方可见完整装卸状态。
    */
   async mountAll(): Promise<Array<{ id: string; ok: boolean; error?: string; mounted?: boolean }>> {
     this.loadState()

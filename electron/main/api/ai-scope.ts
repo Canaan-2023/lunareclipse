@@ -17,6 +17,16 @@ import type { SessionStore } from './session-store'
 import { DEFAULT_AI_ID } from '@shared/types'
 
 /**
+ * 前置规划轮（room-preplan purpose）的确定性会话 id：`room-preplan-U{uid}-AI{aiId}`
+ * （生成点：`bootstrap/room-runtime.ts` 的 runPreplan）。
+ * 前置规划**不落 sessionStore**（裁决：前置规划持久体只有 preplan.json，不占会话位），
+ * 故 store 查不到它——但 id 本身自描述携带 aiId，据此解析让整条注入/工具链
+ * （身份卡 / sys_prompt / AI.md / 提示词路径占位符 / 工具 paths）落到**主AI自己**的作用域，
+ * 而不是触发「无合法 aiId」审计并回落 AI1（那样前置规划会读错记忆域）。
+ */
+const PREPLAN_SESSION_AI = /^room-preplan-U\d+-AI(\d+)$/
+
+/**
  * 解析会话所属 AI 编号（多 AI P2）。
  * @param sessionId 会话 id；缺省（主会话）直接回落月蚀，不记审计
  * @param sessionStore 会话存储（读 meta 里的 aiId）
@@ -24,6 +34,12 @@ import { DEFAULT_AI_ID } from '@shared/types'
  */
 export function resolveSessionAiIdWithAudit(sessionId: string | undefined, sessionStore: SessionStore): number {
   if (!sessionId) return DEFAULT_AI_ID
+  // 前置规划会话 id 自描述：先按模式解析（这是设计内路径，不是「链路没把 aiId 带下来」，不记审计）
+  const preplanMatch = PREPLAN_SESSION_AI.exec(sessionId)
+  if (preplanMatch) {
+    const parsed = Number.parseInt(preplanMatch[1], 10)
+    if (Number.isInteger(parsed) && parsed >= 1) return parsed
+  }
   try {
     const aiId = sessionStore.get(sessionId)?.aiId
     if (typeof aiId === 'number' && Number.isInteger(aiId) && aiId >= 1) return aiId

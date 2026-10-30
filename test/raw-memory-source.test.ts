@@ -3,7 +3,7 @@
  *
  * 为什么存在：0.52.38 只测了纯函数 `sourceHeaderLine`（拼行），**没测「写盘后头部真的有这行」**。
  * 而「来源标记可在 RAW 头部看到」是交接单 §7 要求**可复现验证**的交付项之一；
- * 本文件直接读落盘文件断言，锁住写入链路（含 A6 补上的莉莉丝写入点口径 `source: 'lilith'`）。
+ * 本文件直接读落盘文件断言，锁住写入链路（含外部平台接入来源写入点口径 `source: 'messaging'`）。
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync } from 'fs'
@@ -31,13 +31,13 @@ function makeWriter(): RawMemoryWriter {
 const TS = '2020-01-01T00:00:00.000Z'
 
 describe('RawMemoryWriter：来源标记写进 RAW 头部', () => {
-  it('带 source → 头部有「- 来源：…（可读名）」行（莉莉丝写入点口径）', () => {
+  it('带 source → 头部有「- 来源：…（可读名）」行（外部平台接入写入点口径）', () => {
     const w = makeWriter()
-    const file = w.write('喂', '在的', [], TS, '甲', '莉莉丝', undefined, { source: 'lilith' })
+    const file = w.write('喂', '在的', [], TS, '甲', 'AI2', undefined, { source: 'messaging' })
     const text = readFileSync(file, 'utf-8')
-    expect(text).toContain('- 来源：lilith（莉莉丝桌宠）')
+    expect(text).toContain('- 来源：messaging（外部平台接入）')
     expect(text).toContain('## 用户（甲）')
-    expect(text).toContain('## AI（莉莉丝）')
+    expect(text).toContain('## AI（AI2）')
   })
 
   it('自主轮次 source → 标为自主模式（与 A5 自主域判据同一枚举）', () => {

@@ -18,8 +18,7 @@ const BUNDLED = join(process.cwd(), 'electron', 'main', 'plugins', 'bundled')
 
 /** 插件名 → SKILL 名契约（SKILL name 可省略，则只要求 plugin.json 一致性） */
 const SKILL_NAME_CONTRACT: Record<string, string> = {
-  coding: 'coding',
-  lilith: 'lilith'
+  coding: 'coding'
 }
 
 function listBundledPlugins(): string[] {
@@ -37,8 +36,8 @@ describe('bundled 插件分发契约', () => {
   const plugins = listBundledPlugins()
 
   it('bundled 目录存在且包含预期插件集合', () => {
-    expect(plugins.length).toBeGreaterThanOrEqual(4)
-    for (const name of ['coding', 'computer-use', 'headless-browser', 'lilith']) {
+    expect(plugins.length).toBeGreaterThanOrEqual(3)
+    for (const name of ['coding', 'computer-use', 'headless-browser']) {
       expect(plugins, `应包含插件 ${name}`).toContain(name)
     }
   })

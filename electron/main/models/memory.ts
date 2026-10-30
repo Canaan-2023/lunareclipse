@@ -27,7 +27,7 @@ export interface MemoryContent {
 export interface Memory {
   自身路径: string
   用户?: MemoryUser
-  /** AI 身份（说话人：月蚀/莉莉丝，从 RAW 对话对标题 `## AI（名字）` 解析） */
+  /** AI 身份（说话人：AI 名字，从 RAW 对话对标题 `## AI（名字）` 解析） */
   AI身份?: string
   关联NNG: string[]
   关联文件?: string[]
@@ -47,7 +47,7 @@ export interface CreateMemoryParams {
   备注: string
   关联文件?: string[]
   user?: MemoryUser
-  /** AI 身份（说话人：月蚀/莉莉丝，从 RAW 标题解析） */
+  /** AI 身份（说话人：AI 名字，从 RAW 标题解析） */
   AI身份?: string
 }
 

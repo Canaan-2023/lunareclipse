@@ -4,7 +4,7 @@
  * 并一次性把旧版 md 文件体系（历史遗留命名，迁移必须按原文件名读取）迁移到 ABYSS 体系。避免各处代码依赖的目录
  * 在首次访问时不存在而报错，是数据层可用的前置保证。
  */
-import { mkdirSync, existsSync, writeFileSync, copyFileSync, readdirSync, renameSync, readFileSync } from 'fs'
+import { mkdirSync, existsSync, writeFileSync, readdirSync, renameSync, readFileSync } from 'fs'
 import { basename, join } from 'path'
 import type { BaseDataPaths } from './paths'
 import { buildDataPaths } from './paths'
@@ -22,7 +22,7 @@ const EMPTY_MONITOR_STATE = {
   }
 }
 
-export function initDataDirectory(dataDir: string, promptsDir: string): BaseDataPaths {
+export function initDataDirectory(dataDir: string): BaseDataPaths {
   const paths = buildDataPaths(dataDir)
   // 全局共享目录（跨用户/AI 的基础设施：工作流引擎、提示词、插件、cron 等）。
   // 分层改造：memory/raw_memory/sessions 不再全局创建，
@@ -47,7 +47,7 @@ export function initDataDirectory(dataDir: string, promptsDir: string): BaseData
     mkdirSync(dir, { recursive: true })
   }
 
-  // AI 编号注册表（月蚀=1、莉莉丝=2，可扩展）——首次启动写入默认表
+  // AI 编号注册表（月蚀=1，可扩展）——首次启动写入默认表
   if (!existsSync(paths.aiRegistryJson)) {
     const registry = readAiRegistry(paths.aiRegistryJson)
     writeAiRegistry(paths.aiRegistryJson, registry)
@@ -77,8 +77,6 @@ if (!existsSync(paths.usersJson)) {
   // - memory/U{uid}/AI{aiId}/claude.md（AI 自我认知）→ ABYSS/U{uid}/AI{aiId}/AI.md
   // 仅当目标不存在时写入；写入成功后旧文件重命名为 *.migrated-bak（迁移后不再沿用旧命名）。
   migrateLegacyMd(paths)
-
-  copyPrompts(paths, promptsDir)
 
   initPluginsDir(paths.plugins)
   initCronDir(paths.cron)
@@ -138,7 +136,7 @@ module.exports = [
 
 ## 说明
 
-- 工具对哪个 AI 可见由 plugin.json tools[].agents 决定（frontend=月蚀 / dmn=记忆工作流 / lilith=莉莉丝）
+- 工具对哪个 AI 可见由 plugin.json tools[].agents 决定（frontend=月蚀 / dmn=记忆工作流）
 - 启用开关在「设置 → 插件」面板；.plugin-state.json 持久化启用状态
 - 改 tools.js 保存即热重载（500ms 防抖）
 - 工具能力经 ctx 注入，可参考 electron/main/tools/ 下的内置工具实现
@@ -156,61 +154,8 @@ function initCronDir(cronDir: string): void {
   writeFileSync(jobsFile, content, 'utf-8')
 }
 
-/**
- * 首次启动时复制对话模式角色定义到用户数据目录（用户可编辑副本）。
-
- * 设计原则：
- * - 提示词（shared/frontend/topics）唯一权威 = prompts/ 目录，不改用户副本，直接改 prompts/ 即生效
- * - 对话模式角色定义（character/*.json）= 运行时数据（莉莉丝等角色），需要可编辑副本 → 首次复制到
- * abyssac_data/frontend/character/，之后不覆盖（保护用户编辑）
-
- * 旧 DMN 已迁移到 L8 工作流引擎，提示词内嵌在 MEMORY_PIPELINE_TEMPLATE 节点配置中，
- * 不再从文件系统加载，无需复制；历史 DMN 提示词已由 L8 工作流模板与 prompts 目录取代。
- */
-function copyPrompts(paths: BaseDataPaths, promptsDir: string): void {
-  // 对话模式角色定义（json，复制到 frontend/character/ 供用户编辑）
-  copyPromptDir(join(promptsDir, 'character'), join(paths.frontend, 'character'), '对话模式角色定义', true)
-}
-
-/**
- * 按文件夹整体复制文件（对话模式角色定义用）。
- * - 保留源文件名
- * - 已存在的目标文件不覆盖（保护用户编辑）
- * - 默认只复制 .md/.txt 文件（与 loader.ts 的 PROMPT_EXTS 白名单一致）；allowJson=true 时额外复制 .json（对话模式角色定义用）
- */
-function copyPromptDir(srcDir: string, destDir: string, label: string, allowJson = false): void {
-  if (!existsSync(srcDir)) {
-    console.error(`[data-init] ${label}备份目录缺失: ${srcDir}`)
-    return
-  }
-  let files: string[]
-  try {
-    files = readdirSync(srcDir).filter((f) => {
-      if (f.startsWith('.')) return false
-      if (allowJson && f.endsWith('.json')) return true
-      return f.endsWith('.md') || f.endsWith('.txt')
-    })
-  } catch (err) {
-    console.error(`[data-init] 读取${label}备份目录失败:`, err)
-    return
-  }
-  // 全新数据目录（打包分发首启 / 换机场景）下 dest 子目录可能尚不存在，
-  // 先确保目标目录存在再复制，否则 copyFileSync 对不存在的 dest 目录抛 ENOENT
-  mkdirSync(destDir, { recursive: true })
-  for (const f of files) {
-    const src = join(srcDir, f)
-    const dest = join(destDir, f)
-    if (existsSync(dest)) continue // 首次复制不覆盖
-    try {
-      copyFileSync(src, dest)
-    } catch (err) {
-      console.error(`[data-init] 复制${label}失败 ${src} -> ${dest}:`, err)
-    }
-  }
-}
-
-export function ensureDataPaths(dataDir: string, promptsDir: string): BaseDataPaths {
-  return initDataDirectory(dataDir, promptsDir)
+export function ensureDataPaths(dataDir: string): BaseDataPaths {
+  return initDataDirectory(dataDir)
 }
 
 /**

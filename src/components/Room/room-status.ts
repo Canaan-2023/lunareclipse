@@ -243,6 +243,8 @@ export interface RoomEvent {
   ts: number
   detail?: string
   mode?: string
+  /** 规划者标记（前置规划功能）：前置规划轮产生的条目带 'preplan'——文本前缀给人看，字段给排障/回放 */
+  planner?: 'preplan'
 }
 
 /** 采集视图（AI 声明；与主进程 `room/collector-view.ts` 同形） */
@@ -327,6 +329,13 @@ export interface RoomRuntimeSnapshot {
   lastWake?: RoomWakeSummary
   /** 最近一次采集到的内容 */
   lastCollect?: RoomCollectSummary
+  /**
+   * 当前规划者（2026-10-31 前置规划功能）：`preplan` = 前置规划给方向、主AI执行；`self` = 主AI自规划。
+   * 缺省按 self 处理（旧状态/假体不带）。
+   */
+  planner?: { kind: 'self' | 'preplan' }
+  /** 前置规划滚动历史条数（仅 preplan 路由时主进程才带；PreplanZone「已记节奏」随快照刷新） */
+  preplanHistoryCount?: number
 }
 
 /** 未取到数时的空快照（**单一**空态，避免各处手拼字面量而漂移）。 */
@@ -357,6 +366,8 @@ interface RawRoomState {
   sensing?: boolean
   lastWake?: unknown
   lastCollect?: unknown
+  planner?: unknown
+  preplanHistoryCount?: unknown
 }
 
 /**
@@ -369,6 +380,7 @@ export function toRoomSnapshot(raw: unknown, sampledAt: number): RoomRuntimeSnap
   const wake = parseWake(st.lastWake)
   const collect = parseCollect(st.lastCollect)
   const sensorPolicy = parseSensorPolicy(st.sensorPolicy)
+  const planner = parsePlanner(st.planner)
   return {
     phase: st.phase ?? 'stopped',
     sampledAt,
@@ -389,8 +401,19 @@ export function toRoomSnapshot(raw: unknown, sampledAt: number): RoomRuntimeSnap
     ...(typeof st.lastReplyAt === 'number' && Number.isFinite(st.lastReplyAt) ? { lastReplyAt: st.lastReplyAt } : {}),
     ...(st.sensing === true ? { sensing: true } : {}),
     ...(wake ? { lastWake: wake } : {}),
-    ...(collect ? { lastCollect: collect } : {})
+    ...(collect ? { lastCollect: collect } : {}),
+    ...(planner ? { planner } : {}),
+    ...(typeof st.preplanHistoryCount === 'number' && Number.isFinite(st.preplanHistoryCount)
+      ? { preplanHistoryCount: st.preplanHistoryCount }
+      : {})
   }
+}
+
+/** 规划者归一化（kind 闭集校验；不合法整条丢弃，界面按 self 处理） */
+export function parsePlanner(raw: unknown): { kind: 'self' | 'preplan' } | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const kind = (raw as { kind?: unknown }).kind
+  return kind === 'self' || kind === 'preplan' ? { kind } : undefined
 }
 
 const WAKE_SOURCES: ReadonlySet<string> = new Set(['user-present', 'monitor', 'collector', 'user-action'])

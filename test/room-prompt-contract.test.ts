@@ -80,8 +80,8 @@ describe('ROOM 规划轮提示词', () => {
       buildDeps({ activationManager: { consumeEvents: consume }, onActivationConsumed: onConsumed })
     )
 
-    // 后台：room / lan-chat / cli / system-injected 都不能吞掉健康检查告警
-    for (const purpose of ['room', 'lan-chat', 'lan-direct', 'ai-social', 'publish-board', 'messaging', 'cli', 'system-injected'] as const) {
+    // 后台：room / room-preplan（前置规划轮）/ lan-chat / cli / system-injected 都不能吞掉健康检查告警
+    for (const purpose of ['room', 'room-preplan', 'lan-chat', 'lan-direct', 'ai-social', 'publish-board', 'messaging', 'cli', 'system-injected'] as const) {
       consume.mockClear()
       onConsumed.mockClear()
       await assembleSegments(segments, { messages: [], sessionId: 's1', purpose })

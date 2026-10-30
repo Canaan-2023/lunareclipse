@@ -15,7 +15,7 @@ import { readAiRegistry, findAiById } from '../models/ai-registry'
  * 多 AI 子系统 P4：AI 自建 AI。
  * - 复用 AiManager.register 的全部校验（名字规则/简介/提示词长度/llm/toolPolicy/重名幂等/数量上限 20）
  * - parentAiId：自动溯源为"当前会话所属 AI 编号"（ctx.getSessionAiId），不信任 AI 自报
- * - 防递归：仅 kind='system' 的 AI（月蚀/莉莉丝）可创建；custom AI 不可再创建（阻止无限繁殖）
+ * - 防递归：仅 kind='system' 的 AI（月蚀）可创建；custom AI 不可再创建（阻止无限繁殖）
  * - 提示词继承：入参 systemPrompt 缺省时继承父 AI 提示词副本；父副本为空回退内置模板
  * （与 sys_prompt 注入的"副本非空用副本，空/缺回退内置"语义一致）
  * - 权限：首次调用弹框确认（risk=medium），用户拒绝则中止

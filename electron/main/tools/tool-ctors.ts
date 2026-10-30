@@ -95,7 +95,7 @@ import { ListMcpResourcesTool, ReadMcpResourceTool } from './mcp-resources'
 import { ListMcpPromptsTool, GetMcpPromptTool } from './mcp-prompts'
 import { ListMcpServersTool } from './mcp-servers'
 import { TOOL_MAP } from '@shared/tools/registry'
-import type { BuiltinNonLilithToolId } from '@shared/tools/registry'
+import type { BuiltinToolId } from '@shared/tools/registry'
 import { kernelRegistry } from '../kernel'
 
 export type {
@@ -189,8 +189,8 @@ export function toAnyTool(Ctor: ToolCtor): AnyTool {
 /**
  * 内置工具登记表（主进程侧唯一登记点）：id 为 TOOL_REGISTRY 中元数据的 id，ctor 为实现构造器。
 
- * 编译期一致性（C3）：satisfies 要求 id 命中 BuiltinNonLilithToolId（漏加 registry 元数据即报错），
- * 反向覆盖断言要求 BuiltinNonLilithToolId 无遗漏（registry 有元数据但此处漏登记即报错）——
+ * 编译期一致性（C3）：satisfies 要求 id 命中 BuiltinToolId（漏加 registry 元数据即报错），
+ * 反向覆盖断言要求 BuiltinToolId 无遗漏（registry 有元数据但此处漏登记即报错）——
  * 新增/删除内置工具漏改任一侧都会在 typecheck 阶段报错，而不是运行时静默失效。
  * 统一工具池：所有工具对所有 AI 可注入，由 policy 配置决定实际启用
  * （不再按"前端专属/记忆工作流专属"硬编码分类，工具内部通过 ctx 检查来处理上下文依赖）。
@@ -328,15 +328,15 @@ export const ALL_TOOL_CTORS = [
   { id: 'NotebookEdit', ctor: NotebookEditTool },
   // 轻量代码智能（1 个，延迟披露）：TS/JS 源码四查询（符号树/定义/引用/悬停），零外部二进制
   { id: 'code_intel', ctor: CodeIntelTool }
-] as const satisfies readonly { id: BuiltinNonLilithToolId; ctor: ToolCtor }[]
+] as const satisfies readonly { id: BuiltinToolId; ctor: ToolCtor }[]
 
-// 编译期反向覆盖断言（C3）：要求 BuiltinNonLilithToolId 是 C3RegisteredIds 的子集——
+// 编译期反向覆盖断言（C3）：要求 BuiltinToolId 是 C3RegisteredIds 的子集——
 // TOOL_REGISTRY 有元数据但登记表漏登记（新增工具只改 registry）时，约束失败即报 TS2344。
 // 反向（登记表 id 不在 registry）已由登记表上的 satisfies 拦截（TS2322）。两侧任一漏改都会在 typecheck 报错。
 // 导出仅为消费该编译期断言（避免 lint unused）；无运行时值。
 type C3RegisteredIds = (typeof ALL_TOOL_CTORS)[number]['id']
 type C3AssertAllRegistered<T extends C3RegisteredIds> = T
-export type C3AllRegistered = C3AssertAllRegistered<BuiltinNonLilithToolId>
+export type C3AllRegistered = C3AssertAllRegistered<BuiltinToolId>
 
 // 已删除的退役工具：tool_info / call_tool / get_block / team_unlock / kernel_status /
 // workflow_export / workflow_import（均通过 action 参数合并或清理）

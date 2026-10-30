@@ -444,6 +444,24 @@ const dict = {
   'room.plan.noPlan': { zh: '暂无计划（点右上「立即行动」跑一轮）', en: 'No plan yet (click "Run one round now")' },
   'room.plan.lastTick': { zh: '上一轮', en: 'Last round' },
   'room.plan.actions': { zh: '个动作', en: 'action(s)' },
+  // 前置规划（2026-10-31）：每轮规划的方向段——给方向、不执行、不占 AI 位、不写 RAW、不进记忆工作流
+  'room.preplan.title': { zh: '前置规划', en: 'Preplan' },
+  'room.preplan.on': { zh: '已启用', en: 'On' },
+  'room.preplan.off': { zh: '未启用', en: 'Off' },
+  'room.preplan.desc': {
+    zh: '每轮规划的方向段：前置规划先看环境与近期节奏，给这个 AI 一句方向；具体动作由主 AI 自己选、自己执行。不占 AI 位、不写记忆。',
+    en: 'The direction stage of each planning round: the preplan looks at the environment and recent rhythm, then hands this AI one direction. The main AI still picks and runs every action itself. No AI slot taken, no memory written.'
+  },
+  'room.preplan.history': { zh: '已记节奏', en: 'Rhythm notes' },
+  'room.preplan.historyCount': { zh: '{n} 条', en: '{n} note(s)' },
+  'room.preplan.loadFailed': { zh: '读取前置规划状态失败', en: 'Failed to load preplan state' },
+  'room.preplan.setFailed': { zh: '切换前置规划失败', en: 'Failed to toggle the preplan' },
+  'room.planner.preplan': { zh: '前置规划', en: 'Preplan' },
+  'room.planner.self': { zh: '主AI', en: 'Main AI' },
+  'room.planner.hint': {
+    zh: '本轮规划的方向来源：前置规划 = 方向段先给了方向，主AI再产出完整计划；主AI = 主AI自主规划。',
+    en: 'Where this round’s direction came from: Preplan = the direction stage gave a direction first, then the main AI produced the full plan; Main AI = self-planned.'
+  },
   'room.memory.longTerm': { zh: '长线（可深入分析）', en: 'Long-term (deep analysis)' },
   'room.memory.immediate': { zh: '即时（直接处理）', en: 'Immediate (handle directly)' },
   'room.memory.noTriage': { zh: '暂无分诊结果（跑一轮后显示）', en: 'No triage result yet' },

@@ -152,6 +152,23 @@ export const api = {
   roomWake: (aiId?: number) =>
     ipcRenderer.invoke('room:wake', aiId) as Promise<{ ok: boolean; fired: boolean }>,
 
+  // ===== ROOM 前置规划（2026-10-31 前置规划功能）：主AI的专属影子——只给方向、不执行、不进记忆 =====
+  // 配置按 (uid, aiId) 作用域；uid 由主进程从当前登录态解析，渲染侧只传 aiId。
+  roomPreplanGet: (aiId?: number) =>
+    ipcRenderer.invoke('room:preplan-get', aiId) as Promise<{
+      ok: boolean
+      enabled?: boolean
+      /** 前置规划滚动历史环当前条数（preplan.json；界面显示「它已记住的节奏」） */
+      historyCount?: number
+      error?: string
+    }>,
+  roomPreplanSet: (aiId: number | undefined, enabled: boolean) =>
+    ipcRenderer.invoke('room:preplan-set', { aiId, enabled }) as Promise<{
+      ok: boolean
+      enabled?: boolean
+      error?: string
+    }>,
+
   // ===== ROOM 设备管理区（B-B2）：发现（只读）+ 调用（控制走 requestPermission，fail-closed）=====
   roomDeviceScan: () =>
     ipcRenderer.invoke('room:device-scan') as Promise<{ ok: boolean; devices: unknown[]; error?: string }>,

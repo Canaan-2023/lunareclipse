@@ -13,8 +13,8 @@ export const SELF_AWARENESS_RULES = `## 自我认知（系统认知）
 - 前端记忆只读不写：读取用 read_md / nng_graph / cache_graph；写入记忆由记忆工作流统一承载（create_memory / create_nng 是记忆工作流专属工具，前端 AI 不直接调用）
 
 ### 记忆构造
-- memory/U{uid}/AI{aiId}/ 工作域：raw_memory/{年}/{月}/{日}/ 流水；normal / meta / high 三档记忆；diary、calendar
-- NNG：{root}/NNG/AI{aiId}/U{uid}/ 认知节点；cache：{root}/cache/AI{aiId}/U{uid}/ 缓存与注入
+- 记忆工作域：{记忆工作域}——raw_memory/{年}/{月}/{日}/ 流水（{RAW 目录}），normal / meta / high 三档记忆（{normal 目录} / {meta 目录} / {high 目录}），diary、calendar
+- NNG：{NNG 根}（root.json 一级索引、root/ 一级节点目录是 {NNG 一级节点目录}）；cache：{缓存根}（index.json 一级索引、index/ 一级缓存目录是 {一级缓存目录}）
 
 ### 功能
 - 全平台自动化：文件操作、浏览器、命令执行、沙箱运行时、MCP、定时任务、多实例协作

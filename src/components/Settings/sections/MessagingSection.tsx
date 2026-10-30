@@ -34,11 +34,10 @@ export function MessagingSection({ config, onChange }: { config: AppConfig; onCh
   const [newId, setNewId] = useState('')
   const [newName, setNewName] = useState('')
   const [newType, setNewType] = useState<'p2p' | 'group'>('p2p')
-  const [newAgent, setNewAgent] = useState<'xi' | 'lilith'>('xi')
 
   /**
    * 同步回设置面板 local（关键：防止全局「保存设置」用打开时的旧快照覆盖 messaging）。
-   * 莉莉丝 LilithConnectSection 的 syncLocal 同款——任何变更都必须同步，否则全局保存一按，磁盘新值被旧快照打回。
+   * 任何变更都必须同步，否则全局保存一按，磁盘新值被旧快照打回。
    */
   const syncLocal = (next?: Partial<MessagingConfig>) => {
     onChange({
@@ -96,7 +95,7 @@ export function MessagingSection({ config, onChange }: { config: AppConfig; onCh
     }
   }
 
-  /** 联系人变更自动保存（添加/删除/改 agent 即时落盘 + 同步 local，防全局保存覆盖） */
+  /** 联系人变更自动保存（添加/删除即时落盘 + 同步 local，防全局保存覆盖） */
   const persistContacts = async (next: MessagingContact[]) => {
     setContacts(next)
     syncLocal({ contacts: next })
@@ -110,7 +109,7 @@ export function MessagingSection({ config, onChange }: { config: AppConfig; onCh
     const id = newId.trim()
     const name = newName.trim()
     if (!id || !name) return
-    void persistContacts([...contacts, { id, name, type: newType, agent: newAgent }])
+    void persistContacts([...contacts, { id, name, type: newType }])
     setNewId('')
     setNewName('')
   }
@@ -213,9 +212,6 @@ export function MessagingSection({ config, onChange }: { config: AppConfig; onCh
       <section>
         <div className="mb-3 text-caption uppercase tracking-wider text-fg-muted">{t('settings.msgContactMap')}</div>
         <div className="space-y-2">
-          <div className="rounded-btn bg-bg-muted/50 px-3 py-2 text-[11px] text-fg-muted leading-relaxed">
-            {t('settings.msgMapDesc')}
-          </div>
           {contacts.length > 0 && (
             <div className="space-y-1.5">
               {contacts.map((c, i) => (
@@ -224,18 +220,6 @@ export function MessagingSection({ config, onChange }: { config: AppConfig; onCh
                     {c.name}
                     <span className="ml-1.5 text-[10px] text-fg-muted">{c.type === 'group' ? t('settings.msgGroup') : t('settings.msgPrivate')} · {c.id}</span>
                   </span>
-                  <select
-                    value={c.agent}
-                    onChange={(e) =>
-                      void persistContacts(
-                        contacts.map((x, j) => (j === i ? { ...x, agent: e.target.value as 'xi' | 'lilith' } : x))
-                      )
-                    }
-                    className="rounded-btn border border-border bg-bg-elevated px-2 py-1 text-[11px] text-fg-primary focus:outline-none"
-                  >
-                    <option value="xi">{t('settings.msgAgentXi')}</option>
-                    <option value="lilith">{t('settings.msgAgentLilith')}</option>
-                  </select>
                   <button
                     onClick={() => removeContact(i)}
                     className="text-fg-muted transition-colors hover:text-red-400"
@@ -270,14 +254,6 @@ export function MessagingSection({ config, onChange }: { config: AppConfig; onCh
             >
               <option value="p2p">{t('settings.msgPrivate')}</option>
               <option value="group">{t('settings.msgGroup')}</option>
-            </select>
-            <select
-              value={newAgent}
-              onChange={(e) => setNewAgent(e.target.value as 'xi' | 'lilith')}
-              className="rounded-btn border border-border bg-bg-elevated px-2 py-1.5 text-[11px] text-fg-primary focus:outline-none"
-            >
-              <option value="xi">{t('settings.msgAgentXi')}</option>
-              <option value="lilith">{t('settings.msgAgentLilith')}</option>
             </select>
             <button
               onClick={addContact}

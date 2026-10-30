@@ -166,6 +166,23 @@ describe('会话树索引与规划提示词（ADR-30 / 0.53.18）', () => {
     expect(withPolicy).toContain('屏蔽 CPU')
     expect(withPolicy).toContain('"mute":["cpu"]')
   })
+
+  it('buildPlanPrompt：前置规划指令段——self 模式（不传 preplanInstruction）逐字无该段；传入才出现', () => {
+    // 缺省路径零变化（前置规划功能的硬红线：未启用时与引入前逐字一致）
+    const self = buildPlanPrompt({ text: 'x', mode: 'immediate', allowedTools: [] })
+    expect(self).not.toContain('【前置规划】')
+
+    const withPreplan = buildPlanPrompt({
+      text: 'x',
+      mode: 'immediate',
+      allowedTools: [],
+      preplanInstruction: '先整理记忆区'
+    })
+    expect(withPreplan).toContain('【前置规划】')
+    expect(withPreplan).toContain('先整理记忆区')
+    // 边界语义：前置规划的方向是建议，最终判断权在主AI
+    expect(withPreplan).toContain('建议，不是命令')
+  })
 })
 
 describe('parseLanding：落点形状校验（纯函数；语义校验在应用点）', () => {

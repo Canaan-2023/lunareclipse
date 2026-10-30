@@ -90,7 +90,7 @@ const mockState = vi.hoisted(() => {
     attachWindow: vi.fn(),
     browserDestroyView: vi.fn(async () => {}),
     registerBrowserIpc: vi.fn(),
-    // 捕获 deps：用于断言「启动链有没有把该接的回调接进 IPC」（如莉莉丝启动前补同步）
+    // 捕获 deps：用于断言「启动链有没有把该接的回调接进 IPC」
     registerAllIpc: vi.fn((_ipc: unknown, deps: Record<string, unknown>) => {
       mockState.calls.ipcDeps = deps
     }),
@@ -132,7 +132,6 @@ const mockState = vi.hoisted(() => {
     activationStop: vi.fn(async () => {}),
     autoCleanupStart: vi.fn(),
     autoCleanupStop: vi.fn(async () => {}),
-    lilithStop: vi.fn(async () => {}),
     skillMarketInit: vi.fn(),
     // ---- sessions flush / timerRegistry ----
     sessionFlush: vi.fn(async () => {}),
@@ -283,13 +282,6 @@ vi.mock('../electron/main/services/auto-cleanup', () => ({
   }
 }))
 
-vi.mock('../electron/main/services/lilith-adapter', () => ({
-  LilithAdapter: class {
-    start = vi.fn(async () => 6186)
-    stop = vi.fn(async () => {})
-  }
-}))
-
 vi.mock('../electron/main/services/system-catalog', () => ({
   regenerateSystemCatalog: mockState.calls.regenerateSystemCatalog,
   resolveCatalogSourceRoot: mockState.calls.resolveCatalogSourceRoot
@@ -309,7 +301,7 @@ vi.mock('../electron/main/startup-helpers', () => ({
 }))
 
 // ADR-10 义 B（2026-10-17）：5 个「纯耦合受害方」（server / ws-protocol / execute-tool /
-// instance / lilith-launcher）已改为直接 import `utils/app-root`，以切断 mcp/registry/crash-logger
+// instance / 启动辅助）已改为直接 import `utils/app-root`，以切断 mcp/registry/crash-logger
 // 传递子图。此处必须同步 mock 该模块，否则它们会取到**真实** getAppAnchor
 // （测试环境 app.isPackaged 由 electron mock 决定），装配断言会失真。
 // assertInsideAnchor 走透传：本文件不测越界守卫（由 app-root 单测覆盖）。
@@ -625,13 +617,9 @@ vi.mock('../electron/main/kernel/cordis-runtime', () => ({
   createRootContext: vi.fn(() => ({
     config: {
       init: vi.fn(() => ({
-        load: vi.fn(() => ({ permissionGreenlight: false, theme: 'night', llm: {}, workflowLlm: {}, lilith: { useAdapter: true } })),
+        load: vi.fn(() => ({ permissionGreenlight: false, theme: 'night', llm: {}, workflowLlm: {} })),
         get: vi.fn(() => ({ permissionGreenlight: false, theme: 'night', llm: {}, workflowLlm: {}, tokenBudget: 0 })),
-        // 为什么 getEffective 也要给 lilith：index.ts 的启动编排改用 lilithEnabled(configStore) 守卫，
-        // 而该函数读的是 getEffective().lilith（生产实现 = 核心配置 + 覆盖层，必然含 lilith 段），
-        // 不是 load()。若此处漏给 lilith，守卫判定为「模块关闭」→ 整条莉莉丝链路被跳过，
-        // 「before-quit 释放链」里的 lilithAdapter.stop 断言就会假失败（mock 缺口，非生产缺陷）。
-        getEffective: vi.fn(() => ({ permissionGreenlight: false, theme: 'night', llm: {}, workflowLlm: {}, tokenBudget: 0, browser: {}, lilith: { useAdapter: true } })),
+        getEffective: vi.fn(() => ({ permissionGreenlight: false, theme: 'night', llm: {}, workflowLlm: {}, tokenBudget: 0, browser: {} })),
         save: vi.fn(),
         isLoadFailed: vi.fn(() => false),
         subscribe: vi.fn(),
@@ -695,12 +683,6 @@ vi.mock('../electron/main/kernel/cordis-runtime', () => ({
         // `onEvent` 是装配期被用到的面：ROOM 的「监控看到了」唤醒源订阅它（bootstrap/room-runtime.ts）。
         // 缺它 → initRoomRuntime 抛错 → 整条 whenReady 装配链中断（mock 缺口，非生产缺陷）。
         onEvent: vi.fn(() => () => {})
-      }))
-    },
-    lilith: {
-      create: vi.fn(() => ({
-        start: vi.fn(async () => 6186),
-        stop: mockState.calls.lilithStop
       }))
     },
     governance: {
@@ -785,20 +767,6 @@ describe('批次 A4：app.whenReady() 启动链装配断言', () => {
     expect(mockState.calls.lifecycleStartup).toHaveBeenCalled()
   })
 
-  it('莉莉丝「随月蚀启动」关闭时，手动启动桌宠仍有补同步 MOD 配置的通道', async () => {
-    // 为什么断言这条：桥接的冷启动执行挂在 config.lilith.autoStart 上——
-    // 开关关闭时冷启动完全不碰莉莉丝（不写 MOD 配置、不探测 companion），
-    // 因此「用户手动点启动莉莉丝桌宠」这一刻的补同步回调必须真的接进 IPC 依赖，
-    // 否则 companion 会读到旧 provider → 游戏内莉莉丝连不上月蚀（静默断链）。
-    await vi.waitFor(
-      () => {
-        expect(mockState.calls.registerAllIpc).toHaveBeenCalled()
-      },
-      { timeout: 5000 }
-    )
-    expect(mockState.calls.ipcDeps?.onLilithBeforeLaunch).toBeTypeOf('function')
-  })
-
   it('启动链设置 api:port IPC 供渲染进程取端口', async () => {
     await vi.waitFor(
       () => {
@@ -843,9 +811,6 @@ describe('批次 A4：app.whenReady() 启动链装配断言', () => {
     expect(mockState.calls.autoCleanupStop).toHaveBeenCalled()
     // 会话刷盘
     expect(mockState.calls.sessionFlush).toHaveBeenCalled()
-    // 莉莉丝协议适配器：延后到登录成功（onAuthSuccess）后启动，本场景未登录
-    // 不创建适配器，before-quit 不应触发 stop（避免「未启动却停止」的假断言）
-    expect(mockState.calls.lilithStop).not.toHaveBeenCalled()
     // 浏览器视图销毁 / MCP 断开 / 沙箱 coeffect 回滚 / Cordis 卸载 / 生命周期收尾
     expect(mockState.calls.browserDestroyView).toHaveBeenCalled()
     expect(mockState.calls.mcpDisconnectAll).toHaveBeenCalled()

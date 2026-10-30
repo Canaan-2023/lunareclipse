@@ -7,7 +7,6 @@
 import type { AiAssistConfig } from './ai-assist'
 import type { EvalConfig } from './eval'
 import type { GenerationConfig, ImageGenConfig } from './generation'
-import type { LilithConfig } from './lilith'
 import type { LLMConfig, ContextWindowConfig, ToolResultDistillConfig } from './llm'
 import type { MessagingConfig } from './messaging'
 import type { FrontendToolPolicy } from './tool-policy'
@@ -113,8 +112,6 @@ export interface AppConfig {
    * AI 侧采集须先过 `t1.collector` 授予裁决（ADR-11）。
    */
   collector?: CollectorConfig
-  /** 莉莉丝桌宠接入配置：gamePath=游戏 MOD 目录（companion 所在），autoStart=月蚀启动时是否自动拉起桌宠 */
-  lilith?: LilithConfig
   /** 消息接入（外部平台 → 月蚀大脑）：飞书/企业微信等渠道配置 + 联系人映射 + 白名单 */
   messaging?: MessagingConfig
   /** 图像生成配置（OpenAI 兼容端点，如硅基流动/通义/OpenAI）。enabled=false 时 image_gen 工具不暴露 */

@@ -1,6 +1,6 @@
 {
   "name": "lunareclipse",
-  "version": "0.53.18",
+  "version": "0.53.19",
   "description": "LunarEclipse - ABYSSAC memory system agent",
   "main": "out/main/index.js",
   "type": "module",

@@ -266,6 +266,23 @@ describe('toRoomSnapshot：IPC 载荷 → 界面快照', () => {
     // 旧字段（房间自持会话 / 两棵树）已退役：不再映射进快照
     expect(toRoomSnapshot({ sessionId: 'room-autonomous-U1-AI1' }, 0).hostSessionId).toBeUndefined()
   })
+
+  it('规划者与前置规划历史条数（2026-10-31 前置规划功能）：合法透传、非法丢弃', () => {
+    const snap = toRoomSnapshot({ planner: { kind: 'preplan' }, preplanHistoryCount: 7 }, 0)
+    expect(snap.planner).toEqual({ kind: 'preplan' })
+    expect(snap.preplanHistoryCount).toBe(7)
+
+    // self 显式透传；缺省（旧状态不带）按 self 语义由界面回落
+    expect(toRoomSnapshot({ planner: { kind: 'self' } }, 0).planner).toEqual({ kind: 'self' })
+    expect(toRoomSnapshot({}, 0).planner).toBeUndefined()
+    expect(toRoomSnapshot({}, 0).preplanHistoryCount).toBeUndefined()
+
+    // 非法值整条丢弃：kind 闭集外的 planner、非有限数的条数
+    expect(toRoomSnapshot({ planner: { kind: 'robot' } }, 0).planner).toBeUndefined()
+    expect(toRoomSnapshot({ planner: 'preplan' }, 0).planner).toBeUndefined()
+    expect(toRoomSnapshot({ preplanHistoryCount: '7' }, 0).preplanHistoryCount).toBeUndefined()
+    expect(toRoomSnapshot({ preplanHistoryCount: NaN }, 0).preplanHistoryCount).toBeUndefined()
+  })
 })
 
 describe('activityZone：背景跟着「在哪类空间做事」切', () => {

@@ -17,7 +17,7 @@ import { buildKernelStatus } from '../kernel/introspection'
 function summarizeConfig(cfg: Record<string, unknown>, filterKey?: string): unknown {
   const KEYS = [
     'aiName', 'persona', 'theme',
-    'frontendToolPolicy', 'lilith',
+    'frontendToolPolicy',
     'llm', 'workflowLlm', 'contextWindow',
     'webSearchEnabled', 'permissionGreenlight',
     'messaging', 'rawMaxChars'
@@ -41,7 +41,7 @@ action=effective 返回当前生效配置结构（核心+覆盖层合并），�
   parameters = [
     { name: 'action', type: 'string' as const, description: 'overview（默认）/ detail / effective', required: false },
     { name: 'kind', type: 'string' as const, description: '注册类别（detail 模式：tool/hook/prompt/configPatch/command）', required: false },
-    { name: 'key', type: 'string' as const, description: '配置项名（effective 模式：如 frontendToolPolicy / lilith / contextWindow）', required: false }
+    { name: 'key', type: 'string' as const, description: '配置项名（effective 模式：如 frontendToolPolicy / contextWindow）', required: false }
   ]
 
   async execute(params: Record<string, unknown>, ctx?: ToolContext): Promise<ToolResult> {

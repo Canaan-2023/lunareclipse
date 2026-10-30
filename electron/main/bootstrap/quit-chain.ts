@@ -104,11 +104,6 @@ await safe('autoCleanup.stop', () => state.autoCleanup?.stop())
 await safe('sessionStore.flush', () => deps.sessionStore.flush())
 // 关闭 API server（HTTP + WebSocket）
 await safe('closeApiServer', () => closeApiServer())
-// 关闭莉莉丝协议适配器（释放 6186 端口）
-if (state.lilithAdapter) {
-  await safe('lilithAdapter.stop', () => state.lilithAdapter!.stop())
-  state.lilithAdapter = null
-}
 // 销毁浏览器视图（关闭 webContents 防止泄漏）
 await safe('browserViewManager.destroyView', () => browserViewManager.destroyView())
 // 断开所有 MCP server 连接（关闭子进程 / HTTP 连接）

@@ -20,7 +20,7 @@ import type { WorkflowEngineEvent } from '@shared/workflow/types'
 import type { TimerRegistry, TimerHandle } from './timer-registry'
 import { updateRawMemoryProgress } from '../services/raw-memory-next-batch'
 import type { RawMemoryEntry } from '../services/raw-memory-next-batch'
-import { loadWorkflowSharedPrompts } from '../prompts/loader'
+import { resolveWorkflowPromptInput } from '../prompts/loader'
 import { ScopeQueue, collectScopedBatches } from './scope-queue'
 import {
   DEFAULT_CONFIG,
@@ -375,13 +375,12 @@ export class MemoryWorkflowScheduler {
     }
     this.writePendingBatch(pending)
 
-    const workflowPrompts = loadWorkflowSharedPrompts()
     try {
       this.callbacks.onWorkflowStart?.('memory-workflow')
       const instance = await wm.runInstance({
         templateId: 'wf_default_memory_dispatcher',
         input: {
-          workflow_prompts: workflowPrompts,
+          ...resolveWorkflowPromptInput(this.paths, scope, raw.path),
           raw_path: raw.path,
           raw_content: raw.content
         }
@@ -461,12 +460,11 @@ export class MemoryWorkflowScheduler {
     task: DispatcherTask,
     retryCount: number
   ): Promise<void> {
-    const workflowPrompts = loadWorkflowSharedPrompts()
     try {
       const instance = await wm.runInstance({
         templateId: 'wf_default_memory_agent',
         input: {
-          workflow_prompts: workflowPrompts,
+          ...resolveWorkflowPromptInput(this.paths, pending.scope, task.RAW路径),
           记忆路径: task.记忆路径,
           描述: task.描述,
           主题: task.主题,
@@ -516,7 +514,6 @@ export class MemoryWorkflowScheduler {
 
   /** 启动审查实例（子 AGENT 全部完成后） */
   private async launchReview(wm: WorkflowManager, pending: PendingBatch): Promise<void> {
-    const workflowPrompts = loadWorkflowSharedPrompts()
     pending.stage = 'review'
     pending.instanceId = null
     this.writePendingBatch(pending)
@@ -524,7 +521,7 @@ export class MemoryWorkflowScheduler {
       const instance = await wm.runInstance({
         templateId: 'wf_default_memory_review',
         input: {
-          workflow_prompts: workflowPrompts,
+          ...resolveWorkflowPromptInput(this.paths, pending.scope, pending.rawPath),
           task_list: pending.dispatcherResult ?? '',
           agent_results: (pending.agentResults ?? []).join('\n\n'),
           raw_path: pending.rawPath ?? ''

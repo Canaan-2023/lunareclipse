@@ -7,8 +7,7 @@
 import {
   useState,
   useMemo,
-  useEffect,
-  useCallback
+  useEffect
 } from 'react'
 import {
   Plus,
@@ -20,7 +19,6 @@ import {
   BarChart3,
   ChevronsLeft,
   ChevronsRight,
-  Heart,
   Pin,
   ShieldCheck,
   Wand2,
@@ -67,20 +65,14 @@ const sidebarWidth = useAppStore((s) => s.sidebarWidth)
   const memoryGraphOpen = useAppStore((s) => s.memoryGraphOpen)
   const openRightPanelTab = useAppStore((s) => s.openRightPanelTab)
   const activeDrawer = useAppStore((s) => s.activeDrawer)
-  const lilithChatOpen = useAppStore((s) => s.lilithChatOpen)
-  const openLilithChat = useAppStore((s) => s.openLilithChat)
-  const closeLilithChat = useAppStore((s) => s.closeLilithChat)
   const currentUser = useAppStore((s) => s.currentUser)
   const switchUser = useAppStore((s) => s.switchUser)
-  const lilithEnabled = useAppStore((s) => s.config.lilith?.enabled !== false)
   const pinnedSessions = useAppStore((s) => s.pinnedSessions)
   const togglePinSession = useAppStore((s) => s.togglePinSession)
   const t = useT()
 
 const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
-  const [lilithPreview, setLilithPreview] = useState<string | null>(null)
-  const [lilithTotal, setLilithTotal] = useState(0)
   // 待删除会话：非 null 时弹出月蚀风格确认弹窗（替代原生 confirm，评审 MAJOR-1 后续）
   const [pendingDelete, setPendingDelete] = useState<Session | null>(null)
 
@@ -99,31 +91,7 @@ const [editingId, setEditingId] = useState<string | null>(null)
       })
   }, [])
 
-  const refreshLilithPreview = useCallback(async () => {
-    try {
-      const port = window.lunareclipse?.getApiPort?.()
-      if (!port) return
-      const r = await fetch(`http://127.0.0.1:${port}/api/lilith/history`)
-      const data = await r.json()
-      if (Array.isArray(data.messages)) {
-        const last = data.messages[data.messages.length - 1]
-        const text = last?.content?.replace(/\s+/g, ' ').trim()
-        setLilithPreview(text ? (text.length > 24 ? text.slice(0, 24) + '...' : text) : null)
-        setLilithTotal(typeof data.total === 'number' ? data.total : data.messages.length)
-      }
-    } catch {
-      /* 月蚀后端未就绪，忽略 */
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!lilithEnabled) return
-    refreshLilithPreview()
-    const t = setInterval(refreshLilithPreview, 3000)
-    return () => clearInterval(t)
-  }, [refreshLilithPreview, lilithEnabled])
-
-const sortedSessions = useMemo(() => {
+  const sortedSessions = useMemo(() => {
     const pinned = sessions.filter((s) => pinnedSessions.includes(s.id))
       .sort((a, b) => b.updatedAt - a.updatedAt)
     const rest = sessions.filter((s) => !pinnedSessions.includes(s.id))
@@ -131,7 +99,7 @@ const sortedSessions = useMemo(() => {
     return [...pinned, ...rest]
   }, [sessions, pinnedSessions])
 
-  // 会话按 AI 拆分分组：组序 = 本月蚀(1) 优先，其余按 aiId 升序（莉莉丝独立窗口不占会话列表）
+  // 会话按 AI 拆分分组：组序 = 本月蚀(1) 优先，其余按 aiId 升序
   const sessionGroups = useMemo(() => {
     const map = new Map<number, Session[]>()
     for (const s of sortedSessions) {
@@ -217,7 +185,7 @@ const sortedSessions = useMemo(() => {
           })}
         </div>
 
-        {/* 底部：面板快捷入口 + 监控可视化 + 莉莉丝 + 头像 */}
+        {/* 底部：面板快捷入口 + 监控可视化 + 头像 */}
         <div className="flex flex-col items-center gap-1 border-t border-border-subtle pt-1.5">
           {/* 常用面板快捷入口 */}
           <div className="flex flex-col items-center gap-0.5 pb-1">
@@ -240,22 +208,6 @@ const sortedSessions = useMemo(() => {
             })}
           </div>
           <div className="w-6 border-t border-border-subtle" />
-          {lilithEnabled && (
-            <button
-              onClick={() => {
-                if (lilithChatOpen) closeLilithChat()
-                else openLilithChat()
-              }}
-              className={`flex h-7 w-7 items-center justify-center rounded-btn transition-all duration-150 active:scale-95 ${
-                lilithChatOpen
-                  ? 'bg-accent/15 text-accent'
-                  : 'text-fg-muted hover:bg-bg-muted hover:text-fg-secondary'
-              }`}
-              title={lilithChatOpen ? t('sidebar.lilithClose') : t('sidebar.lilithOpen')}
-            >
-              <Heart size={14} />
-            </button>
-          )}
 <button
             onClick={() => {
               useAppStore.getState().setVizPanelOpen(true)
@@ -343,49 +295,6 @@ className="titlebar-seamless flex shrink-0 flex-col overflow-hidden border-r bor
 
       {/* 会话列表 */}
       <div className="flex-1 overflow-y-auto px-2 pb-2">
-        {/* 莉莉丝 · 置顶独立会话栏 */}
-        {lilithEnabled && (
-                      <div
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                if (lilithChatOpen) closeLilithChat()
-                else openLilithChat()
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  if (lilithChatOpen) closeLilithChat()
-                  else openLilithChat()
-                }
-              }}
-              className={`group relative mb-1 flex cursor-pointer items-center gap-2 rounded-btn px-3 py-2 transition-all duration-150 ${
-              lilithChatOpen
-                ? 'bg-accent/15 text-fg-primary ring-1 ring-inset ring-accent/30'
-                : 'text-fg-secondary hover:bg-bg-muted/70 active:bg-bg-muted'
-            }`}
-            title={lilithChatOpen ? t('sidebar.lilithClose') : t('sidebar.lilithOpen')}
-          >
-            {/* 莉莉丝会话行是可点击整行（切换对话）：补 role/tabIndex/键盘处理保证键盘可达，
-                整行点击是桌面临时对话的主入口，不能删。 */}
-            {lilithChatOpen && (
-              <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-full bg-accent" />
-            )}
-            <Heart size={14} className={`shrink-0 ${lilithChatOpen ? 'text-accent' : 'text-fg-muted'}`} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-body">{t('sidebar.lilith')}</span>
-                <span className="shrink-0 text-micro text-fg-muted">
-                  {lilithTotal > 0 ? `${lilithTotal}` : t('sidebar.lilithDesktop')}
-                </span>
-              </div>
-              <span className="mt-0.5 block truncate text-caption text-fg-muted">
-                {lilithPreview ?? t('sidebar.lilithShared')}
-              </span>
-            </div>
-          </div>
-        )}
-
 {sessionGroups.length === 0 ? (
           <div className="px-3 py-8 text-center text-caption text-fg-muted">
             {t('sidebar.emptyHint')}

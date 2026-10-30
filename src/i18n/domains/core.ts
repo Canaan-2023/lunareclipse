@@ -41,16 +41,12 @@ const dict = {
   'sidebar.sessions': { zh: '会话', en: 'Sessions' },
   'sidebar.newSession': { zh: '新建会话', en: 'New Session' },
   'sidebar.empty': { zh: '新建会话开始对话', en: 'Create a session to start' },
-  'sidebar.lilithOpen': { zh: '打开莉莉丝会话', en: 'Open Lilith Chat' },
-  'sidebar.lilithClose': { zh: '关闭莉莉丝会话', en: 'Close Lilith Chat' },
-  'sidebar.lilithTip': { zh: '与游戏内共享上下文', en: 'Shared context with game' },
 
   // ===== 右侧面板 Tab =====
   'tab.chat': { zh: '会话', en: 'Chat' },
   'tab.browser': { zh: '浏览器', en: 'Browser' },
   'tab.workshop': { zh: '文件工坊', en: 'Workshop' },
   'tab.skill': { zh: 'SKILL', en: 'SKILL' },
-  'tab.lilith': { zh: '莉莉丝', en: 'Lilith' },
   'tab.plugin': { zh: '插件', en: 'Modules' },
   'tab.cron': { zh: '定时任务', en: 'Cron' },
   'tab.hook': { zh: 'Hook', en: 'Hook' },

@@ -2,13 +2,12 @@
  * @category 工具
  * @summary 工具策略与过滤（shared）
  *
- * 为什么存在：各端（前端 AI / 记忆工作流 / 莉莉丝）看到的工具面不同，需要按策略与排除清单过滤，并支持用户配置覆盖默认值。
+ * 为什么存在：各端（前端 AI / 记忆工作流）看到的工具面不同，需要按策略与排除清单过滤，并支持用户配置覆盖默认值。
  * 不删理由：本模块由 `shared/tools/registry.ts` 按 ADR-06 拆分而来，宿主降级为 barrel
  * 保全部消费方零改动；职责单一化后，改动面互不干扰（原单文件同时承载类型/目录/动态注册/
  * 策略/标签五类职责，任一处改动都会与其它职责在 merge 上冲突）。
  */
 
-import type { ToolPolicy } from '../types'
 import type { ToolMeta } from './meta'
 import { TOOL_REGISTRY } from './catalog'
 import { getAllToolMetas, findToolMeta } from './dynamic'
@@ -16,36 +15,6 @@ import { getAllToolMetas, findToolMeta } from './dynamic'
 /** 获取前端 AI 工具列表（含 MCP 动态注册的工具） */
 export function getFrontendTools(): ToolMeta[] {
   return getAllToolMetas().filter((t) => t.agents.includes('frontend'))
-}
-
-/**
- * 月蚀专属排除清单（用户"角色塑造是给月蚀的"——莉莉丝工具面收窄）：
- * 这些是月蚀的系统管理/自我管理工具，莉莉丝（角色）不该有：
- * - 自我塑造：设定角色/更新角色设定/改自己名字（月蚀改自己 persona 的通道）
- * - AI 自我管理：用户档案/轻量记忆/SKILL 维护/自我安全/自我重启
- * - 任务编排：派发子任务/任务清单/上下文管理
- * - 工作流编排：workflow_* 8 个
- * 保留：莉莉丝专属（lilith_*）+ 记忆/文件/浏览器/联网 + 有授权通道的高风险工具（run_command 等，
- * 依授权体系保留而非默认排除——高危工具在角色不擅权的边界内仍可执行系统操作）
- */
-const LILITH_EXCLUDED_TOOLS = new Set([
-  'update_abyss_md', 'update_ai_name',
-  'create_ai',
-  'search_users', 'get_user_profile',
-  'skill_manage', 'use_skill', 'curator',
-  'app_restart',
-  'kernel_inspect', 'module_inspect',
-  'Agent', 'TodoWrite', 'context_usage',
-  'batch_tools', // 批量执行依赖前端主链路的 executeSubTool 注入（toolExecutorsRef），莉莉丝侧无此注入
-  'workflow_define', 'workflow_run', 'workflow_status', 'workflow_modify', 'workflow_save',
-  'workflow_list', 'workflow_edit', 'workflow_io'
-])
-
-/** 获取莉莉丝工具列表（边界隔离：前端工具 = 她的能力面 + 莉莉丝专属工具 = 她的记忆工具；排除月蚀专属管理类） */
-export function getLilithTools(): ToolMeta[] {
-  return getAllToolMetas().filter(
-    (t) => (t.agents.includes('frontend') || t.agents.includes('lilith')) && !LILITH_EXCLUDED_TOOLS.has(t.id)
-  )
 }
 
 /** 获取记忆工作流工具列表（含 MCP 动态注册的工具） */
@@ -76,66 +45,15 @@ export function isToolEnabled(
  * 在 isToolEnabled 之前过滤：先判断工具归属，再判断启用策略。
  * - 前端 AI 只能看到 agents 含 'frontend' 的工具
  * - 记忆工作流只能看到 agents 含 'dmn' 的工具
- * - 莉莉丝（'lilith'）看到 前端工具 + 莉莉丝专属工具（边界隔离：
- *   她的能力面 = 前端全量（agent 模式/白名单），外加她自己的记忆工具 lilith_*）
 
  * @param toolId 工具 id
- * @param agent 'frontend' | 'dmn' | 'lilith'
+ * @param agent 'frontend' | 'dmn'
  */
-export function isToolForAgent(toolId: string, agent: 'frontend' | 'dmn' | 'lilith'): boolean {
+export function isToolForAgent(toolId: string, agent: 'frontend' | 'dmn'): boolean {
   // 修复（前#25 配套）：MCP 动态工具同样可判定（findToolMeta 查静态 + 动态）
   const meta = findToolMeta(toolId)
   if (!meta) return false
-  if (agent === 'lilith') {
-    // 莉莉丝工具面 = 前端工具 + 莉莉丝专属工具，排除月蚀专属管理类（用户"角色塑造是给月蚀的"）
-    return (meta.agents.includes('frontend') || meta.agents.includes('lilith')) && !LILITH_EXCLUDED_TOOLS.has(toolId)
-  }
   return meta.agents.includes(agent)
-}
-
-/**
- * 构建莉莉丝工具策略（用户需求：工具可配置，与常规线路连通）。
- * 与记忆工作流同一套白名单机制：仅启用指定工具，禁用其余前端可用工具。
- * 默认白名单 = 记忆/情绪/浏览器类（memory/lilith_player_memory/lilith_lore_query/lilith_emotion/browser_*——她会"记得"事）；用户在设置页可增删。
- */
-export function buildLilithToolPolicy(enabledTools: string[]): Record<string, { enabled: boolean }> {
-  const enabledSet = new Set(enabledTools)
-  const policy: Record<string, { enabled: boolean }> = {}
-for (const tool of TOOL_REGISTRY as readonly ToolMeta[]) {
-    // 莉莉丝工具集 = 前端可用工具 + 莉莉丝专属工具（边界隔离后 lilith_* 标 agents ['lilith']），
-    // 排除月蚀专属管理类（LILITH_EXCLUDED_TOOLS）
-    if ((tool.agents.includes('frontend') || tool.agents.includes('lilith')) && !tool.isMechanism && !LILITH_EXCLUDED_TOOLS.has(tool.id)) {
-      policy[tool.id] = { enabled: enabledSet.has(tool.id) }
-    }
-  }
-  return policy
-}
-
-/** 莉莉丝默认工具策略（记忆类 + 浏览器类 + 情绪控制白名单；用户配置覆盖） */
-export const DEFAULT_LILITH_TOOL_POLICIES: Record<string, { enabled: boolean }> = buildLilithToolPolicy([
-  // 记忆类（她会"记得"事）
-  'memory',
-  'lilith_player_memory', 'lilith_lore_query',
-  // 情绪控制（用户明确：莉莉丝控制莉莉丝——她自己控制 LIVE2D 情绪/动画）
-  'lilith_emotion',
-  // 浏览器类（用户需求："解除一点限制，让她能完整操控浏览器，输出保持风格"）
-  // 注意：browser_* 是 bundled/headless-browser 插件动态注册的工具，不在静态 TOOL_REGISTRY 中，
-  // buildLilithToolPolicy 只遍历静态表，以下 id 实际不会生成 policy 条目——插件工具默认启用由其
-  // meta.defaultEnabled（=true）决定，并经 tool-registry 的 isToolEnabled 过滤支持设置页开关。
-  // 此处保留真实存在的 8 个 id 作语义白名单文档，便于读者核对插件工具面。
-  'browser_navigate', 'browser_snapshot', 'browser_click', 'browser_type',
-  'browser_scroll', 'browser_evaluate', 'browser_status', 'browser_takeover'
-])
-
-/** 合并莉莉丝工具策略：默认白名单基础上应用用户配置（用户可启用额外工具或关闭记忆类） */
-export function mergeLilithToolPolicy(userPolicy?: Record<string, ToolPolicy>): Record<string, { enabled: boolean }> {
-  const merged: Record<string, { enabled: boolean }> = { ...DEFAULT_LILITH_TOOL_POLICIES }
-  if (userPolicy) {
-    for (const [id, p] of Object.entries(userPolicy)) {
-      merged[id] = { enabled: p.enabled }
-    }
-  }
-  return merged
 }
 
 /**

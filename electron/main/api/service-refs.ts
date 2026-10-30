@@ -1,16 +1,16 @@
 /**
  * @category 核心
- * @summary 后端服务的进程级引用容器（13 引用单 owner）+ 只读 getter + 统一释放链
+ * @summary 后端服务的进程级引用容器（引用单 owner）+ 只读 getter + 统一释放链
  *
- * 为什么存在：`startApiServer` 是单一大闭包，13 个进程级引用（HTTP/WS server、配置订阅解绑、
+ * 为什么存在：`startApiServer` 是单一大闭包，进程级引用（HTTP/WS server、配置订阅解绑、
  * 加载器与调度器实例、API 令牌、无头对话运行器等）此前以裸模块级 `let` 散落在 `server.ts` 顶部，
  * `closeApiServer` 再逐个人工释放——创建清单与释放清单靠人工对齐，漏一个即端口/句柄/订阅泄漏。
- * 本模块把这 13 个引用收进单一容器：读写在 `serviceRefs` 上完成，释放收敛为一次
+ * 本模块把这些引用收进单一容器：读写在 `serviceRefs` 上完成，释放收敛为一次
  * `releaseServiceRefs()`，创建与释放不再跨千行手工对齐。
  *
- * 什么作用：导出 `serviceRefs`（唯一可变状态）、4 个只读 getter（`getApiToken` /
- * `getMessagingService` / `getHeadlessChatRunner` / `getGeoEnvText`）与 `releaseServiceRefs()`，
- * 以及常量 `SYSTEM_INJECTED_SESSION_ID`。宿主 `server.ts` 以 re-export 保持对外导入路径不变。
+ * 什么作用：导出 `serviceRefs`（唯一可变状态）、只读 getter（`getApiToken` /
+ * `getMessagingService` / `getHeadlessChatRunner` / `getGeoEnvText` / `getRestrictTools` 等）与
+ * `releaseServiceRefs()`，以及常量 `SYSTEM_INJECTED_SESSION_ID`。宿主 `server.ts` 以 re-export 保持对外导入路径不变。
  *
  * 不删理由：容器是「引用生命周期」的唯一 owner。删掉它，释放链重新散落回宿主，
  * 「新增引用忘记登记释放」的缺陷模式会复发（收编前已实际出现于配置订阅泄漏）。
@@ -77,6 +77,12 @@ export interface ServiceRefs {
    * import 房间域模块，故由组合根写入、`server.ts` 只读。
    */
   extraToolExecutorsRef: ((purpose: string | undefined, aiId?: number) => ToolExecutor[]) | null
+  /**
+   * **用途收窄**名单提供者（前置规划功能）：返回非 null 名单 = 本轮工具集按名收窄到名单内
+   * （名单外工具物理不可见）；null = 不收窄。与 `extraToolExecutorsRef` 方向相反（一个加一个减），
+   * 同走本容器的原因相同（§3.4：跨域装配只许在 `bootstrap/`，收窄名单的真源在房间域）。
+   */
+  restrictToolsRef: ((purpose: string | undefined, aiId?: number) => readonly string[] | null) | null
   /** 当前环境注入文本 getter（地理位置/天气等；释放时清空） */
   geoEnvTextRef: (() => string) | null
 }
@@ -96,6 +102,7 @@ export const serviceRefs: ServiceRefs = {
   streamSessionRef: null,
   headlessChatRunnerRef: null,
   extraToolExecutorsRef: null,
+  restrictToolsRef: null,
   geoEnvTextRef: null
 }
 
@@ -140,9 +147,16 @@ export function getExtraToolExecutors(purpose: string | undefined, aiId?: number
 }
 
 /**
- * 系统注入消息转发月蚀时的专用会话 ID：健康检查/激活事件等不占用莉莉丝会话，
+ * 取某用途的工具**收窄**名单（无头链路 `restrictTools` 的读取点）。
+ * 未登记 / 该用途无收窄 → null（= 工具面与引入前逐字一致）。
+ */
+export function getRestrictTools(purpose: string | undefined, aiId?: number): readonly string[] | null {
+  return serviceRefs.restrictToolsRef?.(purpose, aiId) ?? null
+}
+
+/**
+ * 系统注入消息转发月蚀时的专用会话 ID：健康检查/激活事件等不占用用户会话，
  * 固定在月蚀侧会话持久化，多轮系统事件可追溯，回复原路返回调用方（不被吞）。
- * generateLilithReply 与 lilith-adapter 的 onSystemInjected 一致使用该会话。
  */
 export const SYSTEM_INJECTED_SESSION_ID = 'system_injected_events'
 
@@ -168,12 +182,14 @@ export function releaseServiceRefs(): void {
     ['streamSessionRef', serviceRefs.streamSessionRef],
     ['headlessChatRunnerRef', serviceRefs.headlessChatRunnerRef],
     ['extraToolExecutorsRef', serviceRefs.extraToolExecutorsRef],
+    ['restrictToolsRef', serviceRefs.restrictToolsRef],
     ['geoEnvTextRef', serviceRefs.geoEnvTextRef],
     ['wss', serviceRefs.wss],
     ['server', serviceRefs.server]
   ]
   serviceRefs.headlessChatRunnerRef = null
   serviceRefs.extraToolExecutorsRef = null
+  serviceRefs.restrictToolsRef = null
   serviceRefs.geoEnvTextRef = null
   if (serviceRefs.unsubscribeConfig) {
     serviceRefs.unsubscribeConfig()

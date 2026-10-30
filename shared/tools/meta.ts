@@ -50,10 +50,10 @@ export interface ToolMeta {
   /**
    * 该工具的默认归属 agent（仅影响 UI 配置面板默认展示分组，不影响工厂函数注入）。
    * 统一工具池后，所有工具对所有 AI 可注入，由 toolsPolicy 配置决定实际启用。
-   * 'frontend' = 前端 AI 默认启用；'dmn' = 记忆工作流默认启用；'lilith' = 莉莉丝专属（工具边界隔离）；
-   * 两者/三者都列 = 对应端默认启用。
+   * 'frontend' = 前端 AI 默认启用；'dmn' = 记忆工作流默认启用；
+   * 两者都列 = 对应端默认启用。
    */
-  agents: readonly ('frontend' | 'dmn' | 'lilith')[]
+  agents: readonly ('frontend' | 'dmn')[]
   /**
    * 声明式能力标签（如 'system:input'、'filesystem:write'、'network'）。
    * CapabilityGuard 按此做结构化拦截：denyCaps 命中任一则拦、allowCaps 白名单模式。

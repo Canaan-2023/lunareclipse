@@ -346,5 +346,3 @@ export function WorkspaceConfigSection() {
   )
 }
 
-/* ====== 莉莉丝桌宠连接设置 ====== */
-

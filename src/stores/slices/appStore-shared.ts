@@ -104,8 +104,6 @@ export const wsRuntime = {
   wsRetryCount: 0,
   /** WS 重连定时器句柄（cleanupApp 时需清除，防止泄漏） */
   wsReconnectTimer: undefined as ReturnType<typeof setTimeout> | undefined,
-  /** 莉莉丝会话切走前的会话上下文快照（openLilithChat 存 / closeLilithChat 恢复） */
-  lilithPrevSession: null as { sessionId: string | null; messages: ChatMessage[] } | null,
   /** 沙箱运行状态兜底定时器：code:done 丢失时强制复位 sandboxRunning */
   sandboxRunFallbackTimer: undefined as ReturnType<typeof setTimeout> | undefined,
   /** 最近一次沙箱执行的语言和代码（onDone 回调无法从闭包获取，用模块级变量传递） */

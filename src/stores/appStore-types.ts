@@ -15,7 +15,7 @@ type ConnectionStatus = 'idle' | 'streaming' | 'error'
  * 标签页类型：'chat' 是永久的会话标签（不可关闭），其余为功能面板标签。
  * 浏览器 / 代码沙箱 / 文件预览 / SKILL / 插件 / 定时任务 / Hook 检视 / 日历 + 动态模块面板（plugin:{id}）
  */
-export type RightPanelTabId = 'chat' | 'browser' | 'sandbox' | 'file' | 'workshop' | 'skill' | 'lilith' | 'plugin' | 'cron' | 'hook' | 'todo' | 'calendar' | 'admin' | 'backup' | 'friend' | 'chatRoom' | 'publishBoard' | 'social' | 'ai' | 'profile' | (string & {})
+export type RightPanelTabId = 'chat' | 'browser' | 'sandbox' | 'file' | 'workshop' | 'skill' | 'plugin' | 'cron' | 'hook' | 'todo' | 'calendar' | 'admin' | 'backup' | 'friend' | 'chatRoom' | 'publishBoard' | 'social' | 'ai' | 'profile' | (string & {})
 
 interface WorkflowAskPrompt {
   workflowId: string
@@ -86,8 +86,6 @@ export interface AppState {
   currentSessionModel: string | null
   /** 当前会话的代码审查讨论开关：开关打开时回复完成后触发多轮审查者↔执行者讨论 */
   currentSessionCodeReview: boolean
-  /** 莉莉丝会话是否打开（会话栏置顶独立栏，进入主聊天窗口与桌宠对话） */
-  lilithChatOpen: boolean
   /** 正在执行的工具调用列表（tool_start 进入，tool_end 移除） */
   activeToolCalls: ActiveToolCall[]
   /** 任务清单（计划面板常驻展示；TodoWrite 工具调用后刷新） */
@@ -241,10 +239,6 @@ export interface AppState {
   answerWorkflowQuestion: (workflowId: string, answer: string | null) => Promise<void>
   dismissWorkflowAsk: () => void
   setSessionModel: (model: string | null) => Promise<void>
-  /** 打开莉莉丝会话（主聊天窗口与桌宠对话，与游戏内共享上下文） */
-  openLilithChat: () => void
-  /** 关闭莉莉丝会话，回到普通会话视图 */
-  closeLilithChat: () => void
 
   /** 切换当前会话的代码审查模式开关（持久化到 session） */
   toggleCodeReview: (enabled: boolean) => Promise<void>

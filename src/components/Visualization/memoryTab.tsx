@@ -35,7 +35,7 @@ interface NngTreeNode {
 /**
  * 记忆 tab：只显示分类文件夹树（六分类懒加载），
  * 移除 normal/meta/high 混排的「记忆文件」列表——文件按分类文件夹组织，点开才扫。
- * 多 AI：切换器按 AIID 动态渲染全部启用 AI（不再硬编码月蚀/莉莉丝），各看各的记忆体系
+ * 多 AI：切换器按 AIID 动态渲染全部启用 AI，各看各的记忆体系
  */
 export function MemoryTab() {
   const [tree, setTree] = useState<MemoryDirectoryNode[] | null>(null)

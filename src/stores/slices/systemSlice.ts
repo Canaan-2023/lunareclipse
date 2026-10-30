@@ -131,16 +131,11 @@ export function createSystemSlice(set: SliceSet, get: SliceGet): SystemSlice {
         // 否则 Settings 页显示旧值，用户保存还会覆盖 AI 的修改。
         if (api.onConfigChange) {
           wsRuntime.appUnsubscribers.push(api.onConfigChange((newConfig: AppConfig) => {
-            const prev = get()
             set({
               config: newConfig,
               // 代码审查全局开关：config 变化时同步（切会话/设置页改动都走这里）
               currentSessionCodeReview: newConfig.codeReview === true
             })
-            // 关闭莉莉丝总开关时，自动收起莉莉丝窗口并恢复切走前的会话
-            if (newConfig.lilith?.enabled === false && prev.lilithChatOpen) {
-              get().closeLilithChat()
-            }
           }))
         }
 
@@ -426,12 +421,7 @@ export function createSystemSlice(set: SliceSet, get: SliceGet): SystemSlice {
       if (!res?.ok) {
         throw new Error(res?.error || '保存配置失败')
       }
-      const prev = get()
       set({ config })
-      // 关闭莉莉丝总开关时，自动收起莉莉丝窗口并恢复切走前的会话
-      if (config.lilith?.enabled === false && prev.lilithChatOpen) {
-        get().closeLilithChat()
-      }
     },
 
     // 上下文块树改造：switchDmnMode 已移除（模式概念退役）

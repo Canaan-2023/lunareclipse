@@ -11,7 +11,6 @@ import { Context, Service } from '../vendor/cordis/index.ts'
 import { SkillLoader } from '../skills/loader'
 import { McpClientManager } from '../mcp/client-manager'
 import { browserManager } from '../tools/browser-manager'
-import { LilithAdapter, type LilithAdapterOptions } from '../services/lilith-adapter'
 import { SubAgentManager } from '../sub-agent'
 import type { NamedTool, ConcurrencyConfig, SubAgentExecuteFn, SubAgentEvent } from '../sub-agent'
 import { CronScheduler } from '../cron/scheduler'
@@ -39,8 +38,6 @@ declare module '../vendor/cordis/context.ts' {
     mcp: McpService
     /** 浏览器管理器（模块级单例包装） */
     browser: BrowserService
-    /** 莉莉丝适配器工厂（多实例；仅链路 B 可选开关启用） */
-    lilith: LilithService
     /** 子 agent 管理器工厂（多实例：前端 AI / 记忆工作流各一） */
     subagent: SubAgentService
     /** 定时任务调度器工厂（多实例：前端 / 记忆工作流各一） */
@@ -132,18 +129,6 @@ export class BrowserService extends Service {
 
   constructor(ctx: Context) {
     super(ctx, 'browser')
-  }
-}
-
-/** ctx.lilith：莉莉丝适配器工厂（多实例——仅 config.lilith.useAdapter 的链路 B 启用） */
-export class LilithService extends Service {
-  constructor(ctx: Context) {
-    super(ctx, 'lilith')
-  }
-
-  /** 创建 LilithAdapter（统一构造点） */
-  create(options: LilithAdapterOptions): LilithAdapter {
-    return new LilithAdapter(options)
   }
 }
 

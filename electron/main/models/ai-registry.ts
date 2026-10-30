@@ -1,17 +1,17 @@
 /**
  * AI 编号注册表数据层：维护 abyssac_data/ai-registry.json。AI 编号固定
- * （月蚀=1、莉莉丝=2、custom 顺延）作为记忆/RAW/NNG 归属的唯一标识，
+ * （月蚀=1、custom 顺延）作为记忆/RAW/NNG 归属的唯一标识，
  * 名字可改但不影响数据归属。对外提供注册表读写、按 id/agent 查询
  * 与 custom AI 注册入口。
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
 import { nowIso } from './memory'
-import { DEFAULT_AI_ID, LILITH_AI_ID } from '@shared/types'
+import { DEFAULT_AI_ID } from '@shared/types'
 
 /**
  * AI 编号注册表（设计依据：编号是 AI 身份的唯一稳定键）：
- * 月蚀=1、莉莉丝=2，后续新 AI 顺延。记忆/RAW/NNG 只认编号，改名不影响归属。
+ * 月蚀=1，后续新 AI 顺延。记忆/RAW/NNG 只认编号，改名不影响归属。
  * 文件位置：abyssac_data/ai-registry.json
 
  * 2026-09-22 多 AI 子系统扩展：
@@ -24,8 +24,8 @@ export interface AiRecord {
   id: number
   /** 显示名（可变，不影响数据归属） */
   name: string
-  /** agent 标识：frontend=前端月蚀 / lilith=莉莉丝桥接 / custom-{id}=用户/AI 创建（决定工具策略过滤） */
-  agent: 'frontend' | 'lilith' | string
+  /** agent 标识：frontend=前端月蚀 / custom-{id}=用户/AI 创建（决定工具策略过滤） */
+  agent: 'frontend' | string
   /** 角色类型：system=系统自带 / custom=用户或 AI 创建 */
   kind?: 'system' | 'custom'
   /** 简介（AiManagerPanel 列表展示） */
@@ -56,8 +56,7 @@ export interface AiRegistry {
 }
 
 const DEFAULT_AIS: AiRecord[] = [
-  { id: DEFAULT_AI_ID, name: '月蚀', agent: 'frontend', kind: 'system' },
-  { id: LILITH_AI_ID, name: '莉莉丝', agent: 'lilith', kind: 'system' }
+  { id: DEFAULT_AI_ID, name: '月蚀', agent: 'frontend', kind: 'system' }
 ]
 
 export function readAiRegistry(registryPath: string): AiRegistry {
@@ -72,7 +71,10 @@ export function readAiRegistry(registryPath: string): AiRegistry {
   return {
     version: parsed.version ?? 1,
     updated_at: parsed.updated_at ?? nowIso(),
-    ais: parsed.ais
+    // 旧注册表遗留的第二人格 AI 记录（agent='lilith'）任何代码都不再支持，
+    // 保留会在 AI 列表里留下一个删不掉的系统内置幽灵 AI —— 读取时直接剔除。
+    // 剔除只发生在内存；下一次写入注册表（改名/新建 AI）即把磁盘上的遗留记录一并清掉。
+    ais: parsed.ais.filter((a) => a.agent !== 'lilith')
   }
 }
 
@@ -87,7 +89,7 @@ export function findAiById(registry: AiRegistry, id: number): AiRecord | null {
   return registry.ais.find((a) => a.id === id) ?? null
 }
 
-/** 按 agent 标识查 AI（如 frontend → 月蚀，lilith → 莉莉丝） */
+/** 按 agent 标识查 AI（如 frontend → 月蚀） */
 export function findAiByAgent(registry: AiRegistry, agent: string): AiRecord | null {
   return registry.ais.find((a) => a.agent === agent) ?? null
 }
@@ -109,7 +111,7 @@ export function registerAi(registryPath: string, name: string, agent: string): A
 /** 创建 custom AI 的入参（AiManager.register 透传） */
 export interface CustomAiInput {
   name: string
-  /** 缺省自动生成 custom-{id}（与内置 frontend/lilith 命名空间隔离） */
+  /** 缺省自动生成 custom-{id}（与内置 frontend 命名空间隔离） */
   agent?: string
   description?: string
   avatar?: string

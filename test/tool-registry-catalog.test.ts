@@ -85,13 +85,9 @@ describe('barrel 导出面（拆分后消费方零改动的前提）', () => {
       'clearDynamicToolMetas',
       'getAllToolMetas',
       'getFrontendTools',
-      'getLilithTools',
       'getWorkflowTools',
       'isToolEnabled',
       'isToolForAgent',
-      'buildLilithToolPolicy',
-      'DEFAULT_LILITH_TOOL_POLICIES',
-      'mergeLilithToolPolicy',
       'buildWorkflowToolPolicy',
       'DEFAULT_WORKFLOW_TOOL_POLICIES',
       'mergeWorkflowToolPolicies',
@@ -102,9 +98,8 @@ describe('barrel 导出面（拆分后消费方零改动的前提）', () => {
     }
   })
 
-  it('模块私有符号不外泄（findToolMeta / LILITH_EXCLUDED_TOOLS 不得从 barrel 导出）', async () => {
+  it('模块私有符号不外泄（findToolMeta 不得从 barrel 导出）', async () => {
     const barrel = await import('@shared/tools/registry')
     expect(barrel).not.toHaveProperty('findToolMeta')
-    expect(barrel).not.toHaveProperty('LILITH_EXCLUDED_TOOLS')
   })
 })

@@ -65,7 +65,7 @@ describe('内核扩展注册表', () => {
     reg.register('tool', { kind: 'plugin', pluginName: 'p1' }, { name: 't2' })
     reg.register('hook', { kind: 'plugin', pluginName: 'p1' }, { event: 'PreToolUse', matcher: 'write', fn: async () => ({ action: 'continue' as const }) })
     reg.register('prompt', { kind: 'builtin' }, { name: 'a', content: 'x' })
-    reg.register('configPatch', { kind: 'patch' }, { lilith: {} })
+    reg.register('configPatch', { kind: 'patch' }, { ui: {} })
     reg.register('command', { kind: 'builtin' }, { id: 'cmd1', description: '', run: async () => ({ ok: true }) })
 
     const snap = reg.inspect()

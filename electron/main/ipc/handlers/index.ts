@@ -38,7 +38,6 @@ import { registerEvalHandlers } from './eval'
 import { registerWorkflowHandlers } from './workflow'
 import { registerSkillHandlers } from './skill'
 import { registerWorkspaceHandlers } from './workspace'
-import { registerLilithHandlers } from './lilith'
 import { registerMessagingHandlers } from './messaging'
 import { registerPluginHandlers } from './plugin'
 import { registerCronHandlers } from './cron'
@@ -80,13 +79,6 @@ export interface IpcHandlerDeps {
   getSkillLoader: () => SkillLoader | null
   /** Skill 市场 getter（skill:market-* 通道用） */
   getSkillMarket: () => SkillMarket | null
-  /**
-   * 莉莉丝：用户点「启动莉莉丝桌宠」前的 MOD 配置补同步。
-   * 为什么是回调而不是直接在 handler 里写文件：桥接的冷启动执行受「随月蚀启动」开关控制，
-   * 关着的时候冷启动完全不碰莉莉丝，手动启动这一刻必须补一次，否则 companion 读到旧 provider。
-   * 可选（缺省 undefined）——测试与最小装配场景下不接桥接也能注册 handler。
-   */
-  onLilithBeforeLaunch?: () => void
 /** 模块系统：PluginLoader getter（plugin:list/toggle 用） */
   getPluginLoader: () => PluginLoader | null
   /** 内核功能插件对象表 getter（featurePlugins:list/toggle 用，阶段 4） */
@@ -140,8 +132,6 @@ export function registerAllIpcHandlers(ipc: typeof ipcMain, deps: IpcHandlerDeps
   registerWorkflowHandlers(ipc, deps.getWorkflowManager, () => deps.mainWindow)
   // skill 通道强制登录（createAuthGuard），未登录抛 Unauthorized；skill 数据按 U{uid}/AI{aiId} 前缀分层
   registerSkillHandlers(ipc, deps.getSkillLoader, deps.getSkillMarket, deps.getUserStore)
-  // 莉莉丝桌宠连接（检测/保存/启动/状态）
-  registerLilithHandlers(ipc, deps.configStore, deps.onLilithBeforeLaunch)
   // 消息接入（飞书等外部平台 → 月蚀大脑：配置/状态/重启）
   registerMessagingHandlers(ipc, deps.configStore, deps.getUserStore)
   // 工作区配置（AI 专属工作区，类似 .mcp.json 的配置层设计）

@@ -31,7 +31,7 @@ Thumbs.db
 .env
 .env.local
 
-# 本地备用的 node 运行时（从莉莉丝 companion 复制，方便跑 typecheck/test，不进版本库）
+# 本地备用的 node 运行时（方便跑 typecheck/test，不进版本库）
 .tools/
 
 # 打包机本机隐私词文件（作者常住地特征词，门禁读取注入 ABYSSAC_GEO_TERMS，绝不上库）

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * sessions 分层整改回归测试（裸数字 → U{uid}/AI{aiId} 字面前缀）。
  *
  * 为什么存在——sessions 曾是唯一保留裸数字分层 {root}/sessions/{uid}/{aiId} 的作用域，
@@ -48,7 +48,8 @@ describe('sessions 分层整改：U{uid}/AI{aiId} 前缀', () => {
 
   it('迁移幂等：旧 {uid}/{aiId} 目录+文件迁到 U/AI，旧父目录清空，重跑不重复搬', () => {
     const uid = 1
-    const aiId = 2
+    // 只对注册表内已登记的 AI 做迁移；默认注册表仅有 AI1
+    const aiId = 1
     // 构造旧裸数字分层下的会话（模拟历史数据）
     const legacy = join(paths.root, 'sessions', String(uid), String(aiId), 'user')
     mkdirSync(legacy, { recursive: true })

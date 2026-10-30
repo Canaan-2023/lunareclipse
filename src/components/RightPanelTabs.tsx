@@ -16,7 +16,6 @@ const TAB_META: Record<string, { icon: LucideIcon; labelKey: string }> = {
   social: { icon: Users, labelKey: 'tab.social' },
   workshop: { icon: FileTerminal, labelKey: 'tab.workshop' },
   skill: { icon: GraduationCap, labelKey: 'tab.skill' },
-  lilith: { icon: Heart, labelKey: 'tab.lilith' },
   plugin: { icon: Puzzle, labelKey: 'tab.plugin' },
   cron: { icon: Timer, labelKey: 'tab.cron' },
   hook: { icon: Webhook, labelKey: 'tab.hook' },

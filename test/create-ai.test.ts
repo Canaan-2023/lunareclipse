@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -45,30 +45,30 @@ describe('CreateAiTool（多 AI 子系统 P4：AI 自建 AI）', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('月蚀（aiId=1）创建成功：id=3、kind=custom、parentAiId=1、写提示词副本', async () => {
+  it('月蚀（aiId=1）创建成功：id=2、kind=custom、parentAiId=1、写提示词副本', async () => {
     const r = await tool.execute(
       { name: '织梦', description: '月蚀创造的分身', systemPrompt: '你是织梦。', avatar: '🌙' },
       makeCtx()
     )
     expect(r.ok).toBe(true)
     const rec = (r as { ok: true; data: { record: AiRecord } }).data.record
-    expect(rec.id).toBe(3)
+    expect(rec.id).toBe(2)
     expect(rec.name).toBe('织梦')
     expect(rec.kind).toBe('custom')
-    expect(rec.agent).toBe('custom-3')
+    expect(rec.agent).toBe('custom-2')
     expect(rec.parentAiId).toBe(1)
 
     // parentAiId 落盘 + 提示词副本落盘
-    const disk = readAiRegistry(registryPath).ais.find((a) => a.id === 3)
+    const disk = readAiRegistry(registryPath).ais.find((a) => a.id === 2)
     expect(disk?.parentAiId).toBe(1)
-    expect(readFileSync(mgr.getPromptPath(3), 'utf-8')).toBe('你是织梦。')
+    expect(readFileSync(mgr.getPromptPath(2), 'utf-8')).toBe('你是织梦。')
   })
 
   it('防递归：custom AI 调用被拒绝（自定义 AI 不可再创建 AI）', async () => {
     const reg = mgr.register({ name: '已存在分身', parentAiId: 1 })
     expect(reg.ok).toBe(true)
     if (!reg.ok) return
-    const customId = reg.record.id // id=3，kind=custom
+    const customId = reg.record.id // id=2，kind=custom
 
     const r = await tool.execute(
       { name: '孙辈AI' },
@@ -77,7 +77,7 @@ describe('CreateAiTool（多 AI 子系统 P4：AI 自建 AI）', () => {
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.error).toContain('防递归')
     // 注册表没有新增
-    expect(readAiRegistry(registryPath).ais).toHaveLength(3)
+    expect(readAiRegistry(registryPath).ais).toHaveLength(2)
   })
 
   it('父提示词继承：systemPrompt 缺省时继承父 AI 提示词副本', async () => {
@@ -113,7 +113,7 @@ describe('CreateAiTool（多 AI 子系统 P4：AI 自建 AI）', () => {
     const r = await tool.execute({ name: '被拒的分身' }, denied)
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.error).toContain('用户拒绝')
-    expect(readAiRegistry(registryPath).ais).toHaveLength(2)
+    expect(readAiRegistry(registryPath).ais).toHaveLength(1)
   })
 
   it('权限确认：会携带创建者信息与操作内容', async () => {
@@ -136,7 +136,7 @@ describe('CreateAiTool（多 AI 子系统 P4：AI 自建 AI）', () => {
     const rb = (b as { ok: true; data: { record: AiRecord } }).data.record
     expect(ra.id).toBe(rb.id)
     expect((b as { ok: true; data: { message: string } }).data.message).toContain('已存在同名')
-    expect(readAiRegistry(registryPath).ais).toHaveLength(3)
+    expect(readAiRegistry(registryPath).ais).toHaveLength(2)
   })
 
   it('数量上限：满 20 个后创建失败', async () => {

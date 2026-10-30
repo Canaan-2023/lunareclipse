@@ -41,14 +41,6 @@ export const DEFAULT_TOOL_RESULT_DISTILL: ToolResultDistillConfig = {
  */
 export const DEFAULT_AI_ID = 1
 
-/**
- * 系统内置莉莉丝 aiId（ai-registry 默认注册表二号位）。
- * 为什么存在——内置 AI 的 id 是系统语义：月蚀=1、莉莉丝=2；头像兜底与注册表初始化
- * 都需要按 id 判别「是不是莉莉丝」。与 DEFAULT_AI_ID 同理，禁止散写裸数字 2——
- * 自定义 AI 顺延分配（maxId+1），引用命名常量才能保证注册表/前端判别方向一致。
- */
-export const LILITH_AI_ID = 2
-
 export const DEFAULT_LLM_CONFIG: LLMConfig = {
   baseURL: 'https://api.openai.com/v1',
   apiKey: '',
@@ -157,14 +149,6 @@ export const DEFAULT_CONFIG: AppConfig = {
     feishu: { appId: '', appSecret: '' },
     allowFrom: [],
     contacts: []
-  },
-  // 莉莉丝桌宠模块：分发初始默认关闭（开源分发不捆绑莉莉丝）。
-  // enabled:false 时主进程 lilithEnabled() 停用、前端不显示莉莉丝入口——
-  // 与 lilith-session.ts 的 lilithEnabled() 语义对齐（enabled !== false 才算启用）。
-  lilith: {
-    enabled: false,
-    gamePath: '',
-    autoStart: false
   },
   // 中继异步传输（L1.5 大云盘）：下载位置默认留空 = 运行时解析到 {root}/relay/downloads（root
   // 因主分系统而异无法在此写死绝对路径）；无人确认保留 7 天，超期由主系统清理（发送方可撤回）。

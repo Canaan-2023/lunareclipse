@@ -52,7 +52,6 @@ export function createRuntimeServices(deps: RuntimeServicesDeps): RuntimeService
   // raw_memory 写入器（系统自动写入对话对，AI 不参与）
   // 字符上限可配置（config.rawMaxChars，默认 20000）
   // 分层：getScope 动态取当前登录用户 + AI 编号（前端=月蚀=1）
-  // 莉莉丝链路 write 时传 scopeOverride={uid, aiId:2} 落莉莉丝自己的 RAW。
   const rawMemoryWriter = dataPaths
     ? new RawMemoryWriter(
         dataPaths,
@@ -85,7 +84,7 @@ export function createRuntimeServices(deps: RuntimeServicesDeps): RuntimeService
     // 启动刷新：开关关闭时无定位来源，refresh 直接返回既有缓存、不触网
     void geoService.refresh()
   }
-  // 供 lilith-adapter 等主链路之外的消费方获取同构环境注入（避免重复实例化定位服务）
+  // 供主链路之外的消费方获取同构环境注入（避免重复实例化定位服务）
   serviceRefs.geoEnvTextRef = geoService ? () => geoService.buildInjection() : null
 
   // Skills 加载器（渐进式披露：元数据始终注入 / 正文 use_skill 触发加载）

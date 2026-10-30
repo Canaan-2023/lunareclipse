@@ -8,7 +8,7 @@ import { setPathContext } from '../electron/main/models/path-context'
 /**
  * 内核功能插件对象表测试（阶段 4 + P1-A G3 真 fiber 化）：
  * - createRootContext 注册 ctx.featurePlugins 服务
- * - 声明表含 10 项（memory/workflow/monitor/lilith/browser/subagent/mcp/skills/cron/governance）
+ * - 声明表含 9 项（memory/workflow/monitor/browser/subagent/mcp/skills/cron/governance）
  * - 默认全启用（行为零变化基线）
  * - setEnabled 持久化到 {dataRoot}/.feature-plugins.json，重建服务后状态保留
  * - setEnabled/mount/unmount 为异步真 fiber 装卸：挂载后服务可读、卸载后服务键撤销
@@ -28,15 +28,15 @@ afterAll(() => {
 })
 
 describe('内核功能插件对象表（阶段 4）', () => {
-  it('声明表覆盖 10 个功能模块且服务键齐全', () => {
+  it('声明表覆盖 9 个功能模块且服务键齐全', () => {
     const ids = FEATURE_PLUGINS.map((m) => m.id)
     expect(ids).toEqual(
       expect.arrayContaining([
-        'memory', 'workflow', 'monitor', 'lilith', 'browser',
+        'memory', 'workflow', 'monitor', 'browser',
         'subagent', 'mcp', 'skills', 'cron', 'governance'
       ])
     )
-    expect(FEATURE_PLUGINS.length).toBe(10)
+    expect(FEATURE_PLUGINS.length).toBe(9)
     for (const m of FEATURE_PLUGINS) {
       expect(m.name.length).toBeGreaterThan(0)
       expect(m.description.length).toBeGreaterThan(0)
@@ -62,7 +62,7 @@ describe('内核功能插件对象表（阶段 4）', () => {
   it('默认全启用（行为零变化基线）', () => {
     const ctx = createRootContext()
     const list = ctx.featurePlugins.list()
-    expect(list.length).toBe(10)
+    expect(list.length).toBe(9)
     for (const p of list) expect(p.enabled).toBe(true)
     expect(ctx.featurePlugins.isEnabled('memory')).toBe(true)
   })
@@ -118,7 +118,7 @@ describe('内核功能插件对象表（阶段 4）', () => {
 
   it('setEnabled 相同状态幂等返回 ok 且不写冗余', async () => {
     const ctx = createRootContext()
-    const res = await ctx.featurePlugins.setEnabled('lilith', true)
+    const res = await ctx.featurePlugins.setEnabled('governance', true)
     expect(res.ok).toBe(true)
     const statePath = join(TEST_ROOT, '.feature-plugins.json')
     // 未发生变更 → 不产生状态文件
@@ -156,7 +156,7 @@ describe('内核功能插件对象表（阶段 4）', () => {
     expect(ctx.get('memory')).toBeUndefined()
 
     const results = await ctx.featurePlugins.mountAll()
-    expect(results.length).toBe(10)
+    expect(results.length).toBe(9)
     const memoryResult = results.find((r) => r.id === 'memory')
     expect(memoryResult?.ok).toBe(true)
     expect(memoryResult?.mounted).toBe(false) // 关闭项不挂载

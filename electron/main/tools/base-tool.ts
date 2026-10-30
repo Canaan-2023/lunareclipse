@@ -62,8 +62,6 @@ export interface ToolContext {
   taskId?: string
   sessionId?: string | null
   supervisor?: SupervisorContext
-  /** 莉莉丝工具上下文（专属工具：玩家记忆读写需要） */
-  playerName?: string
   appDataDir?: string
   /** 系统级电脑操控引擎（computer-use 插件经此访问：截屏/鼠标/键盘/Win32） */
   getSystemInput?: () => import('../api/system-input').SystemInput
@@ -121,7 +119,7 @@ export interface ToolContext {
   /**
    * MCP 客户端管理器 getter（list_mcp_resources / read_mcp_resource 工具访问）。
    * 为什么用 getter：McpClientManager 由宿主装配，工具侧只在调用时按需获取；
-   * 未注入的环境（记忆工作流/莉莉丝等无 MCP 管理器的上下文）调用资源工具会得到明确报错（fail-closed）。
+   * 未注入的环境（记忆工作流等无 MCP 管理器的上下文）调用资源工具会得到明确报错（fail-closed）。
    */
   getMcpClientManager?: () => import('../mcp/client-manager').McpClientManager | null
   /** 无头浏览器管理器 getter（headless-browser 插件经此访问 Playwright headless 单例：无头看页面+操作） */
@@ -151,7 +149,7 @@ getContextUsage?: () => ContextUsageSnapshot | null
    * （toToolExecutor 包装的 executeTool = 能力闸 + Pre/PostToolUse Hook + 脱敏），
    * 宿主持有"当前生效"的执行器集合（toolExecutorsRef 随配置热更新重建），
    * 闭包读 current 即永远遵守最新 policy——batch 内不可能绕过用户刚关闭的工具开关。
-   * 未注入的环境（记忆工作流/莉莉丝等无此执行器集合的场景）调用 batch_tools 会得到明确报错。
+   * 未注入的环境（记忆工作流等无此执行器集合的场景）调用 batch_tools 会得到明确报错。
    */
   executeSubTool?: (name: string, params: Record<string, unknown>) => Promise<ToolResult>
 }

@@ -1,8 +1,8 @@
 /**
- * 为什么存在：zustand store 体量膨胀后按域拆成五个 slice，本文件保留
+ * 为什么存在：zustand store 体量膨胀后按域拆成四个 slice，本文件保留
  * 装配层以保证对外 API 契约不变（同时规避 React 19 下 zustand combine 的组合 bug）。
  * @category 前端状态
- * @summary appStore 主文件：按域拆分为 chat/browser/sandbox/lilith/system 五个 zustand slice。
+ * @summary appStore 主文件：按域拆分为 chat/browser/sandbox/system 四个 zustand slice。
  * 本文件只保留「类型再导出 + trimMessagesForWs 再导出 + slice 组合 + useAppStore hook 装配」，
  * 所有业务实现迁移到 slices/ 目录（共享常量/运行时状态在 slices/appStore-shared.ts）。
  * 对外 API 契约不变：useAppStore、AppState/ActiveToolCall/PlanTodoItem/RightPanelTabId、
@@ -14,7 +14,6 @@ import type { AppState } from './appStore-types'
 import { createChatSlice } from './slices/chatSlice'
 import { createBrowserSlice } from './slices/browserSlice'
 import { createSandboxSlice } from './slices/sandboxSlice'
-import { createLilithSlice } from './slices/lilithSlice'
 import { createSystemSlice } from './slices/systemSlice'
 
 // 类型再导出：保持既有 from './appStore' 的引用路径不变
@@ -26,7 +25,6 @@ const appStore = create<AppState>((set, get) => ({
   ...createChatSlice(set, get),
   ...createBrowserSlice(set, get),
   ...createSandboxSlice(set, get),
-  ...createLilithSlice(set, get),
   ...createSystemSlice(set, get)
 }))
 

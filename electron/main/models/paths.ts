@@ -10,7 +10,7 @@
 import { readdirSync, existsSync } from 'fs'
 import { resolve, join, isAbsolute } from 'path'
 
-/** 记忆作用域：用户 UID + AI 编号（月蚀=1、莉莉丝=2，ai-registry.json 可扩展） */
+/** 记忆作用域：用户 UID + AI 编号（月蚀=1，ai-registry.json 可扩展） */
 export interface MemoryScope {
   uid: number
   aiId: number
@@ -32,7 +32,7 @@ export interface BaseDataPaths {
   cacheInjectionRoot: string
   users: string
   usersJson: string
-  /** AI 编号注册表（月蚀=1、莉莉丝=2，可扩展；记忆/RAW/NNG 只认编号） */
+  /** AI 编号注册表（月蚀=1，可扩展；记忆/RAW/NNG 只认编号） */
   aiRegistryJson: string
   /** 记忆工作流待处理批次根（{root}/workflows/pending，未完成批次.json / diary_pending.json 存此） */
   workflowPending: string

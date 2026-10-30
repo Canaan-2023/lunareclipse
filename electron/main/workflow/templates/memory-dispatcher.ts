@@ -122,7 +122,7 @@ export const MEMORY_DISPATCHER_TEMPLATE: WorkflowTemplate = {
 对 RAW 中每个有价值的对话对生成一条 normal 记忆：
 - 用户原话：**≤500 字写用户原文（原样保留，不总结）；>500 字才精炼核心诉求**（用户规则：短原话没有总结的必要，原文才能完整反映用户说了什么）
 - AI回复：AI 精炼的结论/决策/要点（≤800 字，不抄原回复）
-- AI身份：**不用填**（减负）——工具从 RAW 路径作用域自动解析（RAW 在 memory/U{uid}/AI{aiId}/raw_memory 下，AI 编号 → 名字）
+- AI身份：**不用填**（减负）——工具从 RAW 路径作用域自动解析（RAW 在 {RAW 目录} 下，AI 编号 → 名字）
 - 用户：**不用填**（减负）——工具从 RAW 路径作用域自动解析（UID → 查 users.json 得用户名）
 - RAW来源：该 RAW 文件的绝对路径（input 的 raw_path）
 - 描述：命名范式 {域词}_{主题词}_{状态词}——域词=所属领域（记忆/图/工作流/工具/模型/界面/用户/缺陷……按内容最自然的域），主题词=内容核心关键词压缩 1-3 个词（中文内容用中文词，代码/术语保留英文；只允许 汉字/字母/数字，分隔用下划线；禁止流水账长句；复合主题主概念在前），状态词=结论性质（定案/修复/新增/验证/移除/设计/重构/记录……按内容最贴切的）
@@ -136,7 +136,7 @@ export const MEMORY_DISPATCHER_TEMPLATE: WorkflowTemplate = {
 必须输出 <json> 块：
 <json>
 {"decision":"process","reason":"简要判断依据","tasks":[
-  {"记忆路径":"{当前作用域}/memory/normal/2026/08/08/1_xxx_yyy_zzz.json","描述":"xxx_yyy_zzz","主题":"一句话主题","对话时间":"ISO","RAW路径":"{当前作用域的 RAW 路径，create_memory 的 RAW来源}"}
+  {"记忆路径":"{normal 目录}/{YYYY}/{MM}/{DD}/序号_域词_主题词_状态词}.json","描述":"xxx_yyy_zzz","主题":"一句话主题","对话时间":"ISO","RAW路径":"{RAW 目录}/{YYYY}/{MM}/{DD}/序号_关键词}.md"}
 ]}
 </json>
 - tasks 每项 = 一条已创建的记忆（用 create_memory 返回的 path）

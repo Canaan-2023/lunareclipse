@@ -22,6 +22,7 @@ import { useT } from '../../i18n/useT'
 import { GLYPH, PixelGlyph } from './pixel-icons'
 import type { RoomRuntimeSnapshot } from './room-status'
 import { MemoryZone, PlanZone } from './RuntimeZones'
+import { PreplanZone } from './PreplanZone'
 import { ToolZone } from './ToolZone'
 import { ModelConfigZone } from './ModelConfigZone'
 import { DeviceZone } from './DeviceZone'
@@ -134,6 +135,9 @@ export function DetailPanel({
           {tab === 'act' && (
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
               <PlanZone aiId={aiId} state={state} />
+              {/* 前置规划（2026-10-31 前置规划功能）：主AI的专属影子开关——开 = 两段式规划（前置规划给方向、
+                  主AI执行）；关 = 主AI自规划（缺省）。 */}
+              <PreplanZone aiId={aiId} liveHistoryCount={state.preplanHistoryCount} />
               <ToolZone />
               {/* AUTO 模型路由（AI 自主选模型）：用户侧配置 + 切换审计 + 余额。
                   0.53.6 接回——之前改版把它落成了孤儿组件。 */}

@@ -23,6 +23,12 @@ export function buildPlanPrompt(ctx: {
   repeat?: { signature: string; count: number }
   /** 当前生效的感知策略（局部更新的前提：AI 必须知道现值） */
   sensorPolicy?: RoomSensorPolicy
+  /**
+   * 前置规划指令（2026-10-31 前置规划功能）：前置规划轮给出的方向性建议，仅启用前置规划时传入。
+   * 计入 RAW 口径：本段在主AI的规划提示词内，随主AI轮次一并写入 RAW
+   * （「在主AI上下文内所以计入」）——前置规划自身不写 RAW。
+   */
+  preplanInstruction?: string
 }): string {
   return [
     '你是自主房间（ROOM）里的执行主体。请根据下面的采集输入决定要做什么。',
@@ -32,6 +38,9 @@ export function buildPlanPrompt(ctx: {
       : '',
     ctx.repeat
       ? `【重复动作】你上一轮已经提出过完全相同的计划（工具名与参数一致，已连续 ${ctx.repeat.count} 次）。如果这确实是你要继续做的事，在 JSON 里加 "repeat":"continue"；如果该收束了，写 "repeat":"stop"；不写 = 系统把控制权交回环境（不执行重复动作）。`
+      : '',
+    ctx.preplanInstruction
+      ? `【前置规划】你的前置规划看过环境与近期节奏后给出方向：${ctx.preplanInstruction}——这是**建议，不是命令**；采不采纳、怎么落地、做多少，都由你判断。`
       : '',
     '【采集输入】',
     ctx.text,

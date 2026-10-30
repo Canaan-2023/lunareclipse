@@ -13,11 +13,11 @@
  * 否则预检/拒绝响应的头语义变化（安全回归测试 `test/api-server.test.ts` 的回环拦截段依赖此顺序）。
  *
  * 口径单源（CODE-RULES §3.7 协议面红线）：鉴权判定一律 import `./server-utils` 的
- * `allowLilithBypass` / `isLilithBypassPath` / `tokensEqual`，**不复制实现**——中间件与安全回归测试
- * 共用同一实现，防止「实现改了一处、测试按旧语义断言」的分叉。
+ * `tokensEqual`，**不复制实现**——中间件与安全回归测试共用同一实现，
+ * 防止「实现改了一处、测试按旧语义断言」的分叉。
  */
 import type { Express } from 'express'
-import { allowLilithBypass, isLilithBypassPath, tokensEqual, CORS_MAX_AGE } from './server-utils'
+import { tokensEqual, CORS_MAX_AGE } from './server-utils'
 
 export interface AuthMiddlewareDeps {
   /** 读当前 API 令牌（每次请求现读：令牌在 startApiServer 内生成后写入，晚绑定与原地闭包语义一致） */
@@ -44,7 +44,7 @@ export function installAuthMiddleware(app: Express, deps: AuthMiddlewareDeps): v
         return
       }
     } else {
-      // 非浏览器客户端（Lilith companion 等无 Origin 的外部进程）不受同源策略约束，放开。
+      // 非浏览器客户端（无 Origin 的外部进程）不受同源策略约束，放开。
       res.setHeader('Access-Control-Allow-Origin', '*')
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
@@ -60,21 +60,9 @@ export function installAuthMiddleware(app: Express, deps: AuthMiddlewareDeps): v
   // ===== 本机 API 令牌鉴权中间件 =====
   // 白名单：/api/health、/api/v1（卫星面鉴权由 masterRouter 自管：public hello/register/login，
   // 其余 requireSatellite Bearer + requireLoopback 回环限制，此处不重复设防）。
-  //
-  // 2025 评审补充：主实例（挂 masterRouter）监听 0.0.0.0，/api/lilith/* 若直接放行，
-  // 局域网内任意设备可免令牌读最近 200 条对话 / 清空会话 / 驱动 LLM 消耗 API 额度。
-  // /api/lilith/* 与 MOD 桥接 /chat/completions 同属「本机进程（游戏 companion）桥接面」：
-  // 仍免令牌（companion 带不了令牌），但来源必须回环——非回环一律 403，与 /api/v1 同口径。
   app.use((req, res, next) => {
     if (req.path === '/api/health' || req.path.startsWith('/api/v1')) {
       return next()
-    }
-    if (allowLilithBypass(req.path, req.socket.remoteAddress)) {
-      return next()
-    }
-    if (isLilithBypassPath(req.path)) {
-      res.status(403).json({ error: '仅限本机回环访问' })
-      return
     }
     // 月蚀内置浏览器导航只能带 URL，无法携带 Authorization 头，
     // 故 query 参数 ?token=<apiToken> 与 Bearer 头等效（与 WS 握手同源）。

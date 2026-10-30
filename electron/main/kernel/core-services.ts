@@ -3,7 +3,7 @@
 
  * 核心四件套的 ctx 服务形态。设计原则（多实例架构实证后定案）：
 
- * 月蚀是【多实例并存】架构——前端 AI / 记忆工作流 / 莉莉丝各有独立 LLMClient 和工具池
+ * 月蚀是【多实例并存】架构——前端 AI / 记忆工作流各有独立 LLMClient 和工具池
  * （index.ts 6+ 处 new LLMClient、server.ts 3 处 createToolRegistry），
  * 因此核心服务一律是【工厂门面】：不夺实例所有权，只统一能力入口 + 登记审计点。
  * 单一实例的（sessionStore）由服务持有（ctx.sessions.store），

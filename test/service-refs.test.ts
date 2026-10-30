@@ -1,10 +1,11 @@
 /**
  * service-refs（进程级引用容器）契约测试。
  *
- * 为什么存在：ADR-02 第 3 步把 13 个进程级引用的释放收敛到 `releaseServiceRefs()`，但该释放链
+ * 为什么存在：ADR-02 第 3 步把进程级引用的释放收敛到 `releaseServiceRefs()`，但该释放链
  * 此前**无直测**——唯一验证是 `api-server.test.ts`「关闭与清理」的 1 个用例（只断言 closeApiServer
- * 后 HTTP 拒连）。13 项是否逐项被释放、哪几项按设计**不置空**、释放相对顺序是否与拆分前一致，
- * 此前只能靠人读代码（复审轮列为测试缺口 P0）。
+ * 后 HTTP 拒连）。各项是否逐项被释放、哪几项按设计**不置空**、释放相对顺序是否与拆分前一致，
+ * 此前只能靠人读代码（复审轮列为测试缺口 P0）。引用数会随功能增加（前置规划功能加了
+ * `restrictToolsRef`），本文件不记数、按字段名逐项对齐。
  *
  * 覆盖：
  * 1. 逐项释放：注入可观测 stub → 断言各自释放方法被调用一次、引用被置空
@@ -24,13 +25,14 @@ import {
   getMessagingService,
   getHeadlessChatRunner,
   getGeoEnvText,
+  getRestrictTools,
   SYSTEM_INJECTED_SESSION_ID
 } from '../electron/main/api/service-refs'
 
 /** 释放调用顺序记录：用于断言各引用的相对释放次序（顺序即释放语义） */
 let calls: string[] = []
 
-/** 向容器注入 13 个可观测 stub；返回「按设计不置空」两项的引用快照 */
+/** 向容器注入可观测 stub；返回「按设计不置空」两项的引用快照 */
 function injectStubs(): { messaging: unknown; token: string } {
   calls = []
   serviceRefs.server = { close: () => calls.push('server.close') } as never
@@ -50,6 +52,7 @@ function injectStubs(): { messaging: unknown; token: string } {
   serviceRefs.missionStoreRef = {} as never
   serviceRefs.streamSessionRef = { dispose: () => calls.push('streamSession.dispose') } as never
   serviceRefs.headlessChatRunnerRef = async () => 'reply'
+  serviceRefs.restrictToolsRef = () => ['Read']
   serviceRefs.geoEnvTextRef = () => 'env-text'
   serviceRefs.apiTokenSecret = 'token-abc'
   serviceRefs.messagingService = { stop: () => calls.push('messaging.stop') } as never
@@ -71,10 +74,11 @@ function resetAll(): void {
   serviceRefs.streamSessionRef = null
   serviceRefs.headlessChatRunnerRef = null
   serviceRefs.extraToolExecutorsRef = null
+  serviceRefs.restrictToolsRef = null
   serviceRefs.geoEnvTextRef = null
 }
 
-describe('releaseServiceRefs：14 个进程级引用的释放链', () => {
+describe('releaseServiceRefs：进程级引用的释放链', () => {
   let preserved: { messaging: unknown; token: string }
 
   beforeEach(() => {
@@ -109,6 +113,7 @@ describe('releaseServiceRefs：14 个进程级引用的释放链', () => {
     expect(serviceRefs.streamSessionRef).toBeNull()
     expect(serviceRefs.headlessChatRunnerRef).toBeNull()
     expect(serviceRefs.extraToolExecutorsRef).toBeNull()
+    expect(serviceRefs.restrictToolsRef).toBeNull()
     expect(serviceRefs.geoEnvTextRef).toBeNull()
   })
 
@@ -219,5 +224,15 @@ describe('service-refs 只读 getter 的未初始化 / 已释放语义', () => {
 
   it('系统注入会话 ID 为固定常量（跨版本稳定，调用方按常量比对）', () => {
     expect(SYSTEM_INJECTED_SESSION_ID).toBe('system_injected_events')
+  })
+
+  it('getRestrictTools：未登记 → null（不收窄）；已登记 → 透传名单；释放后归 null', () => {
+    expect(getRestrictTools('room-preplan', 1)).toBeNull()
+    serviceRefs.restrictToolsRef = (purpose) => (purpose === 'room-preplan' ? ['Read'] : null)
+    expect(getRestrictTools('room-preplan', 1)).toEqual(['Read'])
+    expect(getRestrictTools('room', 1)).toBeNull()
+    expect(getRestrictTools(undefined)).toBeNull()
+    releaseServiceRefs()
+    expect(getRestrictTools('room-preplan', 1)).toBeNull()
   })
 })

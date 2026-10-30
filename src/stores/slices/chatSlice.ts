@@ -128,7 +128,6 @@ export function createChatSlice(set: SliceSet, get: SliceGet): ChatSlice {
           status: 'idle',
           streamingMessageId: null,
           errorMessage: null,
-          lilithChatOpen: false,
           // 点击侧栏会话时自动切回聊天视图（行为约定：不在浏览器/社交等标签页也能直接跳回会话）
           activeRightPanel: 'chat',
           ...SESSION_RESET_FIELDS
@@ -167,7 +166,6 @@ export function createChatSlice(set: SliceSet, get: SliceGet): ChatSlice {
         status: 'idle',
         streamingMessageId: null,
         errorMessage: null,
-        lilithChatOpen: false,
         ...SESSION_RESET_FIELDS
       }))
       // 通知后端当前活跃会话 ID
@@ -210,7 +208,6 @@ export function createChatSlice(set: SliceSet, get: SliceGet): ChatSlice {
           status: 'idle',
           streamingMessageId: null,
           errorMessage: null,
-          lilithChatOpen: false,
           ...SESSION_RESET_FIELDS
         }
       })

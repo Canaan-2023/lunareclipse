@@ -20,7 +20,6 @@ import settingsDict from './domains/settings'
 import inputDict from './domains/input'
 import memoryDict from './domains/memory'
 import evalDict from './domains/eval'
-import lilithDict from './domains/lilith'
 import messagingDict from './domains/messaging'
 import securityDict from './domains/security'
 import type { DictEntry } from './dict-types'
@@ -42,7 +41,6 @@ const DICT: Record<string, DictEntry> = {
   ...inputDict,
   ...memoryDict,
   ...evalDict,
-  ...lilithDict,
   ...messagingDict,
   ...securityDict,
 }
