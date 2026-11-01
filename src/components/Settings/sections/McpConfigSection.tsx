@@ -9,6 +9,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import type { McpConfig, McpServerConfig, McpServerStatusSummary, McpTransportType } from '@shared/types'
 import { Field } from '../Field'
 import { useT } from '../../../i18n/useT'
+import { useTransientTimer } from '../../../hooks/useTransientTimer'
 
 /**
  * MCP Server 管理
@@ -25,6 +26,8 @@ export function McpConfigSection() {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string>('')
+  // 「N 秒后自动消失」提示的计时器句柄（卸载清理 + 重复调度先取消，不再裸 setTimeout）
+  const { schedule: scheduleMsgClear } = useTransientTimer()
 
   // 首次加载 .mcp.json 配置
   useEffect(() => {
@@ -102,7 +105,7 @@ export function McpConfigSection() {
     } finally {
       setSaving(false)
     }
-    setTimeout(() => setMsg(''), 3000)
+    scheduleMsgClear(() => setMsg(''), 3000)
   }
 
   const connect = async () => {
@@ -111,7 +114,7 @@ export function McpConfigSection() {
     setMsg(t('settings.mcpConnecting', { name: selectedName }))
     const res = await api.mcpConnect(selectedName)
     setMsg(res.ok ? t('settings.mcpConnectSent', { name: selectedName }) : t('settings.mcpConnectFail', { error: res.error ?? '' }))
-    setTimeout(() => setMsg(''), 3000)
+    scheduleMsgClear(() => setMsg(''), 3000)
   }
 
   const disconnect = async () => {
@@ -119,7 +122,7 @@ export function McpConfigSection() {
     if (!api?.mcpDisconnect || !selectedName) return
     const res = await api.mcpDisconnect(selectedName)
     setMsg(res.ok ? t('settings.mcpDisconnectSent', { name: selectedName }) : t('settings.mcpDisconnectFail', { error: res.error ?? '' }))
-    setTimeout(() => setMsg(''), 3000)
+    scheduleMsgClear(() => setMsg(''), 3000)
   }
 
   // 状态徽章

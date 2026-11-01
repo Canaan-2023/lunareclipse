@@ -11,7 +11,12 @@
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, it, expect } from 'vitest'
-import { T0_CAPABILITIES, T1_CAPABILITIES, T2_CAPABILITIES } from '@shared/security/tiers'
+import {
+  GRANT_SURFACE_CAPABILITIES,
+  T0_CAPABILITIES,
+  T1_CAPABILITIES,
+  T2_CAPABILITIES
+} from '@shared/security/tiers'
 import { shiftIso, toIso, todayIso } from '../src/components/Room/drawer/dates'
 import { AboutPanel } from '../src/components/Room/drawer/RoomPanels'
 import { SecurityPanel, formatStamp, splitScopeLines } from '../src/components/Security/SecurityPanel'
@@ -40,8 +45,15 @@ describe('细节面板 · 日期纯函数（日记页）', () => {
 describe('细节面板 · 授权页（可授予 + 告知义务；与设置页同一个组件）', () => {
   const html = renderToStaticMarkup(<SecurityPanel />)
 
+  /**
+   * T1 的条数口径是**授予面**（`GRANT_SURFACE_CAPABILITIES`），不是 `T1_CAPABILITIES`。
+   * 为什么：目录里保留了几条无生产执行点的预留能力（`enforced: false`），面板刻意不列它们——
+   * 列出来用户会以为授予生效了。所以「面板条数 = 真实可授予项」才是这条断言要锁的东西。
+   */
+  const t1Surface = GRANT_SURFACE_CAPABILITIES.filter((c) => c.tier === 'T1')
+
   it('三档目录都在，且条数与真实目录**逐一相等**（不写死第二份清单）', () => {
-    for (const n of [T0_CAPABILITIES.length, T1_CAPABILITIES.length, T2_CAPABILITIES.length]) {
+    for (const n of [T0_CAPABILITIES.length, t1Surface.length, T2_CAPABILITIES.length]) {
       expect(html).toContain(`>${n}<`)
     }
     expect(html).toContain(T0_CAPABILITIES[0].key)

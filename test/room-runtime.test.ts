@@ -182,6 +182,19 @@ describe('会话树索引与规划提示词（ADR-30 / 0.53.18）', () => {
     expect(withPreplan).toContain('先整理记忆区')
     // 边界语义：前置规划的方向是建议，最终判断权在主AI
     expect(withPreplan).toContain('建议，不是命令')
+    // 护栏（0.54）：前置规划是内部参考，不得被当成对用户说的话（否则用户会以为「规划在回我」）
+    expect(withPreplan).toContain('不要把它原样或换种说法当成 reply 交给用户')
+  })
+
+  it('buildPlanPrompt：轮次边界——系统注入的自主指令与用户输入有显式护栏（0.54）', () => {
+    const p = buildPlanPrompt({ text: '【用户刚说的话】帮我看下环境', mode: 'immediate', allowedTools: [] })
+    // 第一行必须声明「这是系统轮次指令，不是用户发言」，否则模型会把规划消息当成聊天
+    expect(p).toContain('【轮次边界】')
+    expect(p).toContain('不是用户或外部联系人发来的话')
+    // 用户只可能出现在采集输入里这句话里；历史不算待回复内容
+    expect(p).toContain('历史消息只是背景记录')
+    // 防重复回应：同一句用户话只回一次
+    expect(p).toContain('不要分别回应两次')
   })
 })
 
@@ -423,6 +436,75 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
     expect(t.size()).toBe(0)
   })
 
+  it('无节拍器（0.54.0）：无动作的一轮结束后立刻接下一轮，不排任何定时器', async () => {
+    let planned = 0
+    const rt = makeRuntime({
+      collect: async () => ({ ok: true, text: '有输入' }),
+      plan: async () => {
+        planned += 1
+        // 第 3 轮由 AI 自己声明待机：唯一的「等待」来源是 AI 的判断，不是宿主节拍
+        return planned >= 3 ? '{"standbyMs": 60000}' : '{"decisions":[]}'
+      },
+      executor,
+      allowedTools: () => [],
+      autoChain: () => true,
+      now: () => 0
+    })
+    rt.start()
+    // 前两轮都没有任何定时器参与：计划一空就立刻接上下一轮
+    await vi.waitFor(() => expect(planned).toBe(3))
+    expect(rt.getState().phase).toBe('standby')
+    rt.stop()
+  })
+
+  it('采集缺席不中断循环（0.54.0）：synthetic 输入照常进入规划，且不污染上一轮对比', async () => {
+    const prompts: string[] = []
+    let round = 0
+    const rt = makeRuntime({
+      collect: async () => {
+        round += 1
+        // 第 2 轮模拟「采集器没给任何东西」：装配层补的说明（synthetic）不能让循环停在这里
+        if (round === 2) return { ok: true, synthetic: true, text: '【本轮没有新的环境输入】' }
+        return { ok: true, text: round === 1 ? 'CPU 42%' : 'CPU 51%' }
+      },
+      plan: async (p) => {
+        prompts.push(p)
+        // 第 3 轮让 AI 自己声明待机，给循环一个终点（唯一的等待来源是 AI，不是宿主节拍）
+        return prompts.length >= 3 ? '{"standbyMs": 60000}' : '{"decisions":[]}'
+      },
+      executor,
+      allowedTools: () => [],
+      autoChain: () => true,
+      now: () => 0
+    })
+    rt.start()
+    await vi.waitFor(() => expect(prompts.length).toBe(3))
+    // 第 2 轮照样规划（循环没断）
+    expect(prompts[1]).toContain('【本轮没有新的环境输入】')
+    // synthetic 不滚存：第 3 轮的【上一轮】仍是最新一轮真实采集，而不是那句说明
+    expect(prompts[2]).toContain('上一轮你看到的：CPU 42%')
+    rt.stop()
+  })
+
+  it('用户消息落回承载会话（0.54）：appendHostTurn 先收到 user，再入队', async () => {
+    const turns: Array<{ role: string; content: string }> = []
+    const rt = makeRuntime({
+      collect: async () => ({ ok: false, error: '无输入' }),
+      plan: async () => '{"decisions":[]}',
+      executor,
+      allowedTools: () => [],
+      appendHostTurn: (_sid, e) => turns.push({ role: e.role, content: e.content }),
+      now: () => 0
+    })
+    rt.start()
+    await vi.waitFor(() => expect(rt.getState().phase).toBe('idle'))
+    rt.onUserMessage('你好')
+    expect(turns).toEqual([{ role: 'user', content: '你好' }])
+    // 输出框可见（0.54.0）：用户输入也进事件环，直播输出带不再只剩 AI 的动静
+    expect(rt.getState().events.some((e) => e.detail === '你：你好')).toBe(true)
+    rt.stop()
+  })
+
   it('AI 的 sensor 策略：写入状态、保存、并决定感知器是否启动', async () => {
     const t = fakeTimers()
     const seen: Array<readonly string[]> = []
@@ -656,6 +738,8 @@ describe('createRoomRuntime：链路装配', () => {
     expect(st.running).toBe(false)
     expect(st.lastPlan?.decisions).toHaveLength(1)
     expect(st.events.length).toBeGreaterThan(0)
+    // 他做的事情逐条进输出框（0.54.0）：loop 只发「N 个动作」，明细由 execute 包装补
+    expect(st.events.some((e) => e.detail === '完成：调用工具 read')).toBe(true)
   })
 
   it('规划返回非法 JSON → 无动作、不崩', async () => {
@@ -670,6 +754,9 @@ describe('createRoomRuntime：链路装配', () => {
     const r = await rt.tick()
     expect(r.acted).toBe(false)
     expect(rt.getState().lastPlan?.decisions).toHaveLength(0)
+    // 契约破了但它确实说了话：原文当 reply 进输出流 / 字幕（0.54.0 用户反馈）
+    expect(rt.getState().lastReply).toBe('我不会做')
+    expect(rt.getState().events.some((e) => e.detail === '回复：我不会做')).toBe(true)
   })
 
   it('规划抛错 → 无动作、不崩', async () => {

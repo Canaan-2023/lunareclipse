@@ -37,6 +37,7 @@ import type { AppConfig, LLMConfig, PromptPurpose } from '@shared/types'
 import { MessagingService } from '../messaging'
 import { toToolExecutor, clearToolDescCache } from './tool-bridge'
 import { installToolSearchBridge } from '../tools/tool-search'
+import { serviceRefs } from './service-refs'
 
 /** installServerAssembly 依赖注入接口（服务装配层与主服务共享的运行时句柄） */
 export interface ServerAssemblyDeps {
@@ -171,6 +172,9 @@ export async function installServerAssembly(deps: ServerAssemblyDeps): Promise<n
     toolExecutorsRef.current = Array.from(toolRegistry.tools.values()).map((t) =>
       toToolExecutor(t, toolRegistry)
     )
+    // 房间域的工具面真源必须跟着重建走：不更新这里，ROOM 会继续拿旧注册表，
+    // 用户切换工具开关后房间侧「计划里可选 / 能执行」的工具与实际执行器集合漂移。
+    serviceRefs.frontendToolRegistryRef = toolRegistry
     // 重建 SubAgentManager（更新工具快照；executeFn getter 仍读 let llmClientRef.current，LLM 变更时自动生效）
     subAgentManagerRef.current = ctx && ctx.featurePlugins.isEnabled('subagent')
       ? ctx.subagent.create(

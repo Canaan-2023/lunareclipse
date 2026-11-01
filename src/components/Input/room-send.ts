@@ -24,7 +24,8 @@ export async function sendRoomMessage(
     content
   })
   if (r?.ok) {
-    useAppStore.getState().appendRoomMessage(content, 'user', Date.now())
+    // 用户消息由主进程落盘（`appendHostTurn`）；渲染侧只重取，不自己写（避免陈旧数组覆盖）
+    await useAppStore.getState().syncRoomMessages(currentSessionId)
     return
   }
   await fallback()

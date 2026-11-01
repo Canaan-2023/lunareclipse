@@ -108,7 +108,10 @@ function lookupRegistry(modelId: string): RegistryRule | null {
 /** 二级 infer：家族模糊推断（保持 server-utils.estimateModelWindow 的既有行为） */
 function inferFamilyWindow(modelId: string): number {
   const m = modelId
-  if (m.includes('deepseek')) return 1000000
+  // deepseek 家族：只有 registry 已登记的型号（deepseek-v4 / deepseek-v4-flash）才按 1M；
+  // 未登记变体（如 deepseek-flash）按 128k 保守推断。高估窗口比低估危险得多——
+  // 预算高于真实窗口时压缩/截断永不触发，一越过窗口就是整轮 context_length_exceeded 崩掉。
+  if (m.includes('deepseek')) return 128000
   if (m.includes('qwen') || m.includes('qwq'))
     return m.includes('72b') || m.includes('32b') || m.includes('max') ? 128000 : 32000
   if (
@@ -178,6 +181,29 @@ export function clampTokenBudget(value: number | null, window: number): number |
 export function clampContextChars(value: number | null, window: number): number | null {
   if (value == null) return null
   return clampNumber(value, MIN_CONTEXT_CHARS, Math.max(MIN_CONTEXT_CHARS, window))
+}
+
+/**
+ * 生效预算限幅（**读取侧**，不是写入侧）：覆盖层（patch 文件 / 插件 config.patch）
+ * 能写入任意 tokenBudget，但预算永远不得超过当前模型的真实窗口。预算高于窗口时
+ * 压缩/截断阈值永不触发，真实请求一越过窗口就是一次整轮失败——写入侧 clamp 管不到
+ * patch，所以读取侧必须再夹一次。`null` / 非正数保留「未配置 = 走软预算」语义。
+ */
+export function clampTokenBudgetForModel(
+  value: number | null | undefined,
+  model: string | null | undefined
+): number | null {
+  if (value == null || value <= 0) return null
+  return clampTokenBudget(value, resolveModelCapability(model).contextWindow)
+}
+
+/** 生效上下文窗口（token 模式 chars）的读取侧限幅：理由同上，注入侧只能按真实窗口截断 */
+export function clampContextCharsForModel(
+  value: number | null | undefined,
+  model: string | null | undefined
+): number | null {
+  if (value == null || value <= 0) return null
+  return clampContextChars(value, resolveModelCapability(model).contextWindow)
 }
 
 /** maxTokens 限幅：[1, min(窗口, 官方输出上限)]；null 保留（不设输出上限） */

@@ -8,8 +8,28 @@ import { dirname } from 'path'
 import type { AppConfig, LLMConfig, ThemeName } from '@shared/types'
 import { DEFAULT_CONFIG, inferProvider } from '@shared/types'
 import { mergeConfigLayers } from '../kernel/config-layer'
+import { renameFileWithRetry } from '../utils/atomic-write'
+
+/**
+ * 配置文件的原子写：`.tmp` → rename（Windows EPERM 重试）。
+ * 为什么必须：config.json 装着 API Key / 工具策略 / 权限覆写 / 绿通开关，
+ * 原实现是全仓唯一直接 `writeFileSync` 覆盖的关键文件；写到一半崩溃/被杀即"设置全丢"。
+ * 同目录 `.tmp` 串行覆盖（save 为同步调用，无并发），rename 是提交点。
+ */
+function writeConfigAtomic(filePath: string, json: string): void {
+  const tmp = `${filePath}.tmp`
+  writeFileSync(tmp, json, 'utf-8')
+  renameFileWithRetry(tmp, filePath)
+}
 
 export type ConfigChangeCallback = (newConfig: AppConfig, oldConfig: AppConfig) => void
+
+/**
+ * 功能默认值迁移版本（见 `AppConfig.featureDefaultsVersion`）。
+ * 每次「把某个默认关闭的功能改成默认开启」时 +1，并在 `load()` 的迁移段按版本号补齐；
+ * 已迁移过的配置打上本版本号，之后用户手动关掉不会被再次翻回 true。
+ */
+export const FEATURE_DEFAULTS_VERSION = 1
 
 /**
  * 老主题名 → 新主题名迁移映射。
@@ -205,12 +225,27 @@ export class ConfigStore {
         // DMN 概念已退役（记忆工作流）：老 config.json 中的 dmn 键不再属于 AppConfig schema，
         // 加载时剔除，避免 `...parsed` 残留进内存并在下次 save 时写回磁盘
         delete (this.config as { dmn?: unknown }).dmn
-        // 若主题被迁移，立即回写文件，避免下次再走迁移逻辑
-        if (parsed.theme && parsed.theme !== this.config.theme) {
+        // 功能默认值迁移（0.54.0）：defaults.ts 改默认值只对「config.json 里没有该键」的新装生效，
+        // 已保存过配置的用户，旧默认 false 早已写进文件——不迁移就等于改了个没人用的默认。
+        // 迁移项：geo.preciseLocationEnabled（原默认 false → 现默认 true）、
+        //         lan.enabled（原默认关 → 现默认开，仍只绑 127.0.0.1 回环）。
+        // 只做一次：打完 featureDefaultsVersion 后，用户自己关掉的功能不会再被翻回 true。
+        const migratedFeatureDefaults = parsed.featureDefaultsVersion === undefined
+        if (migratedFeatureDefaults) {
+          this.config.geo = { ...(this.config.geo ?? {}), preciseLocationEnabled: true }
+          this.config.lan = {
+            ...(this.config.lan ?? {}),
+            enabled: true,
+            bindHost: this.config.lan?.bindHost ?? '127.0.0.1'
+          }
+        }
+        this.config.featureDefaultsVersion = FEATURE_DEFAULTS_VERSION
+        // 若主题被迁移或功能默认值被迁移，立即回写文件，避免下次再走迁移逻辑
+        if ((parsed.theme && parsed.theme !== this.config.theme) || migratedFeatureDefaults) {
           setImmediate(() => {
             try {
               mkdirSync(dirname(this.filePath), { recursive: true })
-              writeFileSync(this.filePath, JSON.stringify(this.config, null, 2), 'utf-8')
+              writeConfigAtomic(this.filePath, JSON.stringify(this.config, null, 2))
             } catch {
               // 回写失败不影响加载，下次启动会再次迁移
             }
@@ -233,7 +268,9 @@ export class ConfigStore {
     normalized.workflowLlmActiveProfile = workflowLlmSlot
     this.config = normalized
     mkdirSync(dirname(this.filePath), { recursive: true })
-    writeFileSync(this.filePath, JSON.stringify(normalized, null, 2), 'utf-8')
+    // 原子写：先写 .tmp 再 rename（Windows EPERM 重试）。写失败会抛错给调用方，
+    // 但内存 this.config 已更新——调用方（设置页）据此提示"保存失败"，下次 save 会重试落盘。
+    writeConfigAtomic(this.filePath, JSON.stringify(normalized, null, 2))
     if (!deepEqual(oldConfig, config)) {
       for (const cb of this.subscribers) {
         try {

@@ -134,6 +134,8 @@ export async function runServiceAssembly(state: AppState, deps: BootstrapDeps): 
   const pluginLoader = kernelState.pluginLoader
   state.mcpClientManager = kernelState.mcpClientManager
   state.detachCordis = kernelState.detachCordis
+  // 存入 state：退出链需要它来 destroy()（关 fs.watch 与 500ms reload 定时器）
+  state.pluginLoader = kernelState.pluginLoader
 
 const hookSkillState = initHooksSkills(dataPaths)
   const memoryWorkflowHookManager = hookSkillState.workflowHookManager
@@ -300,7 +302,6 @@ const wfState = initWorkflowEngine(state, deps, { dataPaths, mcpClientManager: s
   // 每个 AI 一个房间实例（ADR-25 L3）：按 (uid, aiId) 分实例，会话 id 含 AI
   initRoomRuntime(state, deps, {
     internalSessionStore,
-    toolRegistry: memoryWorkflowToolRegistry,
     toolZoneDir: join(dataPaths.root, 'room'),
     aiRegistryJson: dataPaths.aiRegistryJson,
     // 「监控看到了」唤醒源：工作流事件只上报，是否唤醒由 ROOM 的唤醒仲裁器决定（主进程单 owner）

@@ -6,6 +6,7 @@
 import { memo, useMemo, useState, type ReactNode } from 'react'
 import { openFilePreview } from '../Workshop/FileWorkshopPanel'
 import { copyText } from '../../utils/clipboard'
+import { useTransientTimer } from '../../hooks/useTransientTimer'
 
 /**
  * 轻量 Markdown 渲染器（纯手写正则方案，无外部依赖）
@@ -589,6 +590,8 @@ function renderTextBlock(text: string, keyPrefix: string): ReactNode[] {
 const CodeBlock = memo(function CodeBlock({ code, lang, streaming }: { code: string; lang?: string; streaming?: boolean }) {
   const [copied, setCopied] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  // 「已复制」提示「1.5 秒后自动消失」的计时器句柄（卸载清理 + 重复调度先取消）
+  const { schedule: scheduleCopiedClear } = useTransientTimer()
   // 性能优化：流式中代码块每帧都在变（token 追加），每次全量正则高亮
   // 是编程模式"输出卡一下"的重活（O(代码长度) × 帧数）。流式期间跳过语法高亮
   // （纯文本），输出完成后（streaming=false）才高亮一次。
@@ -601,7 +604,7 @@ const CodeBlock = memo(function CodeBlock({ code, lang, streaming }: { code: str
       const ok = await copyText(code)
       if (ok) {
         setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
+        scheduleCopiedClear(() => setCopied(false), 1500)
       }
     }
 

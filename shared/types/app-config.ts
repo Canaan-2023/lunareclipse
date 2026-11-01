@@ -19,7 +19,9 @@ export type ThemeName = 'frost-glass' | 'parchment' | 'night' | 'violet-night' |
 
 export interface AppConfig {
   llm: LLMConfig
-  /** 记忆工作流后端 AI 的独立 LLM 配置（文档 15.4：记忆工作流的 LLM 独立配置不跟随前端 AI）。model 为空表示未配置，记忆工作流不运行 LLM 调用。
+  /** 记忆工作流后端 AI 的独立 LLM 配置（文档 15.4：记忆工作流的 LLM 独立配置不跟随前端 AI）。model 为空表示未单独指定模型；
+   *  followMain=true（默认）时直接复用前端 AI 的接入方式与模型，model 为空也能跑（解析点 startup-helpers.ts）。
+   *  兼容历史口径：model 为空且 followMain=false 时，记忆工作流不执行 LLM 调用。
    *  workflowLlm 是记忆工作流 + 记忆工作流评测的 LLM 配置（设计依据：记忆工作流跑在服务端，需独立于前端会话的 LLM 配置，
    *  避免与前端 AI 模型切换互相影响，也保证记忆归档不受前端模型变更牵连）。不删理由：记忆工作流评测
    *  必须有稳定的后端模型入口，若删除则此类任务会错误复用前端 AI 配置。*/
@@ -154,16 +156,17 @@ export interface AppConfig {
   }
   /**
    * 局域网协作（L0 直连底座）配置。
-   * 为什么默认关闭：分发版曾出现「用户不用社交功能也常驻监听 0.0.0.0:62003 且无握手鉴权」的
-   *   分发阻断项（可被局域网内恶意客户端冒充 uid 收发信封）。默认关闭 + 显式开启，
-   *   把"是否暴露监听面"交回用户；默认 bindHost=127.0.0.1 进一步收敛为仅本机。
-   * enabled 语义：undefined/false = 完全不启动 LAN（好友/聊天室/发布板/技能市场同步不可用）；
-   *   true = 按 bindHost 绑定监听。老配置无此字段一律视为 false（安全默认）。
+   * 默认开启，但默认 bindHost=127.0.0.1：只在本机回环监听，不产生跨机暴露面。
+   * 为什么仍保留开关：LAN 会把「好友/聊天室/公示板/技能市场同步」接上监听面，
+   *   曾出现「用户不用社交也常驻监听 0.0.0.0 且无握手鉴权」的分发阻断项，因此把
+   *   「是否暴露监听面」交给用户——关掉即完全不启动 LAN。
+   * enabled 语义：undefined 视为 true（跟随默认值，仅本机回环）；显式 false = 完全不启动 LAN；
+   *   true = 按 bindHost 绑定监听。
    * bindHost 语义：缺省 '127.0.0.1'（仅本机回环，跨机协作不可用）；'0.0.0.0' 才对外开放，
    *   供局域网跨机协作——在握手鉴权（hello_auth 挑战）落地前，0.0.0.0 仅限可信局域网使用。
    */
   lan?: {
-    /** 是否启用局域网协作（默认 false） */
+    /** 是否启用局域网协作（默认 true，仅绑 127.0.0.1） */
     enabled?: boolean
     /** 监听绑定地址（默认 '127.0.0.1'；跨机协作需显式设为 '0.0.0.0'） */
     bindHost?: string
@@ -196,15 +199,21 @@ export interface AppConfig {
   browserZoom?: number | null
   /**
    * 地理位置隐私配置（隐私红线整改新增）。
-   * preciseLocationEnabled=false（默认）：无任何定位来源——不请求 navigator.geolocation，
-   *   不发生 IP 定位请求，不调用 photon 逆地理 / open-meteo 天气，
-   *   AI 上下文仅注入时区（不再注入任何 IP 推导地区，已移除公共 IP 兜底链路）；
-   * true：允许系统精确坐标链路（photon/open-meteo），仍只用于本机 AI 环境感知，
-   *   精确坐标不写入日志、记忆与持久化缓存。
-   * undefined 视为 false（老配置兼容，行为 = 最隐私默认）。
+   * preciseLocationEnabled=true（默认）：允许系统精确坐标链路（photon 逆地理 / open-meteo 天气），
+   *   只用于本机 AI 环境感知，精确坐标不写入日志、记忆与持久化缓存，也不发给任何第三方；
+   * false（用户显式关闭）：无任何定位来源——不请求 navigator.geolocation，不发生 IP 定位请求，
+   *   AI 上下文仅注入时区。
+   * undefined 视为 true（跟随默认值）。
    */
   geo?: {
-    /** 是否启用系统精确坐标链路（photon 逆地理 / open-meteo 天气）。默认 false */
+    /** 是否启用系统精确坐标链路（photon 逆地理 / open-meteo 天气）。默认 true */
     preciseLocationEnabled?: boolean
   }
+  /**
+   * 功能默认值迁移标记（内部字段，用户不需要关心）。
+   * 为什么存在：`defaults.ts` 的默认值只对「config.json 里没有该键」的新装生效；已保存过配置的
+   *   用户，旧默认值（false）早已被写进文件，改默认不会生效。此标记记录「已按新版默认值迁移过」，
+   *   让 config-store.load() 只迁移一次，之后用户手动关掉的功能不会被再次翻回 true。
+   */
+  featureDefaultsVersion?: number
 }

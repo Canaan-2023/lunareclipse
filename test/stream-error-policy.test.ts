@@ -74,8 +74,43 @@ describe('classifyStreamError · 分类口径', () => {
         isTimeout: false,
         isConfigError: false,
         isBalanceError: false,
+        isAuthError: false,
+        isContextError: false,
+        isRequestError: false,
         isPermanentError: false
       })
+    }
+  )
+
+  // ===== 2026-10-31 扩展：确定性 4xx 与上下文超限归入永久性（原先落入无限静默重试） =====
+  it.each([401, 403])('status=%s → isAuthError 且 isPermanentError（Key/权限错误重试无意义）', (status) => {
+    const facts = classifyStreamError({ message: 'request failed', status })
+    expect(facts.isAuthError).toBe(true)
+    expect(facts.isPermanentError).toBe(true)
+  })
+
+  it.each([400, 404, 422])('status=%s → isRequestError 且 isPermanentError（模型名/参数/端点错误）', (status) => {
+    const facts = classifyStreamError({ message: 'bad request', status })
+    expect(facts.isRequestError).toBe(true)
+    expect(facts.isPermanentError).toBe(true)
+  })
+
+  it.each([
+    "This model's maximum context length is 8192 tokens",
+    'context_length_exceeded',
+    'prompt is too long for the model',
+    '上下文超限，请开新会话'
+  ])('上下文文案「%s」→ isContextError 且 isPermanentError', (message) => {
+    const facts = classifyStreamError({ message })
+    expect(facts.isContextError).toBe(true)
+    expect(facts.isPermanentError).toBe(true)
+  })
+
+  it.each([408, 409, 429, 500, 502, 503, 504, undefined])(
+    'status=%s → 不归永久性（瞬时错误保持无限重试）',
+    (status) => {
+      const facts = classifyStreamError({ message: 'temporary failure', status })
+      expect(facts.isPermanentError).toBe(false)
     }
   )
 
@@ -218,5 +253,25 @@ describe('buildPermanentErrorPayload · 用户可见文案', () => {
   it('非余额类永久性错误（如未配置）→ 原样返回错误消息', () => {
     const message = 'LLM 未配置：请在设置中填写 API Key'
     expect(buildPermanentErrorPayload(message, false)).toBe(message)
+  })
+
+  it('鉴权失败 → 含「鉴权失败」「检查 API Key」与「已暂停自动恢复」', () => {
+    const payload = buildPermanentErrorPayload('401 invalid api key', false, {
+      isAuthError: true,
+      isContextError: false
+    })
+    expect(payload).toContain('鉴权失败')
+    expect(payload).toContain('API Key')
+    expect(payload).toContain('暂停自动恢复')
+  })
+
+  it('上下文超限 → 提示开新会话/继承并说明暂停自动恢复', () => {
+    const payload = buildPermanentErrorPayload('context_length_exceeded', false, {
+      isAuthError: false,
+      isContextError: true
+    })
+    expect(payload).toContain('上下文超限')
+    expect(payload).toContain('新会话')
+    expect(payload).toContain('暂停自动恢复')
   })
 })

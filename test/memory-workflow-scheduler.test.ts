@@ -103,6 +103,22 @@ describe('MemoryWorkflowScheduler start/stop 生命周期与状态迁移', () =>
   it('isRunning 初始为 false（未进入流水线）', () => {
     expect(scheduler.isRunning()).toBe(false)
   })
+
+  it('abortInFlight：取消在飞待处理批次（退出收尸）', async () => {
+    const { mkdirSync, writeFileSync } = await import('node:fs')
+    const pendingDir = join(root, 'workflows', 'pending')
+    mkdirSync(pendingDir, { recursive: true })
+    writeFileSync(
+      join(pendingDir, '未完成批次.json'),
+      JSON.stringify({ instanceId: 'inst-1', stage: 'scan', nextProgress: 1, batch: [{ id: 'a' }] }),
+      'utf-8'
+    )
+    const modifyInstance = vi.fn(async () => ({ ok: true }))
+    const unsubscribe = vi.fn()
+    scheduler.setWorkflowManagerProvider(() => ({ modifyInstance, onEvent: () => unsubscribe }) as never)
+    scheduler.abortInFlight()
+    expect(modifyInstance).toHaveBeenCalledWith({ instanceId: 'inst-1', action: 'cancel' })
+  })
 })
 
 describe('MemoryWorkflowScheduler 运行条件不满足时重排', () => {

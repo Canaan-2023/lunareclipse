@@ -8,6 +8,7 @@ import { RotateCcw } from 'lucide-react'
 import type { AppConfig } from '@shared/types'
 import { Field } from '../Field'
 import { useT } from '../../../i18n/useT'
+import { useTransientTimer } from '../../../hooks/useTransientTimer'
 
 /**
  * 记忆工作流配置区域（MemoryWorkflowConfigSection：保留 RAW 上限与工具策略重置入口）
@@ -22,6 +23,8 @@ export function MemoryWorkflowConfigSection({
   const t = useT()
   // 重置结果反馈：操作完成后短暂提示成功/失败（3 秒自动消失），防止失败被静默吞掉
   const [resetMsg, setResetMsg] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null)
+  // 提示「3 秒后自动消失」的计时器句柄（卸载清理 + 重复调度先取消，不再裸 setTimeout）
+  const { schedule: scheduleResetMsgClear } = useTransientTimer()
 
   const resetAllToolPolicy = async () => {
     setResetMsg(null)
@@ -39,7 +42,7 @@ export function MemoryWorkflowConfigSection({
     } catch (err) {
       setResetMsg({ text: `重置失败：${err instanceof Error ? err.message : String(err)}`, kind: 'err' })
     } finally {
-      setTimeout(() => setResetMsg(null), 3000)
+      scheduleResetMsgClear(() => setResetMsg(null), 3000)
     }
   }
 

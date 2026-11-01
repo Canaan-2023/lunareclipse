@@ -7,7 +7,8 @@
  * 本注册表统一管理所有 setTimeout / setInterval：
  * - 注册时返回 handle，stop(handle) 单个清理
  * - stopAll() 统一清理所有定时器（用于 app.before-quit）
- * - 自带 5 秒退出超时保护，避免某个 stop() 卡住整个退出流程
+ * - stopAll() 统一清理所有定时器（用于 app.before-quit）：纯同步 clear，不会阻塞；
+ *   退出链整体 deadline 由 `quit-chain.ts` 的 QUIT_DEADLINE_MS 看门狗负责（本模块不持有超时）
 
  * 使用方式：
  * const handle = timerRegistry.setTimeout(() => {...}, 1000)

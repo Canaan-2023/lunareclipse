@@ -32,6 +32,12 @@ export interface ErrorDispatchDeps {
   maxRetryDelayMs: number
   /** 审查续轮定时器句柄（用户中止时须清掉已调度的审查轮） */
   continuationTimerRef: { current: ReturnType<typeof setTimeout> | null }
+  /**
+   * 静默续接定时器句柄（连接级，与 ws-protocol 的 abort 分支共享）：
+   * 退避等待期间用户点停止 / 发新消息时，必须能清掉这个定时器；否则用户停止后
+   * 到点仍会 resume → 停止按钮在退避窗口内失效。
+   */
+  retryTimerRef: { current: ReturnType<typeof setTimeout> | null }
   streamSession: StreamSession
   activationManager: ActivationManager
   /** 本轮请求消息（续接上下文构造与 RAW 写入用） */
@@ -49,8 +55,24 @@ export interface ErrorDispatchDeps {
   resume: (continuedMessages: ChatMessage[], nextRetryCount: number) => void
 }
 
-export function dispatchStreamError(deps: ErrorDispatchDeps): void {
-  const {
+/**
+ * 取消已调度的静默续接（用户停止 / 发新消息 / 连接关闭时调用）。
+ *
+ * 为什么需要：退避窗口内没有活跃的 LLM 请求，`llmClient.abort()` 打不到任何东西——
+ * 若定时器句柄不落进连接级 ref 并在这里清掉，用户点停止后到点仍会 `resume()`，
+ * 表现为「停止按钮在重试窗口内失效」，且新消息会与旧续接并发。
+ * @returns 是否真的取消了一个待触发的续接
+ */
+export function cancelPendingStreamRetry(
+  retryTimerRef: { current: ReturnType<typeof setTimeout> | null }
+): boolean {
+  if (!retryTimerRef.current) return false
+  clearTimeout(retryTimerRef.current)
+  retryTimerRef.current = null
+  return true
+}
+
+export function dispatchStreamError(deps: ErrorDispatchDeps): void {  const {
     err,
     ws,
     messageId,
@@ -60,6 +82,7 @@ export function dispatchStreamError(deps: ErrorDispatchDeps): void {
     maxStreamRetries,
     maxRetryDelayMs,
     continuationTimerRef,
+    retryTimerRef,
     streamSession,
     activationManager,
     messages,
@@ -82,7 +105,7 @@ export function dispatchStreamError(deps: ErrorDispatchDeps): void {
 
   if (decision.action === 'permanent-error') {
     // 直接把原因推给前端（error 事件在消息上渲染，用户立即看到可行动的提示）
-    const payload = buildPermanentErrorPayload(err.message, facts.isBalanceError)
+    const payload = buildPermanentErrorPayload(err.message, facts.isBalanceError, facts)
     if (streamSession.isOpen(ws)) {
       streamSession.push(ws, JSON.stringify({ type: 'error', payload, messageId }))
     }
@@ -133,7 +156,10 @@ export function dispatchStreamError(deps: ErrorDispatchDeps): void {
       activationManager.requestInterruptRecovery(err.message, messageId, sessionId)
       return
     }
-    setTimeout(() => {
+    // 同一连接同一时刻只保留一个续接定时器：新错误覆盖旧调度（旧定时器不覆盖会双 resume）
+    cancelPendingStreamRetry(retryTimerRef)
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null
       // 调度时 WS 可能已断开，执行前再检查一次
       if (ws.readyState !== WebSocket.OPEN) {
         console.warn(`[server] 重试时 WS 已断开，放弃（messageId=${messageId}）`)

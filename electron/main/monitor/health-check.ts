@@ -42,7 +42,7 @@ import { killProcessTree, runHealthCommand, type HealthCommandResult } from './h
 import { keepTail } from './health-output'
 import { dumpHealthOutput } from './health-dump'
 
-import { runSemanticScan } from './health-scan-runner'
+import { runSemanticScan, terminateActiveScanWorkers } from './health-scan-runner'
 import { RUNTIME_TO_MODULE, loadConfig, type HealthCheckConfig, type RuntimeEventKind } from './health-config'
 
 /** 首次检查延迟（毫秒）：避免和启动流程抢资源。
@@ -237,6 +237,8 @@ export class HealthCheck {
     // 只在 `runningCheck === task` 时清空，不会误清新轮次的句柄。
     this.runningCheck = null
     this.killActiveChildren()
+    // 终止仍在运行的语义扫描 worker（worker_threads 不随子进程清理，需显式 terminate）
+    terminateActiveScanWorkers()
     if (this.startDelayHandle) {
       if (this.timerRegistry) {
         this.timerRegistry.clearTimeout(this.startDelayHandle)

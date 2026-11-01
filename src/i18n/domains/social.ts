@@ -233,8 +233,8 @@ const dict = {
   'lan.nodes': { zh: '节点', en: 'Nodes' },
   'lan.refresh': { zh: '刷新', en: 'Refresh' },
   'lan.hint': {
-    zh: '局域网默认关闭；开启会扩大网络暴露面（默认仅监听 127.0.0.1，跨机协作需另设 bindHost）。用户可在此开关，AI 经 lan_control 工具开关（需先授予 t1.lan-control）。',
-    en: 'LAN is off by default; enabling widens the network surface (listens on 127.0.0.1 unless bindHost is set). Users toggle it here; the AI toggles it via the lan_control tool (requires the t1.lan-control grant).'
+    zh: '局域网默认开启，但只监听 127.0.0.1（跨机协作需另设 bindHost，那才会扩大网络暴露面）。用户可在此开关，AI 经 lan_control 工具开关（需先授予 t1.lan-control）。',
+    en: 'LAN is on by default but listens only on 127.0.0.1 (setting bindHost is what widens the network surface). Users toggle it here; the AI toggles it via the lan_control tool (requires the t1.lan-control grant).'
   },
   'lan.map': { zh: '拓扑地图', en: 'Topology Map' },
   'lan.noNodes': { zh: '暂无节点（局域网未开启或未发现对端）', en: 'No nodes (LAN off or no peers discovered)' },

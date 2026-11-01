@@ -33,6 +33,22 @@ const WORKER_TERMINATE_GRACE_MS = 2_000
 /** worker 产物文件名（electron.vite.config.ts 的 main 第二个入口） */
 const WORKER_FILE = 'health-scan-worker.js'
 
+/**
+ * 进行中的扫描 worker 登记（进程退出链用）。
+ * 为什么存在：worker 未走 finish 分支时（正常完成/硬超时都会 terminate）其线程
+ * 会一直存活，退出链无法感知，最多把退出拖到总线 deadline。登记活跃 worker，
+ * 由 health-check.stop() 统一 terminate。
+ */
+const activeScanWorkers = new Set<Worker>()
+
+/** 终止所有仍在运行的扫描 worker（退出链调用；幂等） */
+export function terminateActiveScanWorkers(): void {
+  for (const worker of activeScanWorkers) {
+    void worker.terminate()
+  }
+  activeScanWorkers.clear()
+}
+
 export type SemanticScanKind = 'code-review' | 'uiux'
 
 export interface SemanticScanRunResult extends SemanticScanResult {
@@ -115,15 +131,17 @@ export function runSemanticScan(opts: RunSemanticScanOptions): Promise<SemanticS
         timedOut: false,
         failed: true,
         budgetMs: timeoutMs,
-        elapsedMs: Date.now() - startedAt
+elapsedMs: Date.now() - startedAt
       })
       return
     }
+    activeScanWorkers.add(worker)
 
     const finish = (result: SemanticScanRunResult): void => {
       if (settled) return
       settled = true
       clearTimeout(timer)
+      activeScanWorkers.delete(worker)
       void worker.terminate()
       resolve(result)
     }

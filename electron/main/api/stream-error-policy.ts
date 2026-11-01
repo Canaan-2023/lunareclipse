@@ -30,6 +30,19 @@
 const BALANCE_ERROR_PATTERN = /insufficient balance|余额不足|quota exceeded|insufficient_quota/i
 
 /**
+ * 鉴权/权限类失败的文案特征（HTTP 401/403 为主，文案兜底兼容不回状态码的网关）。
+ * 为什么归为永久性：Key 无效、账号被禁、无模型权限，重试一万次也不会成功。
+ */
+const AUTH_ERROR_PATTERN = /invalid.{0,16}api.?key|incorrect api key|unauthorized|authentication fail|permission denied|无权|鉴权失败|\b(?:401|403)\b/i
+
+/**
+ * 上下文超限的文案特征（各服务商措辞不一）。
+ * 为什么归为永久性：同一请求重试必然再次超限；正确出路是提示用户开新会话 / 继承上下文。
+ */
+const CONTEXT_ERROR_PATTERN =
+  /context[ _-]?length|maximum context|context window|too many tokens|token limit|prompt is too long|上下文.{0,8}(超|过)限|超出.{0,8}上下文/i
+
+/**
  * 一次流错误的判定事实（纯分类结果，不带任何副作用）。
  * 为什么单独成形：五条分支的判断依据需要被逐条断言，而它们原先只是 onError 里的局部布尔量。
  */
@@ -42,6 +55,12 @@ export interface StreamErrorFacts {
   isConfigError: boolean
   /** 余额/配额类错误（HTTP 402 或文案命中） */
   isBalanceError: boolean
+  /** 鉴权/权限类错误（HTTP 401/403 或文案命中） */
+  isAuthError: boolean
+  /** 上下文超限（HTTP 400 且文案命中，或 HTTP 413） */
+  isContextError: boolean
+  /** 请求本身被拒（HTTP 400/404/422：模型名错、参数错、端点不存在等，重试无意义） */
+  isRequestError: boolean
   /** 永久性错误：重试注定失败，必须停止自动恢复（否则形成无效重试循环） */
   isPermanentError: boolean
 }
@@ -59,13 +78,26 @@ export function classifyStreamError(err: { message: string; status?: unknown }):
   const isUserAbort = err.message === 'user' || err.message === 'aborted'
   const isTimeout = err.message === 'ttft_timeout' || err.message === 'idle_timeout'
   const isConfigError = err.message.startsWith('LLM 未配置')
-  const isBalanceError = err.status === 402 || BALANCE_ERROR_PATTERN.test(err.message)
+  const status = typeof err.status === 'number' ? err.status : undefined
+  const isBalanceError = status === 402 || BALANCE_ERROR_PATTERN.test(err.message)
+  const isAuthError = status === 401 || status === 403 || AUTH_ERROR_PATTERN.test(err.message)
+  const isContextError =
+    status === 413 || CONTEXT_ERROR_PATTERN.test(err.message)
+  // 400/404/422：模型名错误、请求参数非法、端点不存在——同一请求重试必然再失败
+  const isRequestError = status === 400 || status === 404 || status === 422
   return {
     isUserAbort,
     isTimeout,
     isConfigError,
     isBalanceError,
-    isPermanentError: isConfigError || isBalanceError
+    isAuthError,
+    isContextError,
+    isRequestError,
+    // 永久性分组（2026-10-31 扩展）：未配置 ∪ 余额 ∪ 鉴权 ∪ 上下文超限 ∪ 请求被拒。
+    // 原分组只有「未配置 ∪ 余额」→ 401/400/404/上下文超限会落入无限静默重试，
+    // 表现为「永远正在生成」。瞬时错误（超时/网络/429/5xx）仍然不受限重试。
+    isPermanentError:
+      isConfigError || isBalanceError || isAuthError || isContextError || isRequestError
   }
 }
 
@@ -136,12 +168,23 @@ export function decideStreamErrorAction(params: {
  * `interrupted`，真实原因被埋在中断恢复的系统注入文本里，用户**不知道要去充值**。修复的关键
  * 不只是「不重试」，还有「把原因与可行动建议直接推给前端」。这段文案就是那个修复的一半，
  * 故独立成函数以便被断言（行为测试能证明「不重试」，但证明不了「用户看得到原因」）。
- * 作用：余额不足 → 原文 + 充值/换 Key 建议 + 「已暂停自动恢复」的说明；其余永久性错误
- * （如 LLM 未配置）→ 原样返回错误消息（消息本身已是可行动提示：「请在设置中填写 API Key」）。
+ * 作用：余额不足 → 原文 + 充值/换 Key 建议 + 「已暂停自动恢复」的说明；鉴权失败 → 检查 Key/权限；
+ * 上下文超限 → 开新会话/继承；其余永久性错误（如 LLM 未配置、请求被拒）→ 原样返回错误消息。
  * 不删理由：删掉即把「用户看得懂为什么失败」这件事退回到只能靠日志排查。
  */
-export function buildPermanentErrorPayload(message: string, isBalanceError: boolean): string {
-  return isBalanceError
-    ? `LLM API 余额不足（${message}）：请在服务商处充值或更换 API Key 后重试。（系统已暂停自动恢复，避免无效重试循环）`
-    : message
+export function buildPermanentErrorPayload(
+  message: string,
+  isBalanceError: boolean,
+  facts?: Pick<StreamErrorFacts, 'isAuthError' | 'isContextError'>
+): string {
+  if (isBalanceError) {
+    return `LLM API 余额不足（${message}）：请在服务商处充值或更换 API Key 后重试。（系统已暂停自动恢复，避免无效重试循环）`
+  }
+  if (facts?.isAuthError) {
+    return `LLM 鉴权失败（${message}）：请在设置中检查 API Key / 账号权限（或更换可用服务商）后重试。（系统已暂停自动恢复，避免无效重试循环）`
+  }
+  if (facts?.isContextError) {
+    return `上下文超限（${message}）：请开新会话（或在会话树里新建继承节点）后重试。（系统已暂停自动恢复，避免无效重试循环）`
+  }
+  return message
 }

@@ -7,6 +7,7 @@
 import { useState, useEffect } from 'react'
 import { Copy, Check, RotateCcw, Share2, Network, MonitorSmartphone, Server } from 'lucide-react'
 import { useT } from '../../../i18n/useT'
+import { useTransientTimer } from '../../../hooks/useTransientTimer'
 import { copyText } from '../../../utils/clipboard'
 
 interface JoinInfo {
@@ -39,6 +40,8 @@ export function MultiInstanceSection() {
   const [copied, setCopied] = useState(false)
   const [confirmRotate, setConfirmRotate] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  // 「复制成功」提示「1.5 秒后自动消失」的计时器句柄（卸载清理 + 重复调度先取消）
+  const { schedule: scheduleCopiedClear } = useTransientTimer()
 
   const refresh = async () => {
     const s = await window.lunareclipse.multiGetStatus()
@@ -57,7 +60,7 @@ export function MultiInstanceSection() {
     const ok = await copyText(info.link)
     if (ok) {
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      scheduleCopiedClear(() => setCopied(false), 1500)
     } else {
       setMsg('复制失败，请手动选择复制')
     }

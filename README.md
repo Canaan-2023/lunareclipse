@@ -6,14 +6,14 @@
 
 **月相会告诉你时间，记忆会告诉她你是谁。**
 
-**v0.53.19 · AGPL-3.0-or-later · Windows x64**
+**v0.54.0 · AGPL-3.0-or-later · Windows x64**
 
 [![CI](https://github.com/Canaan-2023/lunareclipse/actions/workflows/ci.yml/badge.svg)](https://github.com/Canaan-2023/lunareclipse/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.53.19-6f5bd6?style=flat-square)](https://github.com/Canaan-2023/lunareclipse/releases)
+[![version](https://img.shields.io/badge/version-0.54.0-6f5bd6?style=flat-square)](https://github.com/Canaan-2023/lunareclipse/releases)
 [![license](https://img.shields.io/badge/license-AGPL--3.0--or--later-2ea44f?style=flat-square)](./LICENSE)
 [![platform](https://img.shields.io/badge/platform-Windows%20x64-0078D4?style=flat-square)](#快速开始)
 [![electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square)](https://www.electronjs.org/)
-[![tests](https://img.shields.io/badge/tests-3413%20passing-2ea44f?style=flat-square)](#从源码运行)
+[![tests](https://img.shields.io/badge/tests-3467%20passing-2ea44f?style=flat-square)](#从源码运行)
 
 [下载最新版](https://github.com/Canaan-2023/lunareclipse/releases) ·
 [问题反馈](https://github.com/Canaan-2023/lunareclipse/issues) ·
@@ -173,7 +173,7 @@ sequenceDiagram
 | 层级 | 含义 | 默认 |
 | --- | --- | --- |
 | **T0 硬禁止** | 攻击非授权第三方、隐蔽规避、伤害他人、伪造身份、未声明外泄、绕过审批（含 AI 自我授权） | **永远关闭**，不可授予，不注册为工具 |
-| **T1 显式授予** | 采集、执行器高风险动作、已授权目标探测、数据删除、跨节点迁移、已声明端点传输、使用凭据、工具区产物、中继、遥测开关、模型配置、局域网启停 | **默认关**，逐项授予、可撤回、可带范围、全量审计 |
+| **T1 显式授予** | 采集、执行器高风险动作、跨节点迁移、工具区产物、中继、局域网启停 | **默认关**，逐项授予、可撤回、可带范围、全量审计 |
 | **T2 默认开** | 只读环境元数据、规划、记忆检索、拓扑可视化、只读工具、日志/审计读取、池内选模型、房间外观 | 无需授予 |
 
 - 授予只来自你的操作；AI 不能给自己授权。
@@ -183,6 +183,8 @@ sequenceDiagram
 - `t1.migrate` 会列出当前局域网节点供勾选；目标 / 端点也提供 IP、URL、共享路径示例。
   你填进去的范围就是 AI 能访问的范围，不在范围内一律拒绝。
 - 授予前需要阅读并确认告知条款；授权造成的损失由你自行承担。
+- 目录里另有 6 项预留能力（已授权目标探测、数据删除、已声明端点传输、使用凭据、遥测开关、
+  模型配置）尚未接上执行点，所以不出现在授予面——授予了也不会有任何行为变化。
 
 ## 模型、工作流与子智能体
 
@@ -285,7 +287,7 @@ npm run lint       # ESLint
 npm run build      # 构建到 out/（electron-vite）
 ```
 
-当前基线：**301 文件 / 3413 用例**通过。
+当前基线：**308 文件 / 3467 用例**通过。
 
 源码版同样使用内置月蚀立绘与 `assets/room-seed` 的两张背景（`背景1.jpg` / `背景2.jpg`）：`npm run dev` 首次启动会把它们写入
 `data/abyssac_data/room/`（用户文件不会被覆盖）。你也可以把自己的素材放进 `data/abyssac_data/room/`。
@@ -365,7 +367,7 @@ T0 硬禁止不可授予，T1 需要逐项授予。这是产品边界，不是�
 
 # LunarEclipse 月蚀
 
-**v0.53.19 · AGPL-3.0-or-later · Windows x64**
+**v0.54.0 · AGPL-3.0-or-later · Windows x64**
 
 **The moon tells the time; memory tells her who you are.**
 
@@ -591,7 +593,7 @@ npm run lint       # ESLint
 npm run build      # build into out/ (electron-vite)
 ```
 
-Current baseline: **301 files / 3413 tests** passing.
+Current baseline: **308 files / 3467 tests** passing.
 
 The source build uses the same built-in portrait and `assets/room-seed` backgrounds:
 `npm run dev` seeds them into `data/abyssac_data/room/` on first launch (user files are not

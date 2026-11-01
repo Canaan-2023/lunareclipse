@@ -8,6 +8,7 @@ import { Trash2, Folder, FolderOpen, Check, Pencil, FolderPlus } from 'lucide-re
 import type { WorkspaceConfig, WorkspaceItem } from '@shared/types'
 import { Field } from '../Field'
 import { useT } from '../../../i18n/useT'
+import { useTransientTimer } from '../../../hooks/useTransientTimer'
 
 export function WorkspaceConfigSection() {
   const t = useT()
@@ -20,6 +21,8 @@ export function WorkspaceConfigSection() {
   const [newPath, setNewPath] = useState('')
   const [msg, setMsg] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null)
   const [busy, setBusy] = useState(false)
+  // 「3 秒后自动消失」提示的计时器句柄（卸载清理 + 重复调度先取消，不再裸 setTimeout）
+  const { schedule: scheduleMsgClear } = useTransientTimer()
 
   // 首次加载
   useEffect(() => {
@@ -33,7 +36,7 @@ export function WorkspaceConfigSection() {
 
   const flash = (text: string, kind: 'ok' | 'err' = 'ok') => {
     setMsg({ text, kind })
-    setTimeout(() => setMsg(null), 3000)
+    scheduleMsgClear(() => setMsg(null), 3000)
   }
 
   const refresh = async (cfg?: WorkspaceConfig) => {

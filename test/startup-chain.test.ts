@@ -33,6 +33,8 @@ const mockState = vi.hoisted(() => {
     startApiServer: vi.fn(async () => 62002),
     closeApiServer: vi.fn(async () => {}),
     getHeadlessChatRunner: vi.fn(() => null),
+    /** 退出链在 closeApiServer 之前派发内部会话维护队列（flush 引用由 service-refs 承载） */
+    internalSessionFlush: vi.fn(async () => {}),
     // ---- 媒体协议 / 启动辅助 ----
     registerMediaScheme: vi.fn(),
     initMediaProtocol: vi.fn(),
@@ -62,6 +64,8 @@ const mockState = vi.hoisted(() => {
     // ---- monitor 三件套 ----
     supervisorStart: vi.fn(),
     supervisorStop: vi.fn(async () => {}),
+    /** stop() 之后取消记忆/日记工作流的在飞批次 */
+    supervisorAbortInFlight: vi.fn(),
     pathSyncStart: vi.fn(),
     pathSyncStop: vi.fn(async () => {}),
     healthCheckStart: vi.fn(),
@@ -82,6 +86,8 @@ const mockState = vi.hoisted(() => {
     pluginReload: vi.fn(async () => {}),
     pluginList: vi.fn(() => []),
     pluginGetTools: vi.fn(() => []),
+    /** 退出链销毁插件加载器（关 fs.watch 与 reload 定时器） */
+    pluginDestroy: vi.fn(),
     mountCordis: vi.fn(async () => mockState.calls.detachCordis),
     detachCordis: vi.fn(async () => {}),
     registerBuiltinToolsMeta: vi.fn(),
@@ -136,6 +142,8 @@ const mockState = vi.hoisted(() => {
     // ---- sessions flush / timerRegistry ----
     sessionFlush: vi.fn(async () => {}),
     timerStopAll: vi.fn(async () => {}),
+    /** 退出链销毁人工评分器（释放 pending 请求定时器） */
+    humanGraderDestroy: vi.fn(),
     setAuthOfMulti: vi.fn(),
 // ---- 二次窗口重建（createWindow 意外重入安全兜底）----
     createWindowCount: 0
@@ -235,7 +243,9 @@ return {
 vi.mock('../electron/main/api/server', () => ({
   startApiServer: mockState.calls.startApiServer,
   closeApiServer: mockState.calls.closeApiServer,
-  getHeadlessChatRunner: mockState.calls.getHeadlessChatRunner
+  getHeadlessChatRunner: mockState.calls.getHeadlessChatRunner,
+  // quit-chain 在 closeApiServer 之前经此 flush 内部会话维护队列
+  flushPendingInternalSessionJobs: mockState.calls.internalSessionFlush
 }))
 
 vi.mock('../electron/main/api/gen/media-protocol', () => ({
@@ -393,6 +403,7 @@ vi.mock('../electron/main/monitor', () => ({
   Supervisor: class {
     start = mockState.calls.supervisorStart
     stop = mockState.calls.supervisorStop
+    abortInFlight = mockState.calls.supervisorAbortInFlight
     isFrontendIdle = vi.fn(() => true)
     activeSessionId = null
     setWorkflowManagerProvider = vi.fn()
@@ -473,6 +484,8 @@ vi.mock('../electron/main/plugins', () => ({
     reload = mockState.calls.pluginReload
     list = mockState.calls.pluginList
     getTools = mockState.calls.pluginGetTools
+    // 退出链调用 destroy()：关 fs.watch 与 500ms reload 定时器
+    destroy = mockState.calls.pluginDestroy
   },
   getDomainPluginsDir: vi.fn(() => null)
 }))
@@ -575,6 +588,8 @@ vi.mock('../electron/main/eval', () => ({
 vi.mock('../electron/main/eval/graders/human-grader', () => ({
   HumanGrader: class {
     constructor(..._args: unknown[]) {}
+    // 退出链调用 destroy()：释放 pending 评分请求定时器
+    destroy = mockState.calls.humanGraderDestroy
   }
 }))
 
@@ -644,6 +659,7 @@ vi.mock('../electron/main/kernel/cordis-runtime', () => ({
       initSupervisor: vi.fn(() => ({
         start: mockState.calls.supervisorStart,
         stop: mockState.calls.supervisorStop,
+        abortInFlight: mockState.calls.supervisorAbortInFlight,
         isFrontendIdle: vi.fn(() => true),
         activeSessionId: null,
         setWorkflowManagerProvider: vi.fn(),
@@ -800,6 +816,8 @@ describe('批次 A4：app.whenReady() 启动链装配断言', () => {
     expect(mockState.calls.closeApiServer).toHaveBeenCalled()
     // 监控三件套释放
     expect(mockState.calls.supervisorStop).toHaveBeenCalled()
+    // stop 之后取消记忆/日记工作流的在飞批次
+    expect(mockState.calls.supervisorAbortInFlight).toHaveBeenCalled()
     expect(mockState.calls.pathSyncStop).toHaveBeenCalled()
     expect(mockState.calls.healthCheckStop).toHaveBeenCalled()
     expect(mockState.calls.uiHealthStop).toHaveBeenCalled()
@@ -811,11 +829,16 @@ describe('批次 A4：app.whenReady() 启动链装配断言', () => {
     expect(mockState.calls.autoCleanupStop).toHaveBeenCalled()
     // 会话刷盘
     expect(mockState.calls.sessionFlush).toHaveBeenCalled()
+    // 内部会话维护队列 flush（早于 closeApiServer）
+    expect(mockState.calls.internalSessionFlush).toHaveBeenCalled()
     // 浏览器视图销毁 / MCP 断开 / 沙箱 coeffect 回滚 / Cordis 卸载 / 生命周期收尾
     expect(mockState.calls.browserDestroyView).toHaveBeenCalled()
     expect(mockState.calls.mcpDisconnectAll).toHaveBeenCalled()
     expect(mockState.calls.sandboxDispose).toHaveBeenCalled()
     expect(mockState.calls.detachCordis).toHaveBeenCalled()
+    // 人工评分器 / 插件加载器销毁
+    expect(mockState.calls.humanGraderDestroy).toHaveBeenCalled()
+    expect(mockState.calls.pluginDestroy).toHaveBeenCalled()
     expect(mockState.calls.lifecycleShutdown).toHaveBeenCalled()
     // 定时器统一清理（cron/激活/UI 监控等全部定时器，5 秒超时保护）
     expect(mockState.calls.timerStopAll).toHaveBeenCalled()

@@ -22,7 +22,7 @@
 import type { ipcMain as IpcMainType, IpcMainInvokeEvent } from 'electron'
 import type { ConfigStore } from '../../api/config-store'
 import type { AppConfig, AuditEntry, CapabilityDef, GrantScope, SecurityGrant } from '@shared/types'
-import { ALL_CAPABILITIES, GRANT_SCOPE_ENTRY_MAX, GRANT_SCOPE_MAX_ENTRIES, isGrantable, resolveCapability } from '@shared/security/tiers'
+import { GRANT_SCOPE_ENTRY_MAX, GRANT_SCOPE_MAX_ENTRIES, GRANT_SURFACE_CAPABILITIES, isGrantable, resolveCapability } from '@shared/security/tiers'
 import { SECURITY_NOTICE_VERSION, needsAcknowledgement } from '@shared/security/notice'
 import { readAuditTail } from '../../tools/security-engine/audit-log'
 import { reportRoomWake } from '../../room/wake'
@@ -118,7 +118,7 @@ export function registerSecurityHandlers(ipc: typeof IpcMainType, deps: Security
       const acked = !needsAcknowledgement(stored)
       return {
         ok: true,
-        capabilities: ALL_CAPABILITIES,
+        capabilities: GRANT_SURFACE_CAPABILITIES,
         grants: stored?.grants ?? {},
         acknowledged: acked,
         acknowledgedAt: acked ? (stored?.acknowledged?.at ?? null) : null,
@@ -168,7 +168,13 @@ export function registerSecurityHandlers(ipc: typeof IpcMainType, deps: Security
       // 顺序：先把明显非法的键挡掉，再谈风险告知——错误信息才对得上用户的操作。
       if (!isGrantable(key)) {
         const cap = resolveCapability(key)
-        const why = !cap ? '未登记的能力' : cap.tier === 'T0' ? '硬禁止能力不可授予' : '默认开放能力无需授予'
+        const why = !cap
+          ? '未登记的能力'
+          : cap.tier === 'T0'
+            ? '硬禁止能力不可授予'
+            : cap.tier === 'T2'
+              ? '默认开放能力无需授予'
+              : '该能力还没有执行点（授予了也不会有任何行为变化），暂不可授予'
         return { ok: false, error: `不可授予「${key}」：${why}` }
       }
       // 告知义务门：没确认过（或条款已升版）就授不出去。

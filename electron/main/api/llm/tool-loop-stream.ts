@@ -12,10 +12,14 @@
  * 不删理由：TTFT/idle 超时与两类复读打断（尾部重复、`<system>` 回放）是长任务不挂死的唯一保护；
  * 删掉即请求可能永久挂起、复读无人打断。
  *
- * ⚠️ 计时器生命周期（易错）：TTFT/idle 计时器**在本模块创建、由调用方在轮次 finally 释放**
- * （见返回的 `timers.dispose`）。原实现把创建与释放都放在 `streamWithTools` 的同一 try/finally 内，
- * 其语义是「计时器在工具执行阶段仍然武装」——工具跑超时会被 idle 打断。本模块若在返回前自行清理
- * 计时器，会静默改变该语义（工具阶段不再被打断），故计时器句柄必须交回调用方。
+ * ⚠️ 计时器生命周期（2026-10-31 修正，易错）：TTFT/idle 只描述「这一段流是否还活着」，
+ * 因此**流消费结束即清理**（`disposeTimers()` 在正常返回前调用；异常路径同样清理）。
+ * 修复前计时器由调用方在轮次 finally 才释放，等于让"工具执行阶段仍武装"——但 TTFT 只在
+ * 正文/思考首 token 解除，`tool_calls` 帧不算：模型先返回工具调用时，30s TTFT 会在工具执行
+ * 中途 abort，且恰好与 `run_command`/`code_run` 的 30s 托管移交同时刻，AI 收不到
+ * `tool_watch` 提示、工具却还在后台跑（重复执行风险）。工具阶段的外墙/托管语义由
+ * `tool-loop-dispatch` 负责，流计时器不得跨阶段接管。
+ * 返回的 `timers.dispose` 仍交回调用方（轮次 finally 兜底、幂等），但正常路径已先行释放。
  * 异常路径（本模块内抛出）自行清理后重抛，避免句柄泄漏。
  */
 import type OpenAI from 'openai'
@@ -98,6 +102,21 @@ export async function runTurnStream(ctx: TurnStreamContext): Promise<TurnStreamR
       clearTimeout(idleTimer)
       idleTimer = null
     }
+  }
+  /**
+   * 流活动看门狗：任何活动（思考 token / 正文 token / 工具调用帧）都重置 idle 计时器。
+   * 为什么工具调用也要算活动：`tool_calls` 的参数是分片到达的，若模型在参数中途停滞，
+   * 没有看门狗就会永久挂起——TTFT 解除后必须把保护交给 idle，不能留下无计时器的空窗。
+   */
+  const armIdleWatchdog = (): void => {
+    if (idleTimer) {
+      clearTimeout(idleTimer)
+    }
+    idleTimer = setTimeout(() => {
+      console.warn(`[llm] 空闲超时 ${idleTimeoutMs}ms 无新 token，abort`)
+      entry.abortReason = 'idle_timeout'
+      ctrl.abort()
+    }, idleTimeoutMs)
   }
 
   try {
@@ -213,14 +232,7 @@ export async function runTurnStream(ctx: TurnStreamContext): Promise<TurnStreamR
           console.log(`[llm] TTFT=${firstTokenAt - requestStart}ms (首思考 token)`)
         }
         // 思考 token 也重置 idle timer，避免长时间思考被误判超时
-        if (idleTimer) {
-          clearTimeout(idleTimer)
-        }
-        idleTimer = setTimeout(() => {
-          console.warn(`[llm] 空闲超时 ${idleTimeoutMs}ms 无新 token，abort`)
-          entry.abortReason = 'idle_timeout'
-          ctrl.abort()
-        }, idleTimeoutMs)
+        armIdleWatchdog()
         // ===== 思考流重复检测（2026-08-24）=====
         reasoningBuf += reasoningText
         reasoningCheckCounter++
@@ -267,15 +279,8 @@ export async function runTurnStream(ctx: TurnStreamContext): Promise<TurnStreamR
           }
           console.log(`[llm] TTFT=${firstTokenAt - requestStart}ms (首 token 延迟)`)
         }
-        // 首 token 后启动 idle timer；每次收到新 token 重置，本地 60s/云 30s 无新 token 则 abort
-        if (idleTimer) {
-          clearTimeout(idleTimer)
-        }
-        idleTimer = setTimeout(() => {
-          console.warn(`[llm] 空闲超时 ${idleTimeoutMs}ms 无新 token，abort`)
-          entry.abortReason = 'idle_timeout'
-          ctrl.abort()
-        }, idleTimeoutMs)
+        // 首 token 后启动 idle timer；每次收到新 token 重置，本地 180s/云 30s 无新 token 则 abort
+        armIdleWatchdog()
         tokenCount++
         contentBuf += contentText
         callbacks.onToken(contentText)
@@ -309,6 +314,19 @@ export async function runTurnStream(ctx: TurnStreamContext): Promise<TurnStreamR
           }>
         | undefined
       if (toolCalls) {
+        // `tool_calls` 帧 = 首包已到（连接活着、模型已开始响应），TTFT 必须立即解除。
+        // 不能只把正文/思考 token 当首包：非思考模式或纯工具轮的首帧就是 tool_calls，
+        // 否则 30s TTFT 会在工具执行阶段 abort（见文件头「计时器生命周期」）。
+        if (firstTokenAt === 0) {
+          firstTokenAt = Date.now()
+          if (ttftTimer) {
+            clearTimeout(ttftTimer)
+            ttftTimer = null
+          }
+          console.log(`[llm] TTFT=${firstTokenAt - requestStart}ms (首帧：工具调用)`)
+        }
+        // 工具调用参数可能分片到达：每帧都算"流还活着"，重置 idle 看门狗
+        armIdleWatchdog()
         for (const tc of toolCalls) {
           const idx = tc.index ?? 0
           if (!toolCallMap.has(idx)) {
@@ -339,6 +357,11 @@ export async function runTurnStream(ctx: TurnStreamContext): Promise<TurnStreamR
         )
       }
     }
+
+    // 流阶段结束：TTFT/idle 只覆盖"本段流是否活着"；流消费完毕后，
+    // 后续（工具派发 / 结果蒸馏 / 下一轮建流）由各自的外墙与超时机制负责。
+    // 若继续武装，工具执行阶段会被 idle 计时器 abort（见文件头「计时器生命周期」）。
+    disposeTimers()
 
     return {
       contentBuf,

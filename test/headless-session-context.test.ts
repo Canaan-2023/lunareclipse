@@ -75,12 +75,32 @@ function makeHarness(over: Partial<HeadlessChatDeps> = {}) {
 describe('无头链路的内部会话锚点（逆生树）', () => {
   it('注入了 resolveSessionContext → 锚点作为第 3 参传入（且 purpose 一并透传）', async () => {
     const { runner, injectedCalls } = makeHarness({
-      resolveSessionContext: async () => ANCHOR
+      resolveSessionContext: async () => ({ sessionContext: ANCHOR, internalId: 'int-1' })
     })
     await runner('你好', 'sess-1', 1, 'room')
     expect(injectedCalls).toHaveLength(1)
     expect(injectedCalls[0].sessionContext).toBe(ANCHOR)
     expect(injectedCalls[0].purpose).toBe('room')
+  })
+
+  it('钩子拿到本轮落定的内部会话 id（房间轮两写入口，0.54.0）', async () => {
+    const seen: Array<string | null> = []
+    const { runner } = makeHarness({
+      resolveSessionContext: async () => ({ sessionContext: ANCHOR, internalId: 'int-9' })
+    })
+    await runner('你好', 'sess-1', 1, 'room', {
+      onInternalSessionResolved: (id) => seen.push(id)
+    })
+    expect(seen).toEqual(['int-9'])
+  })
+
+  it('未注入路由 → 钩子拿到 null（线性管线，调用方跳过内部会话写入）', async () => {
+    const seen: Array<string | null> = []
+    const { runner } = makeHarness()
+    await runner('你好', 'sess-1', 1, 'room', {
+      onInternalSessionResolved: (id) => seen.push(id)
+    })
+    expect(seen).toEqual([null])
   })
 
   it('未注入 → 仍传 null（未升级的调用方行为逐字不变）', async () => {
@@ -101,7 +121,9 @@ describe('无头链路的内部会话锚点（逆生树）', () => {
   })
 
   it('解析返回 null（未启用/路由失败）→ 线性管线，不崩', async () => {
-    const { runner, injectedCalls } = makeHarness({ resolveSessionContext: async () => null })
+    const { runner, injectedCalls } = makeHarness({
+      resolveSessionContext: async () => ({ sessionContext: null, internalId: null })
+    })
     await runner('你好', 'sess-1')
     expect(injectedCalls[0].sessionContext).toBeNull()
   })

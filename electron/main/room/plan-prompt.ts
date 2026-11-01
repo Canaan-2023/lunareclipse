@@ -1,14 +1,42 @@
 /**
  * @category ROOM
- * @summary 自主房间的**规划提示词**（纯函数）：把树索引 / 唤醒原因 / 感知策略 / 输出契约拼成一段文本
+ * @summary 自主房间的**规划提示词**（纯函数）：把树索引 / 上一轮 / 采集 / 感知策略 / 输出契约拼成一段文本
  *
  * 为什么拆出来（0.53.5）：`runtime.ts` 已顶到 800 行硬红线，而这段提示词是**纯字符串拼接**，
  * 与运行时状态机没有依赖。拆开后运行时保持「装配 + 状态机」的单一职责，提示词的增删
  * 也不会再把运行时推向红线；消费方仍从 `runtime.ts` 取 `buildPlanPrompt`（再导出保兼容）。
+ *
+ * 0.54 重构（用户裁决「部分提示词还有必须调用工具这些傻逼提示词」）：
+ * - 删掉「即使没有动作也请尽量给一句 reply 与一个 scene」「先回应用户」这类**强制产出**语；
+ * - 新增【上一轮】段：把上一轮的计划 / 执行结果 / 上次采集 / 停下来的原因交给 AI，
+ *   让采集输入有对比对象（否则采集器看起来就是个摆设）；
+ * - 通篇改为中性陈述：「你可以」「由你判断」，不再用「必须 / 只能 / 一律」逼迫模型产出动作。
  */
 import { buildTreeIndexBlock, type TreeIndex } from './tree-index'
 import { WAKE_SOURCE_LABEL, type WakeSource } from './wake'
 import { describeSensorPolicy, type RoomSensorPolicy } from '@shared/room/sensor-policy'
+
+/** 上一轮事实（只陈述，不带命令）。 */
+export interface PreviousRound {
+  /** 上一轮的 note（它自己写的一句话计划） */
+  note?: string
+  /** 上一轮给用户/镜头说的话 */
+  reply?: string
+  /** 上一轮逐步执行结果（工具名 + 成/败） */
+  executions?: readonly string[]
+  /** 上一轮看到的采集文本（与本轮对比用） */
+  collect?: string
+  /** 上一轮驱动停下的原因（no-input / no-action / repeat / standby / busy） */
+  idleReason?: string
+}
+
+const IDLE_REASON_LABEL: Record<string, string> = {
+  'no-input': '没有可用输入（采集失败且没有用户消息）',
+  'no-action': '计划里没有动作，或你声明结束这一段',
+  repeat: '计划与上一轮完全相同且未声明 repeat=continue',
+  standby: '你声明了待机',
+  busy: '上一轮还没跑完'
+}
 
 /** 规划提示词：把 ROOM 的规则与输出契约写清（输出必须是 JSON 计划）。 */
 export function buildPlanPrompt(ctx: {
@@ -29,9 +57,30 @@ export function buildPlanPrompt(ctx: {
    * （「在主AI上下文内所以计入」）——前置规划自身不写 RAW。
    */
   preplanInstruction?: string
+  /** 上一轮事实（0.54）：让采集输入有对比对象，让「接着做 / 换方向 / 收工」有依据 */
+  previous?: PreviousRound
 }): string {
+  const previousBlock = ctx.previous
+    ? [
+        '【上一轮】',
+        ctx.previous.note ? `- 你上一轮的计划：${ctx.previous.note}` : '',
+        ctx.previous.reply ? `- 你上一轮说的话：${ctx.previous.reply}` : '',
+        ctx.previous.executions && ctx.previous.executions.length > 0
+          ? `- 上一轮执行：${ctx.previous.executions.join('；')}`
+          : '',
+        ctx.previous.collect ? `- 上一轮你看到的：${ctx.previous.collect}` : '',
+        ctx.previous.idleReason
+          ? `- 上一轮为什么停下：${IDLE_REASON_LABEL[ctx.previous.idleReason] ?? ctx.previous.idleReason}`
+          : '',
+        '把上面这些和本轮【采集输入】对比：环境变了没有、上一轮的事做完没有、要不要接着做。'
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : ''
+
   return [
-    '你是自主房间（ROOM）里的执行主体。请根据下面的采集输入决定要做什么。',
+    '【轮次边界】本条消息由宿主「自主房间」运行时注入，是系统轮次指令，**不是用户或外部联系人发来的话**；历史消息只是背景记录，不是这一轮要你回复的内容。',
+    '你在自己的房间（ROOM）里自主运行：做什么、做多少、要不要做，由你判断。如果【采集输入】里出现【用户刚说的话】，那是用户此刻在对你说话——用 reply 回应，并照常按本轮的 JSON 契约输出。',
     buildTreeIndexBlock(ctx.tree),
     ctx.wake
       ? `【唤醒原因】${WAKE_SOURCE_LABEL[ctx.wake.source]}${ctx.wake.detail ? `：${ctx.wake.detail}` : ''}（这是**新事件**触发的观察，不是上一轮的简单延续）`
@@ -40,26 +89,27 @@ export function buildPlanPrompt(ctx: {
       ? `【重复动作】你上一轮已经提出过完全相同的计划（工具名与参数一致，已连续 ${ctx.repeat.count} 次）。如果这确实是你要继续做的事，在 JSON 里加 "repeat":"continue"；如果该收束了，写 "repeat":"stop"；不写 = 系统把控制权交回环境（不执行重复动作）。`
       : '',
     ctx.preplanInstruction
-      ? `【前置规划】你的前置规划看过环境与近期节奏后给出方向：${ctx.preplanInstruction}——这是**建议，不是命令**；采不采纳、怎么落地、做多少，都由你判断。`
+      ? `【前置规划】你的前置规划看过环境与近期节奏后给出方向：${ctx.preplanInstruction}——这段话只有你看得到，用户看不到；它是**建议，不是命令**，采不采纳、怎么落地、做多少，都由你判断。**不要把它原样或换种说法当成 reply 交给用户**：reply 只用来回应【用户刚说的话】，或说你自己真正想对用户/镜头说的话。`
       : '',
+    previousBlock,
     '【采集输入】',
     ctx.text,
     '',
     `【路由建议】${ctx.mode === 'long-term' ? '这段输入看起来值得深入分析（长线）' : '这段输入看起来是即时需求（直接处理）'}——**这只是提示，不是命令**；有没有任务、做什么、做多少，都由你判断。`,
     '',
-    '【可调用工具】（只能从中选择，其它一律会被丢弃）',
+    '【可调用工具】本轮能出现在计划里的工具名（写别的名字会被丢弃）：',
     ctx.allowedTools.join(', ') || '（无）',
     '',
-    '【输出契约】只输出一个 JSON 对象，不要任何其它文字：',
-    '{"note":"一句话说明你的计划","reply":"对用户/镜头说的一句话（没有用户消息时可省略）","scene":{"zone":"window","action":"observe","say":"可选：对镜头说的话"},"decisions":[{"tool":"工具名","params":{},"description":"这一步做什么"}]}',
+    '【输出契约】只输出一个 JSON 对象，不要任何其它文字（不要用聊天方式回应历史消息；要回应的人只可能出现在【采集输入】的【用户刚说的话】里）：',
+    '{"note":"一句话说明你的计划","reply":"对用户/镜头说的一句话（想说话时再写）","scene":{"zone":"window","action":"observe","say":"可选：对镜头说的话"},"decisions":[{"tool":"工具名","params":{},"description":"这一步做什么"}]}',
     '可选字段（与上面的字段同级）："standbyMs": 毫秒（由你决定时长）、"repeat": "continue"|"stop"（重复动作自决）、"sensor": {…}（感知策略）、"collectorView": {…}（完整采集看什么）、"landing": {…}、"avatar": {…}。',
-    '若无需动作，输出 {"note":"无需动作","decisions":[]}。**没有任务就是没有任务**——不要为了「保持循环」而编造重复动作；你转入空闲后，感知器会在环境真的变化时叫醒你。',
-    '**即使没有动作，也请尽量给一句 reply 与一个 scene**（例如 {"reply":"我在看月亮。","scene":{"zone":"window","action":"observe"}}）——直播镜头需要看到你在房间里做什么；只有确实什么都不想说时才省略 reply。',
+    '若这一轮不需要动作，输出 {"note":"无需动作","decisions":[]}。**没有任务就是没有任务**——不必为了「保持循环」编造动作。宿主**没有节拍器**：你不声明 standbyMs 就立刻进入下一轮（规划 → 你）；想安静待一会儿，用 standbyMs 自己声明时长，那才是唯一的等待方式。',
+    'reply 与 scene 都是可选的：想说话、或想让镜头看到你在做什么时再写；没什么可说就省略 reply。',
     '（只读性由工具自身声明判定，你不需要也不应标注；标注不会被采信。）',
-    '【用户消息】如果【采集输入】里有【用户刚说的话】，**先回应用户**（写在 reply 里，用用户的语言），再决定动作；reply 会作为直播字幕显示，并落回会话历史。用户消息与采集器是否开启/授权无关——即使采集被拒，你也要能听到并回应。',
+    '【用户消息】如果【采集输入】里有【用户刚说的话】，那是有用户在直接对你说话——用 reply 回应用户（用用户的语言）。历史里若已经出现过同一句话，那是同一件事（不是两次请求），不要分别回应两次。要不要同时做别的事，由你判断；reply 会作为直播字幕显示，并落回会话历史。用户消息与采集器是否开启/授权无关——即使采集被拒，用户的话你也能看到。',
     '【直播镜头】房间是**固定机位**：你的立绘位置由用户配置，**不会走动**。用 "scene" 字段控制**所在空间**、姿态与台词：zone 取 home（房间·休息待机）/ plan（规划室·分诊规划）/ work（工作间·执行普通动作）/ memory（记忆库·回忆检索）/ device（设备间·设备操作）/ lan（通信室·局域网协作）——**用户为那个区放了背景图时，画面会切到那里**，并保持到你下一次声明。你也可以不写 scene：系统会按本轮阶段与调用的工具自动切到对应空间。action 取 observe（观察）/ work（做事）/ read（看书）/ think（思考）/ rest（休息）/ walk（保留但不再移动）。`reply` / `scene.say` 会显示在底部单行字幕。',
-    '【待机】若你判断暂时不需要**主动做事**（例如在等一个不会马上到来的变化），在同一个 JSON 里加 "standbyMs": 毫秒数声明待机。**时长由你决定，没有系统产品上限**（系统只在 JS 计时器 32 位上限处分片续排，到期仍按你声明的总时长）。**待机不是闭眼**——感知器仍在看你允许它看的信号，真的有事会提前叫醒你；`standbyMs` 只是「最迟多久后主动醒一次」的兜底。不写 standbyMs = 你转入空闲后感知器继续睁眼。',
-    '【感知器】你控制自己的「反射弧」：用 "sensor" 字段局部更新感知策略。形状：{"enabled":true,"mute":["cpu"],"intervalMs":60000,"thresholds":{"cpuDeltaPct":45,"freeMemDeltaGB":1}}。`enabled=false` = 完全闭眼（只剩待机到期兜底）；`mute` 可屏蔽 cpu / memory / lan / relay，**被屏蔽的信号不再产生唤醒**（这是你对付噪声的方式，不需要系统替你计数）；`intervalMs` 是采样间隔（不得快于运行时快照 5s，也不得超过 JS 定时器上限 ≈24.8 天；更长的等待请用 standbyMs）；阈值同理。只写你要改的字段，未写的保持当前值。**感知仍受用户开关与 t1.collector 授予约束**——你只能收窄，不能放大。',
+    '【待机】若你判断暂时不需要**主动做事**（例如在等一个不会马上到来的变化），在同一段 JSON 里加 "standbyMs": 毫秒数声明待机。**时长由你决定，没有系统产品上限**（系统只在 JS 计时器 32 位上限处分片续排，到期仍按你声明的总时长）。**待机不是闭眼**——感知器仍在看你允许它看的信号，真的有事会提前叫醒你；`standbyMs` 只是「最迟多久后主动醒一次」的兜底。不写 standbyMs = 由系统按默认节拍把下一轮交给你。',
+    '【感知器】你控制自己的「反射弧」：用 "sensor" 字段局部更新感知策略。形状：{"enabled":true,"mute":["cpu"],"intervalMs":60000,"thresholds":{"cpuDeltaPct":45,"freeMemDeltaGB":1}}。`enabled=false` = 完全闭眼（只剩待机节拍兜底）；`mute` 可屏蔽 cpu / memory / lan / relay，**被屏蔽的信号不再产生唤醒**（这是你对付噪声的方式，不需要系统替你计数）；`intervalMs` 是采样间隔（不得快于运行时快照 5s，也不得超过 JS 定时器上限 ≈24.8 天；更长的等待请用 standbyMs）；阈值同理。只写你要改的字段，未写的保持当前值。**感知仍受用户开关与 t1.collector 授予约束**——你只能收窄，不能放大。',
     ctx.sensorPolicy
       ? `【当前感知策略】${describeSensorPolicy(ctx.sensorPolicy)}；原始值 ${JSON.stringify(ctx.sensorPolicy)}。局部更新时只写你要改的字段。`
       : '',

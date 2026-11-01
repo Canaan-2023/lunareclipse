@@ -421,10 +421,9 @@ export class MultiInstanceService {
    * 启动局域网直连服务（master/satellite 角色；standalone 无协作对端不启动）。
    * 启动流程：绑定端口 → 上报在线 → 拉名册刷 peers → 回连在线对端。
    *
-   * 分发安全闸（0.52.8 审查 S1-A）：LAN 默认关闭——config.json 的 lan.enabled 非 true 时
-   * 不创建监听面（此前无条件绑定 0.0.0.0:62003 且握手无鉴权，属分发阻断项）。
-   * 绑定地址取 lan.bindHost，缺省 '127.0.0.1'（仅本机）；跨机协作需显式设为 '0.0.0.0'，
-   * 在 hello_auth 握手挑战落地前仅限可信局域网。
+   * 分发安全闸（0.52.8 审查 S1-A）：config.json 的 lan.enabled 非 true 时不创建监听面（此前无条件
+   * 绑 0.0.0.0:62003 且握手无鉴权）。0.54.0 起默认值是「开，但只绑 127.0.0.1」——回环不产生跨机
+   * 暴露面，用户显式改 bindHost 才真正跨机；`!== true` 判断保持不变，守的是「明确要求开」而非默认值。
    *
    * getAppConfig：给中继异步传输读取 AppConfig.relay（自定义下载位置/保留天数），
    * 同时提供 lan.enabled / lan.bindHost 开关；未传时按未启用处理（安全默认）。
@@ -435,7 +434,7 @@ export class MultiInstanceService {
     if (role === 'standalone' || this.lan) return { ok: true }
     const lanConfig = getAppConfig?.().lan
     if (lanConfig?.enabled !== true) {
-      return { ok: false, error: '局域网协作未启用（config.json → lan.enabled = true 开启；默认关闭以防未授权访问）' }
+      return { ok: false, error: '局域网协作未启用（config.json → lan.enabled = true 开启）' }
     }
     this.lan = new LanService({
       root: this.root,

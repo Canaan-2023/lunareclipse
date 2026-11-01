@@ -84,7 +84,7 @@ describe('授权即事件：授予 t1.collector 且采集器已开 → user-acti
   it('与采集无关的授予 → 不唤醒（不再广播惊群）', async () => {
     arm()
     const { invoke } = makeDeps({ ...ACKED, grants: {} }, { collector: { enabled: true } as AppConfig['collector'] })
-    const r = await invoke('security:grant', { key: 't1.credentials' })
+    const r = await invoke('security:grant', { key: 't1.lan-control' })
     expect(r.ok).toBe(true)
     expect(hits).toEqual([])
   })
@@ -178,19 +178,19 @@ describe('授予：只接受 T1，且 scoped 必须填对字段', () => {
   })
   it('scoped 能力缺范围 → 拒；范围填错字段 → 也拒（否则授予看似成功、动作全被拒）', async () => {
     const { invoke, grants } = makeDeps(ACKED)
-    expect((await invoke('security:grant', { key: 't1.authorized-target-ops' })).ok).toBe(false)
+    expect((await invoke('security:grant', { key: 't1.migrate' })).ok).toBe(false)
     const wrong = await invoke('security:grant', {
-      key: 't1.authorized-target-ops',
+      key: 't1.migrate',
       scope: { endpoints: ['https://example.com'] }
     })
     expect(wrong.ok).toBe(false)
-    expect(String(wrong.error)).toContain('targets')
+    expect(String(wrong.error)).toContain('nodes')
     const ok = await invoke('security:grant', {
-      key: 't1.authorized-target-ops',
-      scope: { targets: ['10.0.0.5'] }
+      key: 't1.migrate',
+      scope: { nodes: ['5'] }
     })
     expect(ok.ok).toBe(true)
-    expect(grants().grants['t1.authorized-target-ops'].scope?.targets).toEqual(['10.0.0.5'])
+    expect(grants().grants['t1.migrate'].scope?.nodes).toEqual(['5'])
   })
 })
 

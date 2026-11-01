@@ -7,6 +7,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../../stores/appStore'
 import { useT } from '../../i18n/useT'
+import { useTransientTimer } from '../../hooks/useTransientTimer'
 import type { PublishBoardItem, PublishListItem, PublishArticleItem, PublishCommentItem, View } from './types'
 import { BoardView } from './BoardView'
 import { ArticleView } from './ArticleView'
@@ -35,6 +36,8 @@ export function PublishBoardPanel({ embedded, externalQuery }: { embedded?: bool
   const [comments, setComments] = useState<PublishCommentItem[]>([])
   // 操作错误反馈（发布/删除/评论失败时展示，可自动消失）
   const [error, setError] = useState<string | null>(null)
+  // 自动消失提示的计时器句柄（卸载清理 + 重复调度先取消，不再裸 setTimeout）
+  const { schedule: scheduleErrorClear } = useTransientTimer()
   // 发布表单
   const [showCreateBoard, setShowCreateBoard] = useState(false)
   const [boardName, setBoardName] = useState('')
@@ -69,7 +72,7 @@ export function PublishBoardPanel({ embedded, externalQuery }: { embedded?: bool
 
   const reportError = useCallback((msg: string) => {
     setError(msg)
-    window.setTimeout(() => setError((cur) => (cur === msg ? null : cur)), 4000)
+    scheduleErrorClear(() => setError((cur) => (cur === msg ? null : cur)), 4000)
   }, [])
 
   const loadBoards = useCallback(async () => {

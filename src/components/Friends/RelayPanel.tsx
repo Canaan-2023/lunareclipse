@@ -9,6 +9,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { HardDrive, Upload, FileUp, FolderUp, Download, RotateCcw, File, Folder, Inbox, Send } from 'lucide-react'
 import type { RelayListItem, RelayEvent, RelayStatus } from '../../../electron/main/multi-instance/relay/relay-types'
 import type { TFunc } from '../../i18n/useT'
+import { useTransientTimer } from '../../hooks/useTransientTimer'
 import type { FriendItem } from './types'
 import { FOCUS } from './types'
 import { formatRelativeTime } from './utils'
@@ -54,6 +55,8 @@ function formatBytes(n: number): string {
  * 放在面板内部订阅/清理最小化跨模块耦合；好友列表仍由 FriendsPanel 传入（接收方候选）。
  */
 export function RelayPanel({ friends, t }: RelayPanelProps) {
+  // 错误提示「4 秒后自动消失」的计时器句柄（卸载清理 + 重复调度先取消，不再裸 setTimeout）
+  const { schedule: scheduleErrorClear } = useTransientTimer()
   /** null=加载中；空数组=已加载但无记录 */
   const [items, setItems] = useState<RelayListItem[] | null>(null)
   const [info, setInfo] = useState<RelayInfoView | null>(null)
@@ -69,7 +72,7 @@ export function RelayPanel({ friends, t }: RelayPanelProps) {
   const reportError = useCallback(
     (msg: string) => {
       setError(msg)
-      window.setTimeout(() => setError((cur) => (cur === msg ? null : cur)), 4000)
+      scheduleErrorClear(() => setError((cur) => (cur === msg ? null : cur)), 4000)
     },
     []
   )

@@ -1,8 +1,8 @@
 /**
  * @category 核心
- * @summary 组合根状态容器：主进程启动期跨原子共享的 21 个进程级引用的唯一类型化归属
+ * @summary 组合根状态容器：主进程启动期跨原子共享的 23 个进程级引用的唯一类型化归属
  *
- * 为什么存在：`index.ts` 此前以 21 个裸模块级 `let` 承载启动状态（主窗口、各服务句柄、
+ * 为什么存在：`index.ts` 此前以裸模块级 `let` 承载启动状态（主窗口、各服务句柄、
  * 生命周期标志），`whenReady` 装配链与 `onBeforeQuit` 清理链分别读写同一批变量——
  * 「谁先声明谁先赢」决定模块边界，新增启动步骤只能继续往同一文件堆（CODE-RULES §三 R1/R3 根因）。
  * 本模块把该批状态收进单一类型化容器：字段可枚举、可传参、可测试，装配函数签名从
@@ -11,7 +11,7 @@
  * 什么作用：导出 `AppState` 接口与 `createAppState()` 工厂。**本模块不含任何副作用**
  * （唯一例外是 `timerRegistry` 的 `getGlobalTimerRegistry()`——它返回进程级单例，无 IO）。
  *
- * 不删理由：容器是「启动期跨原子共享状态」的唯一 owner。删掉它，21 个引用重新散落为裸
+ * 不删理由：容器是「启动期跨原子共享状态」的唯一 owner。删掉它，这批引用重新散落为裸
  * 模块级变量，装配函数与清理链的隐式耦合立即回归（ADR-01 的全部后续步序都以此为地基）。
  *
  * 时序语义（与拆分前逐字一致）：字段初始值 = 拆分前各 `let` 的声明初值；
@@ -31,6 +31,7 @@ import type { EvalHarness } from '../eval'
 import type { HumanGrader } from '../eval/graders/human-grader'
 import type { ActivationManager } from '../api/activation-manager'
 import type { CoeffectHandle } from '../kernel'
+import type { PluginLoader } from '../plugins'
 import type { SandboxExecService } from '../tools/code-sandbox'
 import type { MemoryScope } from '../models/paths'
 import { getGlobalTimerRegistry } from '../monitor/timer-registry'
@@ -42,7 +43,8 @@ import { getGlobalTimerRegistry } from '../monitor/timer-registry'
  * ① **句柄**（装配期赋值、退出链读取）：`mainWindow` / `supervisor` / `pathSyncMonitor` /
  *    `userStore` / `multiInstance` / `activationManager` / `collaborationScheduler` /
  *    `mcpClientManager` / `healthCheck` / `moduleRegistry` / `uiHealthMonitor` / `autoCleanup` /
- *    `sandboxCoeffectHandle` / `detachCordis` / `evalHarness` / `workflowEvalHarness` / `humanGrader`；
+ *    `sandboxCoeffectHandle` / `detachCordis` / `pluginLoader` / `evalHarness` / `workflowEvalHarness` /
+ *    `humanGrader`；
  * ② **标志位**：`aiRestarting` / `quitting`；
  * ③ **进程级单例 / 简单值**：`timerRegistry` / `lifecycleActivationDir` / `currentWorkflowScope`。
  */
@@ -89,6 +91,12 @@ export interface AppState {
    * 论文「依赖 key 在被依赖者完整卸载前保持可读」要求卸载动作完成才能退出）。
    */
   detachCordis: (() => void | Promise<void>) | null
+  /**
+   * 插件加载器（装配期赋值 / 退出链读取；未装配为 null）。
+   * 退出链需要它来 `destroy()`：关闭 fs.watch 与 500ms reload 定时器，
+   * 否则这些资源不在退出链覆盖范围内。
+   */
+  pluginLoader: PluginLoader | null
   /** AI 自我重启标记（`app_restart` 工具置位 → 绿通保留；退出链据此记 'ai-restart'） */
   aiRestarting: boolean
   /** 生命周期记录目录（装配期赋值 / 退出链读取；未赋值为 null） */
@@ -130,6 +138,7 @@ export function createAppState(): AppState {
     autoCleanup: null,
     sandboxCoeffectHandle: null,
     detachCordis: null,
+    pluginLoader: null,
     aiRestarting: false,
     lifecycleActivationDir: null,
     currentWorkflowScope: null,

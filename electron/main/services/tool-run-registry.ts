@@ -179,6 +179,36 @@ export function stopManagedRun(taskId: string): ManagedToolRun | undefined {
   return run
 }
 
+/**
+ * 应用退出时停止全部后台托管任务（2026-10-31 生命周期收口）。
+ *
+ * 为什么需要：托管任务（run_command / code_run）的进程由工具自身监听 `ctx.signal` 后
+ * killTree 收尸；退出链此前既不引用本表也不 abort，导致窗口关闭后长命令子进程树仍在跑
+ * （Windows 上成为孤儿进程）。退出时必须主动 abort 并标记终局。
+ * 同时清掉 GC 定时器（它的 10 分钟 TTL 在退出路径上没有意义，还会拖着事件循环）。
+ * @returns 被停止的 running 任务数
+ */
+export function stopAllManagedRuns(reason = '应用退出'): number {
+  let stopped = 0
+  for (const run of runs.values()) {
+    if (run.status !== 'running') continue
+    run.status = 'stopped'
+    run.finishedAt = Date.now()
+    run.error = `已停止（${reason}）`
+    try {
+      run.controller.abort()
+    } catch {
+      /* abort 本身不抛错，防御性兜底 */
+    }
+    stopped++
+  }
+  if (gcTimer) {
+    clearTimeout(gcTimer)
+    gcTimer = null
+  }
+  return stopped
+}
+
 /** 已落定任务的 TTL 清理：只清 settled/stopped，running 永不清理 */
 let gcTimer: ReturnType<typeof setTimeout> | null = null
 function scheduleGc(): void {

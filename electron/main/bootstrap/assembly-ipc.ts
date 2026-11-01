@@ -27,7 +27,7 @@ import { initDataDirectory } from '../models/data-init'
 import { createToolRegistry } from '../tools'
 import { PluginLoader } from '../plugins'
 import { SkillMarket } from '../skills/market'
-import { registerOverlayIpc, setOverlayMainWindow } from '../overlay-window'
+import { registerOverlayIpc, setOverlayMainWindow, closeOverlayWindow } from '../overlay-window'
 import { registerRoomIpc } from '../ipc/handlers/room'
 import { browserViewManager, registerBrowserIpcHandlers } from '../tools/browser-view-manager'
 import { setPreviewFile as setWorkspacePreviewFile, setSandboxState as setWorkspaceSandboxState } from '../services/workspace-state'
@@ -309,14 +309,14 @@ export function initActivateHandler(state: AppState, deps: BootstrapDeps) {
   const { configStore } = deps
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-  state.mainWindow = createWindow()
+      state.mainWindow = createWindow()
 
-  // 渲染进程桥接：让工具能向前端窗口发送 IPC 事件
-  setRendererBridge((channel, data) => {
-    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-      state.mainWindow.webContents.send(channel, data)
-    }
-  })
+      // 渲染进程桥接：让工具能向前端窗口发送 IPC 事件
+      setRendererBridge((channel, data) => {
+        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+          state.mainWindow.webContents.send(channel, data)
+        }
+      })
       // 窗口重建后重新挂载 UI 缩放（新 webContents 实例，幂等重注册 IPC）
       try {
         initUiZoom(state.mainWindow, configStore)
@@ -330,6 +330,28 @@ export function initActivateHandler(state: AppState, deps: BootstrapDeps) {
         }
       } catch (err) {
         logError('ui-health.attach', err)
+      }
+      // 窗口重建后重挂「主窗口关闭 → 关闭聊天小窗」钩子（与 `initMainWindow` 的接线等价）。
+      // 旧窗口的 closed 监听随窗口销毁而失效，不重挂则新窗口关闭时小窗不会一起关。
+      state.mainWindow.on('closed', () => {
+        closeOverlayWindow()
+      })
+      // 悬浮小窗的「主窗口」引用与 focus 兜底监听需绑到新窗口：`setOverlayMainWindow`
+      // 自带旧窗口摘除逻辑，可重复调用；不重绑则小窗的置顶兜底与 IPC 转发指向已销毁窗口。
+      try {
+        setOverlayMainWindow(state.mainWindow)
+      } catch (err) {
+        logError('overlay.setMainWindow', err)
+      }
+      // 浏览器面板宿主窗口同步改为新窗口：`attachWindow` 只重绑句柄与窗口事件、
+      // 不注册 IPC，可安全重调；不重绑则 `hostWindow` 仍指向已销毁窗口，
+      // `show()` / `setLayout` 会抛「host window 未绑定」。
+      // 注意：`registerOverlayIpc` / `registerRoomIpc` / `registerBrowserIpcHandlers`
+      // 均为 `ipcMain.handle` 全局注册，重建窗口时**不可**再调（重复注册会抛错）。
+      try {
+        browserViewManager.attachWindow(state.mainWindow)
+      } catch (err) {
+        logError('browser-view.attachWindow', err)
       }
     }
   })

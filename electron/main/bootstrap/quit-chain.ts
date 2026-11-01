@@ -18,16 +18,26 @@
  * 自己持有 handler 引用（更易错）。行为与顺序完全不变。
  *
  * 顺序约束：`recordShutdown` 必须最先（即使后续清理失败，AI 也能从提示词知道上次何时关闭）；
- * `timerRegistry.stopAll` 必须最后（带 5 秒超时保护，避免某个 stop 卡住退出流程）。
+ * `timerRegistry.stopAll` 必须最后（纯同步 clear；退出链整体 deadline 由本文件 QUIT_DEADLINE_MS 看门狗兜底）。
  */
 import { app } from 'electron'
 import type { AppState } from './app-state'
 import type { BootstrapDeps } from './deps'
 import { isGreenlight } from './deps'
-import { closeApiServer } from '../api/server'
+import { closeApiServer, flushPendingInternalSessionJobs } from '../api/server'
 import { recordShutdown } from '../api/restart-pending'
 import { browserViewManager } from '../tools/browser-view-manager'
 import { logError } from '../services/crash-logger'
+import { stopAllManagedRuns } from '../services/tool-run-registry'
+
+/**
+ * 退出链总预算（毫秒）。
+ * 为什么必须：清理步骤是十来个 `await`（LAN socket close / MCP 子进程 / 浏览器视图销毁…），
+ * 任一步骤不 settle 就会把 `before-quit` 永久挂住；而重入守卫会把用户之后的每次关闭都
+ * `preventDefault` —— 表现是"窗口关了、进程还在，而且再也关不掉"。
+ * 15s 是「正常清理远小于它、异常时用户愿意等」的折中；到点强制退出并记日志。
+ */
+const QUIT_DEADLINE_MS = 15000
 
 export function installQuitChain(state: AppState, deps: BootstrapDeps): void {
   app.on('window-all-closed', () => {
@@ -61,6 +71,17 @@ state.quitting = true
 // 阻止默认退出流程，等异步清理完成后再退出（避免定时器/句柄泄漏）
 event.preventDefault()
 
+// 总 deadline 看门狗：任一步骤然不 settle 时强制退出，避免"进程永远退不掉"（见常量注释）
+const quitDeadlineTimer = setTimeout(() => {
+  console.error(`[quit] 清理超过 ${QUIT_DEADLINE_MS}ms 未完成，强制退出（剩余步骤可能未执行）`)
+  try {
+    detach()
+  } catch {
+    /* detach 只移除监听器，失败也拦不住强制退出 */
+  }
+  app.quit()
+}, QUIT_DEADLINE_MS)
+
 // 每个清理步骤独立 try/catch：任一步骤抛错不阻塞后续步骤，
 // 确保 app.quit() 必执行（原实现无 try/catch，单步抛错会导致应用永久挂死）
 const safe = async (label: string, fn: () => unknown | Promise<unknown>): Promise<void> => {
@@ -93,6 +114,9 @@ if (!state.aiRestarting && isGreenlight(deps.configStore)) {
 }
 
 await safe('supervisor.stop', () => state.supervisor?.stop())
+// 取消记忆/日记工作流的在飞批次（stop 只停调度，已启动的实例需显式取消，
+// 否则被硬杀在中间态、只能靠下次启动的崩溃恢复兜底）
+await safe('supervisor.abortInFlight', () => state.supervisor?.abortInFlight())
 await safe('multiInstance.stopSync', () => state.multiInstance?.stopSync())
 await safe('multiInstance.stopLan', () => state.multiInstance?.stopLan())
 await safe('healthCheck.stop', () => state.healthCheck?.stop())
@@ -102,6 +126,11 @@ await safe('collaborationScheduler.stop', () => state.collaborationScheduler?.st
 await safe('activationManager.stop', () => state.activationManager?.stop())
 await safe('autoCleanup.stop', () => state.autoCleanup?.stop())
 await safe('sessionStore.flush', () => deps.sessionStore.flush())
+// 停止后台托管任务（run_command / code_run 的子进程树；否则窗口关闭后仍留孤儿进程）
+await safe('toolRunRegistry.stopAll', () => stopAllManagedRuns())
+// 派发并等待内部会话维护队列（500ms 合并窗口内的待办；必须早于 closeApiServer——
+// releaseServiceRefs 会置空 flush 引用）
+await safe('internalSession.flush', () => flushPendingInternalSessionJobs())
 // 关闭 API server（HTTP + WebSocket）
 await safe('closeApiServer', () => closeApiServer())
 // 销毁浏览器视图（关闭 webContents 防止泄漏）
@@ -112,12 +141,16 @@ await safe('mcpClientManager.disconnectAll', () => state.mcpClientManager?.disco
 await safe('sandboxCoeffect.dispose', () => state.sandboxCoeffectHandle?.dispose())
 // 卸载全部已挂载 Cordis 模块（逆序卸载，清理 fiber 副作用）
 await safe('detachCordis', () => state.detachCordis?.())
+// 销毁人工评分器（构造时注册了 eval:submitHumanGrade IPC；释放 pending 请求定时器）
+await safe('humanGrader.destroy', () => state.humanGrader?.destroy())
+// 销毁插件加载器（关闭 fs.watch 与 500ms reload 定时器，注销插件工具）
+await safe('pluginLoader.destroy', () => state.pluginLoader?.destroy())
 
-// 统一清理所有定时器（带 5 秒超时保护，避免某个 stop 卡住退出流程）
+// 统一清理所有定时器（纯同步 clear，不阻塞；整体 deadline 由 QUIT_DEADLINE_MS 看门狗兜底）
 await safe('timerRegistry.stopAll', () => state.timerRegistry.stopAll())
 
 // 清理完成，移除监听器并退出（避免循环触发 before-quit）
-// 清理完成，移除监听器并退出（避免循环触发 before-quit）
+clearTimeout(quitDeadlineTimer)
 detach()
 app.quit()
 }

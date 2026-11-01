@@ -5,12 +5,15 @@
  * 不删掉的理由：所有会话的增删改查、迁移、压缩、AI 域隔离与 before-quit 落盘
  * 都集中在这里；移除它会导致对话无持久化、客户端重启即失忆。
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, renameSync, rmSync } from 'fs'
-import { renameFileWithRetry } from '../utils/atomic-write'
-import { writeFile } from 'fs/promises'
+import { readFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, renameSync, rmSync } from 'fs'
 import { join } from 'path'
 import { DEFAULT_AI_ID, type Session, type ChatMessage } from '@shared/types'
 import { redactSecrets } from '../services/redact'
+import {
+  writeSessionFilesAsync,
+  writeSessionFilesSync,
+  type SessionFileWriterDeps
+} from './session-store-files'
 
 /**
  * 截断长字符串中间段，保留头尾（压缩存档用，UI 可读性优先头尾）。
@@ -55,7 +58,7 @@ function isValidAiId(aiId: unknown): aiId is number {
  * 再按 meta.shardCount 合并；切勿只等 meta.json 出现即假设分片已就绪。
  * 单条消息超限独立成片（消息不跨片拆）。
  */
-interface SessionMeta {
+export interface SessionMeta {
   id: string
   title: string
   createdAt: number
@@ -87,6 +90,23 @@ export class SessionStore {
   // 会真正损坏 JSON（实测 247MB 会话高频写盘期间读到半写状态）。per-id promise 链保证
   // 同一会话同一时刻只有一个写盘在飞，不同会话仍可并行（保留异步收益）。
   private writeChains: Map<string, Promise<void>> = new Map()
+  /**
+   * flush 代数（2026-10-31 生命周期收口）。
+   *
+   * 问题：before-quit 的同步 flush() 与在飞异步写会同时操作同一会话目录——
+   * 旧实现两条路径都用同一个 `<n>.json.tmp`，交错写会拼出坏 JSON；即使不交错，
+   * 异步写也可能在 flush 之后用旧快照 rename 覆盖新数据。
+   * 机制：flush() 递增代数；异步写在 rename 提交点前比对代数，发现已被 flush 超越
+   * 即放弃本次提交（数据已由同步 flush 写入更新版本），并清理自己的 tmp。
+   */
+  private flushEpoch = 0
+  /** 写侧依赖注入面（写目录/分片/meta/legacy/代数读取全部归 session-store-files 使用） */
+  private fileWriterDeps: SessionFileWriterDeps = {
+    userDir: (id) => this.userDir(id),
+    legacyPath: (id) => this.legacyPath(id),
+    shardMaxBytes: () => this.userShardMaxBytes,
+    flushEpoch: () => this.flushEpoch
+  }
 
   constructor(dir: string, options?: { userShardMaxBytes?: number }) {
     this.dir = dir
@@ -183,7 +203,7 @@ export class SessionStore {
         this.sanitizeSession(session)
         this.cache.set(session.id, session)
         try {
-          this.writeSessionFilesSync(session.id, session)
+          writeSessionFilesSync(this.fileWriterDeps, session.id, session)
         } catch (migrateErr) {
           console.error(`Failed to migrate session ${session.id}, legacy file kept:`, migrateErr)
         }
@@ -233,118 +253,7 @@ export class SessionStore {
     return session
   }
 
-  private buildMeta(session: Session, shardCount: number): SessionMeta {
-    return {
-      id: session.id,
-      title: session.title,
-      createdAt: session.createdAt,
-      updatedAt: session.updatedAt,
-      ...(session.aiId !== undefined ? { aiId: session.aiId } : {}),
-      ...(session.model !== undefined ? { model: session.model } : {}),
-      // 0.53 改名：写入新字段 codeReview（旧字段只由读取层兼容，不再写盘）
-      ...(session.codeReview !== undefined ? { codeReview: session.codeReview } : {}),
-      ...(session.summary !== undefined ? { summary: session.summary } : {}),
-      ...(session.summaryCursorAt !== undefined ? { summaryCursorAt: session.summaryCursorAt } : {}),
-      shardCount
-    }
-  }
 
-  /**
-   * 消息切分片：按 UTF-8 序列化字节（精确增量计数：数组 = [ + 元素以 , 分隔 + ]）。
-   * 超限时开新片；单条消息超限独立成片（消息不跨片）。
-   */
-  private splitShards(messages: ChatMessage[]): string[] {
-    const maxBytes = this.userShardMaxBytes
-    const shards: string[] = []
-    let current: ChatMessage[] = []
-    let currentBytes = 0
-    for (const m of messages) {
-      const mJson = JSON.stringify(m)
-      const mBytes = Buffer.byteLength(mJson, 'utf-8')
-      const projected = current.length === 0 ? mBytes + 2 : currentBytes + 1 + mBytes
-      if (current.length > 0 && projected > maxBytes) {
-        shards.push(JSON.stringify(current))
-        current = []
-        currentBytes = 0
-      }
-      current.push(m)
-      currentBytes = current.length === 1 ? mBytes + 2 : currentBytes + 1 + mBytes
-    }
-    if (current.length > 0) shards.push(JSON.stringify(current))
-    return shards
-  }
-
-  /**
-   * 写会话文件夹（同步；flush / 旧数据迁移用）：
-   * 分片 tmp → rename 覆盖 → meta 原子写（提交点）→ 清多余旧片 → 删旧单文件。
-   */
-  private writeSessionFilesSync(id: string, session: Session): void {
-    const udir = this.userDir(id)
-    mkdirSync(udir, { recursive: true })
-    const shards = this.splitShards(session.messages ?? [])
-    const pairs: Array<{ tmp: string; final: string }> = []
-    for (let i = 0; i < shards.length; i++) {
-      const final = join(udir, `${i + 1}.json`)
-      const tmp = final + '.tmp'
-      writeFileSync(tmp, shards[i], 'utf-8')
-      pairs.push({ tmp, final })
-    }
-    for (const { tmp, final } of pairs) renameFileWithRetry(tmp, final)
-    this.atomicWriteSync(join(udir, 'meta.json'), JSON.stringify(this.buildMeta(session, shards.length)))
-    for (const f of readdirSync(udir)) {
-      if (/^\d+\.json$/.test(f) && parseInt(f, 10) > shards.length) {
-        try {
-          unlinkSync(join(udir, f))
-        } catch {
-          /* 残留旧片清理失败不影响正确性（读取按 shardCount 截断） */
-        }
-      }
-    }
-    const legacy = this.legacyPath(id)
-    if (existsSync(legacy)) {
-      try {
-        unlinkSync(legacy)
-      } catch (err) {
-        console.error(`Failed to remove legacy session file ${legacy}:`, err)
-      }
-    }
-  }
-
-  /** 写会话文件夹（异步；flushQueue 用，tmp 写不阻塞事件循环） */
-  private async writeSessionFilesAsync(id: string, session: Session): Promise<void> {
-    const udir = this.userDir(id)
-    mkdirSync(udir, { recursive: true })
-    const shards = this.splitShards(session.messages ?? [])
-    const pairs: Array<{ tmp: string; final: string }> = []
-    for (let i = 0; i < shards.length; i++) {
-      const final = join(udir, `${i + 1}.json`)
-      const tmp = final + '.tmp'
-      await writeFile(tmp, shards[i], 'utf-8')
-      pairs.push({ tmp, final })
-    }
-    for (const { tmp, final } of pairs) renameFileWithRetry(tmp, final)
-    // meta 是提交点：同步路径用 atomicWriteSync(tmp+rename) 保证原子性，
-    // 异步路径原先直接 writeFile 未原子化——崩溃可能留下半截 meta → 会话用户层整体不可见。
-    // 统一走原子写（先 .tmp 再 rename，正文件要么旧版完整、要么新版完整）。
-    await this.atomicWrite(join(udir, 'meta.json'), JSON.stringify(this.buildMeta(session, shards.length)))
-    for (const f of readdirSync(udir)) {
-      if (/^\d+\.json$/.test(f) && parseInt(f, 10) > shards.length) {
-        try {
-          unlinkSync(join(udir, f))
-        } catch {
-          /* 忽略 */
-        }
-      }
-    }
-    const legacy = this.legacyPath(id)
-    if (existsSync(legacy)) {
-      try {
-        unlinkSync(legacy)
-      } catch (err) {
-        console.error(`Failed to remove legacy session file ${legacy}:`, err)
-      }
-    }
-  }
 
   private evictIfNeeded(): void {
     if (this.cache.size <= this.MAX_CACHED_SESSIONS) return
@@ -725,33 +634,24 @@ export class SessionStore {
     this.writeTimer = setTimeout(() => this.flushQueue(), this.FLUSH_DELAY_MS)
   }
 
-  /** 原子写（异步）：先写 .tmp 再 rename 覆盖——进程被强杀时最多留下半截 tmp 文件，
-   * 正文件保持完整，杜绝"写一半 → 截断 → .corrupt 隔离丢会话"（事故根因）。 */
-  private async atomicWrite(path: string, data: string): Promise<void> {
-    const tmp = path + '.tmp'
-    await writeFile(tmp, data, 'utf-8')
-    renameFileWithRetry(tmp, path)
-  }
-
-  /** 原子写（同步，before-quit 用）：同上 */
-  private atomicWriteSync(path: string, data: string): void {
-    const tmp = path + '.tmp'
-    writeFileSync(tmp, data, 'utf-8')
-    renameFileWithRetry(tmp, path)
-  }
 
   private flushQueue(): void {
     this.writeTimer = null
     if (this.writeQueue.size === 0) return
     const entries = Array.from(this.writeQueue.entries())
     this.writeQueue.clear()
+    // 捕获本次异步写的 flush 代数：提交点比对，避免旧快照覆盖之后发生的同步 flush
+    const epoch = this.flushEpoch
     for (const [id, s] of entries) {
       validateSessionId(id)
       this.sanitizeSession(s)
       const prev = this.writeChains.get(id) ?? Promise.resolve()
       const next = prev
-        .then(() => this.writeSessionFilesAsync(id, s))
-        .then(() => { this.dirty.delete(id) })
+        .then(() => writeSessionFilesAsync(this.fileWriterDeps, id, s, epoch))
+        .then(() => {
+          // 代数变了 = 期间发生过同步 flush，dirty 已由其清掉，本次不得再清（可能已有新脏）
+          if (epoch === this.flushEpoch) this.dirty.delete(id)
+        })
         // 写盘失败：dirty 保留（下次 flush 重写自愈），此处只记录，避免 unhandled rejection 打断主进程
         .catch((err) => console.error(`Session flush write failed ${id}:`, err))
       this.writeChains.set(id, next)
@@ -763,6 +663,8 @@ export class SessionStore {
 
   /** 同步补写所有 pending（before-quit 调用，确保数据落盘） */
   flush(): void {
+    // 先递增代数：让在飞异步写在提交点发现"已被同步 flush 超越"并放弃旧快照
+    this.flushEpoch += 1
     if (this.writeTimer) {
       clearTimeout(this.writeTimer)
       this.writeTimer = null
@@ -770,7 +672,7 @@ export class SessionStore {
     if (this.writeQueue.size > 0) {
       for (const [id, s] of this.writeQueue.entries()) {
         this.sanitizeSession(s)
-        this.writeSessionFilesSync(id, s)
+        writeSessionFilesSync(this.fileWriterDeps, id, s)
       }
       this.writeQueue.clear()
     }
@@ -778,7 +680,7 @@ export class SessionStore {
       const s = this.cache.get(id)
       if (!s) continue
       this.sanitizeSession(s)
-      this.writeSessionFilesSync(id, s)
+      writeSessionFilesSync(this.fileWriterDeps, id, s)
     }
     this.dirty.clear()
   }

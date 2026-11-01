@@ -96,16 +96,16 @@ export function RoomView({ sessionId, bottomInset = 0 }: { sessionId: string; bo
    * 后者只可能是 execute/idle，阶段判定会永远停在 execute（见 `room-status.ts` 的注释）。
    */
   const stage = currentStageOf(roomState)
-  const appendRoomMessage = useAppStore((s) => s.appendRoomMessage)
-  /** 房间回复落回会话历史：只在 `lastReplyAt` 变化时追加（幂等；不触发普通 AI） */
+  const syncRoomMessages = useAppStore((s) => s.syncRoomMessages)
+  /** 房间回复落回会话历史：主进程已写盘，这里只在 `lastReplyAt` 变化时**重取**（不写盘） */
   const handledReplyRef = useRef<number | null>(null)
   useEffect(() => {
     const at = roomState.lastReplyAt
     const reply = roomState.lastReply
     if (!reply || !at || handledReplyRef.current === at) return
     handledReplyRef.current = at
-    appendRoomMessage(reply, 'assistant', at)
-  }, [roomState.lastReply, roomState.lastReplyAt, appendRoomMessage])
+    void syncRoomMessages(sessionId)
+  }, [roomState.lastReply, roomState.lastReplyAt, syncRoomMessages, sessionId])
 
 
   // 上报「自主模式在哪个会话里」（0.53.18：房间继承这个会话已有的逆生树）。

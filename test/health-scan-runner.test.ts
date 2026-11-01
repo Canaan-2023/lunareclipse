@@ -11,7 +11,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runSemanticScan } from '../electron/main/monitor/health-scan-runner'
+import { runSemanticScan, terminateActiveScanWorkers } from '../electron/main/monitor/health-scan-runner'
 
 const dirs: string[] = []
 afterEach(() => {
@@ -63,12 +63,28 @@ describe('runSemanticScan', () => {
     expect(r.files).toBe(0)
   })
 
-  it('worker 抛错 → failed=true，不返回「0 问题通过」', async () => {
+it('worker 抛错 → failed=true，不返回「0 问题通过」', async () => {
     const root = makeSrc()
     const boom = join(root, 'boom-worker.js')
     writeFileSync(boom, "throw new Error('boom')\n")
     const r = await runSemanticScan({ kind: 'code-review', root, timeoutMs: 5_000, workerPath: boom })
     expect(r.failed).toBe(true)
     expect(r.complete).toBe(false)
+  })
+
+  it('terminateActiveScanWorkers：退出链终止在飞 worker（幂等）', async () => {
+    const root = makeSrc()
+    const hang = join(root, 'hang-worker.js')
+    writeFileSync(hang, 'setTimeout(() => {}, 60000)\n')
+    const pending = runSemanticScan({ kind: 'uiux', root, timeoutMs: 60_000, workerPath: hang })
+    // worker 构造即同步登记进 activeScanWorkers，无需等它跑起来
+    terminateActiveScanWorkers()
+    const r = await pending
+    expect(r.worker).toBe(true)
+    // 走的是「退出链主动终止」而非硬超时路径
+    expect(r.timedOut).toBe(false)
+    expect(r.complete).toBe(false)
+    // 幂等：重复调用不抛
+    expect(() => terminateActiveScanWorkers()).not.toThrow()
   })
 })

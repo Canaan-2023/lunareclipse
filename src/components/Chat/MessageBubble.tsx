@@ -21,6 +21,7 @@ import { openFilePreview } from '../Workshop/FileWorkshopPanel'
 import { useAppStore } from '../../stores/appStore'
 import { formatDateTime } from '../../utils/time'
 import { copyText } from '../../utils/clipboard'
+import { useTransientTimer } from '../../hooks/useTransientTimer'
 import { parseSkillInvocation } from '../../utils/skillInvocation'
 
 /** 从 TodoWrite 工具调用的 result.data 中安全提取 todos */
@@ -69,12 +70,14 @@ export const MessageBubble = memo(
     // hover 操作按钮显示状态 + 复制成功反馈
     const [hovered, setHovered] = useState(false)
     const [copied, setCopied] = useState(false)
+    // 「已复制」提示「2 秒后自动消失」的计时器句柄（卸载清理 + 重复调度先取消）
+    const { schedule: scheduleCopiedClear } = useTransientTimer()
 
     const handleCopy = async () => {
       const ok = await copyText(message.content)
       if (ok) {
         setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
+        scheduleCopiedClear(() => setCopied(false), 2000)
       }
     }
     const streamingMessageId = useAppStore((s) => s.streamingMessageId)

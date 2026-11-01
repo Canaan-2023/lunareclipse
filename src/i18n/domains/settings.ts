@@ -217,8 +217,8 @@ const dict = {
   'settings.clickEnable': { zh: '点击开启', en: 'Click to enable' },
   'settings.preciseLocation': { zh: '启用时间与位置感知', en: 'Enable time & location awareness' },
   'settings.preciseLocationDesc': {
-    zh: '关闭（默认）：AI 上下文仅注入时区，不发起任何定位请求。开启后：通过操作系统定位获取所在城市、天气与精确时段，仅供本机 AI 环境感知；精确坐标不写入日志、记忆与持久化缓存。',
-    en: 'Off (default): AI context includes timezone only; no location requests are made. On: uses OS location for city, weather and precise time for on-device AI awareness; coordinates are never written to logs, memory or persistent cache.'
+    zh: '开启（默认）：通过操作系统定位获取所在城市、天气与精确时段，仅供本机 AI 环境感知；精确坐标不写入日志、记忆与持久化缓存。关闭后：AI 上下文仅注入时区，不发起任何定位请求。',
+    en: 'On (default): uses OS location for city, weather and precise time for on-device AI awareness; coordinates are never written to logs, memory or persistent cache. Off: AI context includes timezone only; no location requests are made.'
   },
   'settings.internalSessionBudget': { zh: '内部会话存储', en: 'Internal Sessions' },
   'settings.internalSessionBudgetDesc': { zh: 'AI 上下文层（内部会话）的存储整理阈值，非注入限制。', en: 'Storage hygiene thresholds for AI context (internal sessions), not injection limits.' },

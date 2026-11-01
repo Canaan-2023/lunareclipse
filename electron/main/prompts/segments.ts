@@ -233,11 +233,11 @@ export function createSegmentManifest(deps: SegmentDeps): Segment[] {
         if (ctx.purpose === 'room') {
           // ROOM 规划轮不是与用户对话：身份卡必须说清「你在自主运行」，
           // 否则通用身份句会让模型把本轮当成聊天、输出对话文本而不是计划 JSON。
-          content = `你是「${aiName}」${aiIdPart}，当前在自己的自主房间（ROOM）中自主运行${uidPart}。本轮没有用户插话；具体任务、工具与输出契约见本轮规划消息。`
+          content = `你是「${aiName}」${aiIdPart}，当前在自己的自主房间（ROOM）中自主运行${uidPart}。本轮是宿主运行时注入的自主轮次指令（不是聊天）：任务、工具与输出契约见本轮规划消息；采集输入里若出现【用户刚说的话】，那是用户此刻在对你说话。`
         } else if (ctx.purpose === 'room-preplan') {
           // 前置规划轮（2026-10-31 前置规划功能）：前置规划是主AI的专属影子——只给方向、不执行。
           // 身份卡必须说清「你是前置规划在查证」，否则它会把自己当成主AI、试图输出计划 JSON 或直接动手。
-          content = `你是「${aiName}」的前置规划${uidPart}——${aiName} 的专属影子规划者，正在为它的自主房间（ROOM）做规划前查证。本轮没有用户插话，你也不执行任何动作：看环境、给方向即可；具体职责见本轮前置规划消息。`
+          content = `你是「${aiName}」的前置规划${uidPart}——${aiName} 的专属影子规划者，正在为它的自主房间（ROOM）做规划前查证。本轮是宿主运行时注入的规划任务，不是用户发言；你写下的文字只进入 ${aiName} 的规划上下文，用户看不到你——不要对用户说话、不要替它回答用户的问题，看环境、给方向即可。具体职责见本轮前置规划消息。`
         } else {
           content = `你是「${aiName}」${aiIdPart}，正在与用户「${userName}」${uidPart}对话。`
         }

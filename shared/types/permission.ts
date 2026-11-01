@@ -55,6 +55,14 @@ export interface CapabilityDef {
    * - `hosts` / `endpoints`：没有可靠的自动枚举，UI 只给示例 + 手填（IP / 域名 / URL / 路径）。
    */
   scopeSource?: 'lan-nodes' | 'hosts' | 'endpoints'
+  /**
+   * 生产代码里是否有**真正的执行点**（即某处会以该 key 调用 `evaluatePolicy`）。
+   * 缺省（undefined）= true。false 表示「预留能力」：目录里保留定义与稳定 key（审计可回溯），
+   * 但**不出现在授予面、也不接受授予**——否则用户授予后不会有任何行为变化，比不给授予更糟。
+   * 何时填 false：能力已写进分级目录，但对应动作的执行点还没接上（见 tiers.ts 里各条的说明）。
+   * 何时改回 true：把执行点接上时一并删除该字段。
+   */
+  enforced?: boolean
 }
 
 /**

@@ -142,7 +142,7 @@ describe('前置规划轮落盘与路由：room-preplan 全跳过（影子定位
     const { runner, probe } = makeHarness({
       resolveSessionContext: async () => {
         probe.resolveContextCalls += 1
-        return null
+        return { sessionContext: null, internalId: null }
       }
     })
     await runner('前置规划提示词', 'room-preplan-U7-AI2', 2, 'room-preplan')

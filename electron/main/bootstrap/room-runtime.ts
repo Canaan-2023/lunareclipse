@@ -28,7 +28,6 @@
 import type { AppState } from './app-state'
 import type { BootstrapDeps } from './deps'
 import type { InternalSessionStore } from '../services/internal-session-store'
-import type { ToolRegistry } from '../tools/tool-registry'
 import { EMPTY_GRANTS, evaluatePolicy } from '../tools/security-engine/policy-gate'
 import { executeTool } from '../tools/execute-tool'
 import { createExecutor, type Executor } from '../room/executor'
@@ -78,17 +77,23 @@ import {
 import type { ProcessInfo } from '../room/process-scan'
 import type { CollectorConfig } from '@shared/types/collector'
 import type { SecurityGrants, AuditSink } from '@shared/types/permission'
-import type { AppConfig } from '@shared/types'
+import type { AppConfig, ChatMessage } from '@shared/types'
 import { DEFAULT_AI_ID } from '@shared/types'
 import { validateAvatarSpec } from '@shared/room/avatar-spec'
-import { getHeadlessChatRunner, serviceRefs } from '../api/service-refs'
+import { getHeadlessChatRunner, getFrontendToolRegistry, serviceRefs, getEnqueueInternalSessionJob } from '../api/service-refs'
 import { safeSend } from '../services/crash-logger'
 import type { WorkflowManager } from '../workflow/manager'
 
+/**
+ * 自主循环的接续方式（2026-10-31 用户裁决）：**不要节拍器**。
+ * 一轮结束后没有显式 standbyMs / 没有 llmFailed / 没被关停时，运行时立刻接下一轮
+ * （前置规划 → 主AI 交替）；唯一让房间等一等的是 AI 自己声明的 standbyMs。
+ * 历史：0.54 曾用 60s 固定心跳，用户明确否掉——「主AI停止，规划就开始规划接下来要做什么，
+ * 这么循环下去」是即时交替，不是按间隔叫醒。
+ */
+
 export interface RoomRuntimeWiringDeps {
   internalSessionStore: InternalSessionStore
-  /** 复用记忆工作流已建好的工具注册表（避免另造一份） */
-  toolRegistry: ToolRegistry
   /** 工具区持久化目录（`{dataPaths.root}/room`） */
   toolZoneDir: string
   /** AI 注册表路径（`{dataPaths.root}/ai-registry.json`）：判定该 AI 是否可运行（未下线） */
@@ -282,11 +287,20 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
     })
     .catch(() => undefined)
   const enabledZoneEntries = (): ReturnType<ToolZoneStore['load']> => zoneStore.load().filter((e) => e.enabled)
-  const registryToolNames = (): string[] => [...opts.toolRegistry.tools.keys()]
+  /**
+   * 工具名清单 = **前端工具注册表**（与无头链路实际执行的那份同源）。
+   * 为什么不再用记忆工作流注册表（0.54 修复）：那是 `agent:'dmn'` 的池，前端专属工具
+   * （Agent / team_* / use_skill / ui_snapshot / code_run…）根本不在里面——计划白名单把它们
+   * 全部丢掉，执行器也找不到，于是「AI 拿不到全部工具、什么也做不了」。
+   */
+  const registryToolNames = (): string[] => [...(getFrontendToolRegistry()?.tools.keys() ?? [])]
 
   // 只读判定器（执行器门控与前置规划工具面**共用同一份判定**，见下方 preplanReadonlyTools 与
   // 文件尾部 restrictToolsRef）：真源 = 注册表元数据 `behavior.readOnly`（P0-2），AI 自述无效。
-  const toolReadOnly = createToolReadOnlyResolver(() => opts.toolRegistry.tools)
+  const EMPTY_TOOL_MAP = new Map()
+  const toolReadOnly = createToolReadOnlyResolver(
+    () => getFrontendToolRegistry()?.tools ?? EMPTY_TOOL_MAP
+  )
 
   // 执行器：注册表工具直接执行；工具区工具按名命中后**逐步执行**（每步再过一次门控，见 ADR-17）
   let executorRef: Executor | null = null
@@ -297,8 +311,10 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
     isReadOnly: toolReadOnly,
     run: async (d) => {
       const name = d.toolName ?? ''
+      const registry = getFrontendToolRegistry()
       const route = routeToolName(name, registryToolNames(), enabledZoneEntries())
-      if (route.kind === 'registry') return executeTool(opts.toolRegistry, name, d.params ?? {})
+      // 注册表工具直接执行（与无头链路同一份注册表，口径不漂移）；注册表未就绪 = 工具不存在
+      if (route.kind === 'registry' && registry) return executeTool(registry, name, d.params ?? {})
       if (route.kind === 'zone' && executorRef) {
         const r = await runZoneTool(route.entry, (step) => executorRef!.execute(step))
         return r.ok
@@ -333,8 +349,104 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
     const scope = { uid, aiId }
     const existing = getRoomRuntime(scope)
     if (existing) return existing
+    // ===== 房间轮 → 内部会话两写（0.54.0）=====
+    // 为什么需要：房间轮此前只写展示层会话，路由每轮建/承接的内部会话**永远收不到消息**，
+    // 摘要与超限继承也就永不推进（用户问「自主模式为什么无法落盘内部会话」即此）。
+    // 两半来自不同回调：user 在规划前（`onUserMessage`）、assistant 在解析出 reply 后；
+    // 内部会话 id 只在规划轮里由路由落定（经 `onInternalSessionResolved` 钩子带回，
+    // 见 `run-headless-chat.ts` 的 `HeadlessTurnHooks`）。故在房间闭包里缓存 user，
+    // 等 assistant 到达时一次入队——与普通轮次**同一队列**（同 500ms 合并、同会话串行、
+    // 同摘要/超限继承），不是第二套写链。闭包随 (uid, aiId) 房间存续，天然按房间隔离。
+    let pendingRoomUser: { content: string; at: number } | null = null
+    let roundInternalId: string | null = null
     const rt = createRoomRuntime({
-      collect: async (view) => buildRoomCollectInput(configStore.get().collector, getGrants(), view, roomAudit()),
+      /**
+       * 采集（0.54.0 用户裁决）：**采集器不再决定「这一轮跑不跑」**。
+       * 以前采集没数据且没有用户消息 → loop 直接判 `no-input` 结束，不调模型；于是循环实际
+       * 由采集器/感知器驱动，规划与主AI的交替停在「有没有新视觉」上。
+       * 现在没有采集输入时补一段**如实说明**（`synthetic`，不进上一轮对比），让本轮照常走
+       * 「前置规划 → 主AI」；采集器退化为可选输入源之一，循环由节拍与规划链驱动。
+       */
+      collect: async (view) => {
+        const r = await buildRoomCollectInput(configStore.get().collector, getGrants(), view, roomAudit())
+        if (r.ok && r.text?.trim()) return r
+        return {
+          ok: true,
+          synthetic: true,
+          text: `【本轮没有新的环境输入】${r.error ? `采集未完成：${r.error}` : '采集没有返回内容'}。这不等于无事可做——结合【上一轮】与你自己的计划，判断接下来做什么、要不要做。`
+        }
+      },
+      // 不要节拍器（2026-10-31 用户裁决）：无动作的一轮立刻接下一轮，规划 ↔ 主AI 即时交替
+      autoChain: () => true,
+      /**
+       * 房间轮的可读记录落回**承载会话**（0.54 修复）。
+       * 为什么需要：room 轮此前只写 RAW，内置会话里什么都看不到——用户问的「自主模式竟然不落盘，
+       * 到底放在哪里去了」实际是「落进了 RAW 记忆 + room-events.jsonl + preplan.json + 区树」，
+       * 会话本身却一片空白。这里只写人类可读的两种内容（用户发言、AI 的 reply），
+       * **不写规划提示词、不写 JSON 计划**（否则会把契约文本混进用户正常聊天）。
+       */
+      appendHostTurn: (sessionId, entry) => {
+        try {
+          const store = deps.sessionStore
+          const session = store.getOrCreate(sessionId)
+          const messages = [...(session.messages ?? [])]
+          messages.push({
+            id: `${entry.role === 'user' ? 'u' : 'a'}_room_${entry.at}_${Math.random().toString(36).slice(2, 6)}`,
+            role: entry.role,
+            content: entry.content,
+            createdAt: entry.at
+          })
+          store.saveMessages(sessionId, messages)
+        } catch (err) {
+          // 落盘失败不该打崩自主循环，但必须留痕（用户裁决：报错比兜底好）
+          console.error('[room] 承载会话落盘失败:', (err as Error).message)
+        }
+        // ===== 内部会话层两写（0.54.0）=====
+        // 上一段只写**展示层**（用户在会话列表里看到的）；AI 的内部会话层（摘要/逆生树）
+        // 此前一条都没有——路由每轮建/承接节点，但没有任何写入口，摘要与超限继承永不推进。
+        // 这里补上：user 先缓存（规划前到达，此时还没有内部会话 id），assistant 到达时
+        // 连同 reply 一次入队。与普通轮次共用同一队列（500ms 合并 / per-会话串行 / 摘要继承）。
+        try {
+          if (entry.role === 'user') {
+            // 多条未回复的用户消息合成一条（与 loop 的 `consumeUserInput` 同口径：'\n' 拼接，
+            // AI 本轮看到的就是合并后的那段话，两写内容与它一致）。
+            // 有界：内部会话未启用时这堆缓存不会被消费，按尾部截断防无界增长。
+            const merged = pendingRoomUser ? `${pendingRoomUser.content}\n${entry.content}` : entry.content
+            pendingRoomUser = { content: merged.slice(-8000), at: entry.at }
+            return
+          }
+          const enqueue = getEnqueueInternalSessionJob()
+          const internalId = roundInternalId
+          if (!enqueue || !internalId) {
+            // 未启用内部会话（monitor 配置关闭 / 本轮无路由）= 合法状态，不写也不报错。
+            // 缓存不清：这句话还没落进内部会话，等下一次成功路由的轮次再补（不该凭空消失）。
+            return
+          }
+          const userMsg: ChatMessage | null = pendingRoomUser
+            ? {
+                id: `int_room_u_${pendingRoomUser.at}_${Math.random().toString(36).slice(2, 6)}`,
+                role: 'user',
+                content: pendingRoomUser.content,
+                createdAt: pendingRoomUser.at
+              }
+            : null
+          enqueue(sessionId, internalId, {
+            ...(userMsg ? { userMsg } : {}),
+            aiMsg: {
+              id: `int_room_a_${entry.at}_${Math.random().toString(36).slice(2, 6)}`,
+              role: 'assistant',
+              content: entry.content,
+              createdAt: entry.at
+            },
+            // 房间轮的工具摘要不进两写：规划轮的工具调用摘要没有按轮次收集，
+            // 传空数组 = 摘要器只用 user/assistant 正文（与无头链路现状一致，不伪造内容）。
+            toolSummaries: []
+          })
+          pendingRoomUser = null
+        } catch (err) {
+          console.error('[room] 内部会话两写失败:', (err as Error).message)
+        }
+      },
       // 感知器（0.53.1）：AI 静默后的廉价采样。两层闸门与采集同源（用户开关 + t1.collector）——
       // 未授予时采样返回 null，房间静默（不假装在感知）；授权后下一次采样自动恢复。
       // 0.53.3：字段由 AI 的感知策略裁剪（被屏蔽的信号不采），策略本身持久化到本房间。
@@ -379,7 +491,14 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
         // 带 purpose='room'：注入链**跳过对话纪律段**（mode_branch）——房间规划输出的是计划契约
         // `{note,decisions[]}`，若继承 chat 的 JSON envelope / task 的 Team Lead / coding 的输出纪律
         // 会与之冲突（见 prompts/segments.ts 的 SegmentBuildCtx.purpose）
-        return runner(prompt, sessionId, aiId, 'room')
+        // 每轮先清空：本轮没走路由（未启用/链路未就绪）时不得沿用上一轮的内部会话 id，
+        // 否则会把这一轮的 reply 写进上一个节点（串线）。
+        roundInternalId = null
+        return runner(prompt, sessionId, aiId, 'room', {
+          onInternalSessionResolved: (id) => {
+            roundInternalId = id
+          }
+        })
       },
       // 承载会话的树索引（ADR-30 / 0.53.18）：owner = 开启自主的那个会话。
       // 走**同一个** `InternalSessionStore`（`service-assembly` 注入的共享实例）——存储、写链、

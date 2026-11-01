@@ -210,6 +210,24 @@ export async function dispatchToolCalls(
           // 工具级取消信号：超时触发时 abort，让工具本身（经 ToolContext.signal）感知取消，
           // 而非旧实现只 reject 外层——底层工具在后台继续跑成孤儿（进程/请求泄漏）
           const toolAbort = new AbortController()
+          // 对话级取消 → 工具级取消（2026-10-31 生命周期收口）。
+          // 除 Agent / team_launch（子 agent 有独立生命周期，中断走 interrupt_subagent）外，
+          // 用户点停止 / 连接关闭 / 自动激活中止都必须让正在执行的工具收到 abort：
+          // 否则「停止」只停界面，run_command 的子进程树继续跑（退出后成 Windows 孤儿）。
+          let detachUserAbort: (() => void) | null = null
+          if (tc.function.name !== 'Agent' && tc.function.name !== 'team_launch') {
+            const onUserAbort = (): void => {
+              try {
+                toolAbort.abort()
+              } catch {
+                /* abort 本身不抛错，防御性兜底 */
+              }
+            }
+            ctrl.signal.addEventListener('abort', onUserAbort, { once: true })
+            detachUserAbort = () => ctrl.signal.removeEventListener('abort', onUserAbort)
+            // 进入工具前用户已停止 → 立即 abort，让工具 fail-fast
+            if (ctrl.signal.aborted) onUserAbort()
+          }
           try {
             // 工具执行链注入 toolCallId 上下文（subagent 事件关联用）：
             // 工具内部（尤其 Agent 工具 → launchSubAgent → SubAgentManager）可通过
@@ -225,32 +243,7 @@ export async function dispatchToolCalls(
                 tc.function.name === 'tool_watch' ||
                 tc.function.name === 'tool_stop'
               ) {
-                const exec = tool.execute(call.args)
-                // 豁免工具与对话打断桥接：tool_watch 可能等至 5 分钟（AI 设定的
-                // 检查时间），若用户在等待中途打断，必须立即让位结束旧流收尾，
-                // 不能让等待继续拖着对话关停。桥接 ctrl（对话级取消）→ toolAbort
-                // （工具级取消），tool_watch 内部按 ctx.signal 感知并提前返回。
-                // Agent/team_launch 有独立子 agent 生命周期，不桥接（避免误中断
-                // 已豁免的子任务内部逻辑）。
-                if (tc.function.name === 'tool_watch' || tc.function.name === 'tool_stop') {
-                  const onUserAbort = (): void => {
-                    try {
-                      toolAbort.abort()
-                    } catch {
-                      /* abort 本身不抛错，防御性兜底 */
-                    }
-                  }
-                  ctrl.signal.addEventListener('abort', onUserAbort, { once: true })
-                  // 工具先返回时摘除监听，避免 listener 悬挂到对话请求结束。
-                  // 必须先 .catch 再 .finally：exec.finally() 会派生新 promise，
-                  // exec reject 时派生链同样 reject 且无处处理（Node 默认
-                  // --unhandled-rejections=throw，会拖垮测试/进程）——catch 先吞掉
-                  // rejection，finally 链自此不再抛。
-                  exec
-                    .catch(() => {})
-                    .finally(() => ctrl.signal.removeEventListener('abort', onUserAbort))
-                }
-                return exec
+                return tool.execute(call.args)
               }
               // 软超时托管：对可托管工具（真实子进程、可后台继续跑），外墙
               // 超时不 abort、不拒绝——工具转后台继续执行并登记 taskId，立即返回
@@ -332,6 +325,7 @@ export async function dispatchToolCalls(
               toolSignalStorage.run(toolAbort.signal, execWithCtx)
             )
           } finally {
+            if (detachUserAbort) detachUserAbort()
             if (timeoutTimer) clearTimeout(timeoutTimer)
           }
         } catch (err) {

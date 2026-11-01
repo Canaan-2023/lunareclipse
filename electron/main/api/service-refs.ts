@@ -28,7 +28,10 @@ import type { AsyncDelegationManager } from '../tools/sub-agent-engine/async-del
 import type { MissionStore } from '../tools/sub-agent-engine/mission-store'
 import type { StreamSession } from './stream-session'
 import type { HeadlessChatRunner } from './run-headless-chat'
+// 两写 job 形状的真源在内部会话层（只 import type，不产生运行时依赖环）。
+import type { InternalSessionJob } from './internal-session'
 import type { ToolExecutor } from './llm-types'
+import type { ToolRegistry } from '../tools/tool-registry'
 
 /**
  * 无头对话运行器签名——**真源在 `./run-headless-chat`**（实现处），此处只再导出。
@@ -38,8 +41,9 @@ import type { ToolExecutor } from './llm-types'
 export type { HeadlessChatRunner }
 
 /**
- * 进程级引用容器：13 个字段与拆分前的模块级 `let` 一一对应（字段名保持原名，便于逐符号核对迁移）。
- * 可空语义 = 拆分前同名变量：`null` 表示「尚未创建」或「已释放」。
+ * 进程级引用容器：17 个字段。拆分时收编的 13 个与拆分前模块级 `let` 一一对应（字段名保持原名，
+ * 便于逐符号核对迁移），其后陆续新增 `extraToolExecutorsRef` / `restrictToolsRef` /
+ * `internalSessionFlushRef` / `internalSessionEnqueueRef`；所有字段的可空语义 = 拆分前同名变量：`null` = 尚未创建或已释放。
  */
 export interface ServiceRefs {
   /** HTTP server（`http.createServer(app)`；未启动为 null） */
@@ -85,9 +89,37 @@ export interface ServiceRefs {
   restrictToolsRef: ((purpose: string | undefined, aiId?: number) => readonly string[] | null) | null
   /** 当前环境注入文本 getter（地理位置/天气等；释放时清空） */
   geoEnvTextRef: (() => string) | null
+  /**
+   * 内部会话维护队列的 flush 提供者（退出链在 closeApiServer 之前调用）。
+   * 为什么走本容器：内部会话层是 `startApiServer` 的局部闭包，模块级无法直接访问；
+   * 释放链（releaseServiceRefs）会置空本容器，故 flush 必须在 closeApiServer 之前发生。
+   * 语义：立即派发 500ms 合并窗口内的待办并等待其落定。
+   */
+  internalSessionFlushRef: (() => Promise<void>) | null
+  /**
+   * 内部会话**两写**入队函数（0.54.0 房间轮落盘用）。
+   * 为什么走本容器：内部会话层是 `startApiServer` 的局部闭包，房间轮在 `bootstrap/room-runtime.ts`
+   * 里（§3.4：跨域装配只许在 bootstrap/），拿不到 layer 实例。
+   * 语义：登记的是 layer 的**同一个函数**——房间轮与 WS 主链路共享同一 500ms 合并窗口、
+   * 同一 per-会话串行链、同一摘要/超限继承口径（不是第二套队列）。
+   */
+  internalSessionEnqueueRef:
+    | ((sid: string, internalId: string, job: InternalSessionJob) => void)
+    | null
+  /**
+   * **前端工具注册表**（与 `toolExecutorsRef.current` 同源，`makeToolRegistry` 建出的那一份）。
+   * 为什么需要暴露：ROOM 自主模式的规划轮与执行器此前误用**记忆工作流**注册表（`agent:'dmn'`），
+   * 于是 Agent / team_* / use_skill / ui_snapshot / code_run 等前端专属工具既进不了计划白名单，
+   * 也执行不了——「AI 拿不到全部工具，什么也做不了」的根因。房间的真实工具面就是这份前端池：
+   * 无头链路用它执行、计划白名单也必须由它派生。
+   * 同理不可直连（§3.4：跨域装配只许在 `bootstrap/`），故由 `api/` 写入、房间域只读。
+   * **热更新同步**：`server-assembly.ts` 的 `rebuildToolExecutors` 每次重建都会覆盖本字段，
+   * 否则房间读到的是陈旧注册表（工具开关不生效）。
+   */
+  frontendToolRegistryRef: ToolRegistry | null
 }
 
-/** 容器单例：13 个进程级引用的唯一可变状态。 */
+/** 容器单例：17 个进程级引用的唯一可变状态。 */
 export const serviceRefs: ServiceRefs = {
   server: null,
   wss: null,
@@ -103,7 +135,10 @@ export const serviceRefs: ServiceRefs = {
   headlessChatRunnerRef: null,
   extraToolExecutorsRef: null,
   restrictToolsRef: null,
-  geoEnvTextRef: null
+  geoEnvTextRef: null,
+  internalSessionFlushRef: null,
+  internalSessionEnqueueRef: null,
+  frontendToolRegistryRef: null
 }
 
 /**
@@ -139,6 +174,24 @@ export function getGeoEnvText(): string {
 }
 
 /**
+ * 立即派发并等待内部会话维护队列落定（退出链 `closeApiServer` 之前调用）。
+ * 未启动 API server / 已释放 → 直接 resolve（无待办可 flush）。
+ */
+export function flushPendingInternalSessionJobs(): Promise<void> {
+  return serviceRefs.internalSessionFlushRef ? serviceRefs.internalSessionFlushRef() : Promise.resolve()
+}
+
+/**
+ * 取内部会话**两写**入队函数（房间轮落盘用；0.54.0）。
+ * 未启动 / 已释放 → null：调用方跳过内部会话写入（未启用内部会话属**合法状态**，不报错）。
+ */
+export function getEnqueueInternalSessionJob(): (
+  (sid: string, internalId: string, job: InternalSessionJob) => void
+) | null {
+  return serviceRefs.internalSessionEnqueueRef
+}
+
+/**
  * 取某用途专属的工具执行器（无头链路 `extraToolExecutors` 的读取点）。
  * 未登记 / 该用途无专属工具 → 空数组（= 只用前端工具集，与引入前逐字一致）。
  */
@@ -152,6 +205,14 @@ export function getExtraToolExecutors(purpose: string | undefined, aiId?: number
  */
 export function getRestrictTools(purpose: string | undefined, aiId?: number): readonly string[] | null {
   return serviceRefs.restrictToolsRef?.(purpose, aiId) ?? null
+}
+
+/**
+ * 取前端工具注册表（ROOM 自主模式的工具面真源）。
+ * 未启动 API server / 已释放 → null，调用方按「无工具」处理（空计划），不得回落到别的注册表。
+ */
+export function getFrontendToolRegistry(): ToolRegistry | null {
+  return serviceRefs.frontendToolRegistryRef
 }
 
 /**
@@ -184,6 +245,9 @@ export function releaseServiceRefs(): void {
     ['extraToolExecutorsRef', serviceRefs.extraToolExecutorsRef],
     ['restrictToolsRef', serviceRefs.restrictToolsRef],
     ['geoEnvTextRef', serviceRefs.geoEnvTextRef],
+    ['internalSessionFlushRef', serviceRefs.internalSessionFlushRef],
+    ['internalSessionEnqueueRef', serviceRefs.internalSessionEnqueueRef],
+    ['frontendToolRegistryRef', serviceRefs.frontendToolRegistryRef],
     ['wss', serviceRefs.wss],
     ['server', serviceRefs.server]
   ]
@@ -191,6 +255,9 @@ export function releaseServiceRefs(): void {
   serviceRefs.extraToolExecutorsRef = null
   serviceRefs.restrictToolsRef = null
   serviceRefs.geoEnvTextRef = null
+  serviceRefs.internalSessionFlushRef = null
+  serviceRefs.internalSessionEnqueueRef = null
+  serviceRefs.frontendToolRegistryRef = null
   if (serviceRefs.unsubscribeConfig) {
     serviceRefs.unsubscribeConfig()
     serviceRefs.unsubscribeConfig = null

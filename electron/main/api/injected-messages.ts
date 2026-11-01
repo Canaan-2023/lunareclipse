@@ -16,6 +16,7 @@ import { truncateConversation } from '@shared/utils/context-window'
 import { getAppAnchor } from '../utils/app-root'
 import { assembleSegments } from '../prompts/segments'
 import type { SegmentManifest } from './segment-manifest'
+import { clampContextCharsForModel } from './model-capability'
 
 export interface InjectedMessagesDeps {
   configStore: ConfigStore
@@ -49,6 +50,14 @@ export function createBuildInjectedMessages(
     // turn -> suffix（历史之后，动态尾部，不影响缓存命中）
     // `purpose` 透传给段：房间规划轮（'room'）据此跳过对话纪律段（见 segments.ts SegmentBuildCtx.purpose）
     const { prefix, suffix } = await assembleSegments(SEGMENTS, { messages, sessionId, sessionContext, purpose })
+
+    // 生效上下文窗口（核心 + 覆盖层）：patch 写的 pairs/chars 必须在这里真正生效，
+    // 且 chars（token 模式）要按当前模型窗口夹一次——覆盖层写 800k 时不能真按 800k 注入，
+    // 否则截断永不触发、真实请求越过窗口就是整轮失败。
+    const effCfg = configStore.getEffective()
+    const baseCw = effCfg.contextWindow
+    const cappedChars = clampContextCharsForModel(baseCw.chars, effCfg.llm?.model) ?? baseCw.chars
+    const effContextWindow = cappedChars === baseCw.chars ? baseCw : { ...baseCw, chars: cappedChars }
 
     // 处理用户消息中的附件：读取文本/图片内容融入上下文
     // 任务 1.5：附件大文件落盘（超过阈值只保留路径引用，不内联全文）
@@ -99,7 +108,7 @@ export function createBuildInjectedMessages(
     // 为什么 configStore 的读取留在原地：模块保持无隐式依赖（纯函数才可脱离 electron 验证），
     // 故只把「保留条数」传进去；`pairs` 仍保留可选语义（旧 config 可能缺该键）。
     const clearedMessages = sanitizeContextMessages(processedMessages, {
-      keepRecent: resolveToolResultKeepRecent(configStore.get().contextWindow.pairs)
+      keepRecent: resolveToolResultKeepRecent(effContextWindow.pairs)
     })
 
     // ===== 微压缩层（第 2 层）已删除（2026-09-28 评审方案 B：激进收敛两层合一） =====
@@ -142,7 +151,7 @@ export function createBuildInjectedMessages(
       // 全量注入直接触发 API 拒绝（透明上抛），长会话彻底不可用。
       // 现改为与前端同一函数同一配置截断（pairs/chars 模式有界半注入；
       // contextWindow.mode==='off' 时按配置照旧不截断），保证 UI 与 AI 上下文 100% 一致。
-      const { kept } = truncateConversation(convMsgs, configStore.get().contextWindow)
+      const { kept } = truncateConversation(convMsgs, effContextWindow)
 
       // DeepSeek 前缀缓存适配：消息顺序 = [稳定 system（缓存前缀区）] → [历史对话（缓存前缀区）]
       // → [动态段] → [新用户消息]。

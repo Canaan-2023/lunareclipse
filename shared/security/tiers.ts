@@ -69,6 +69,11 @@ export const T0_CAPABILITIES: readonly CapabilityDef[] = [
  * T1 显式授予：默认关；用户逐项授予后自动放行（不必逐次审批），可撤回、可带范围、全量审计。
  * 十二条对应交接单 §0 T1-1~11 + `t1.lan-control`（2026-10-18 用户裁决「局域网启停用户和 AI 都能操作」）。
  * scoped=true 的三项要求动作携带范围且越界即拒。
+ *
+ * **`enforced: false` 的含义**：该 key 已进分级目录，但生产代码里还没有任何 `evaluatePolicy` 调用点，
+ * 授予后不会改变任何行为。这类条目保留定义（key 一旦发布不复用，审计可回溯），但不进授予面、
+ * 不接受授予——「授予了却没用」比「不给授予」更坏：用户会以为自己已经放开了某项权限。
+ * 判断依据：全仓搜索该 key，除本文件/ADR/测试外若无生产调用点，即为未接入。
  */
 export const T1_CAPABILITIES: readonly CapabilityDef[] = [
   {
@@ -92,6 +97,10 @@ export const T1_CAPABILITIES: readonly CapabilityDef[] = [
     description: '在用户填写的授权范围内执行探测/利用（目标清单 + 有效期）',
     scoped: true,
     scopeField: 'targets',
+    // 未接入：安全探测类命令（nmap/nuclei/ssh 等）目前只走 run_command 的逐次授权弹窗
+    // （run-command.ts 的 requestPermission + getSecurityToolLabel），没有任何地方以本 key 调用
+    // evaluatePolicy。保留定义但不进授予面，待探测路径接上本检查点后再放开。
+    enforced: false,
     usage: '授予后：只对你圈定的目标做探测/利用；范围外一律拒绝。',
     scopeHint: '填 IP / 主机名 / URL（也可以填路径）。每行一项；AI 会按这些地址自己去找，不在这里的一律拒绝。',
     scopeExamples: ['127.0.0.1', '192.168.1.10', 'https://example.com'],
@@ -102,6 +111,9 @@ export const T1_CAPABILITIES: readonly CapabilityDef[] = [
     tier: 'T1',
     title: '数据删除/移动/覆盖',
     description: '对用户自己的数据做删除、移动、覆盖',
+    // 未接入：delete_file / move_file / copy_file / write / edit 等工具当前没有任何权限闸，
+    // 既不过 evaluatePolicy 也不弹授权框。保留定义待这些写入类工具接上本检查点。
+    enforced: false,
     usage: '授予后：AI 可删除 / 移动 / 覆盖你的数据，**不可撤销**。不确定就先别给。'
   },
   {
@@ -123,6 +135,9 @@ export const T1_CAPABILITIES: readonly CapabilityDef[] = [
     description: '向用户已声明的端点传输数据（含 LAN 内节点互传）',
     scoped: true,
     scopeField: 'endpoints',
+    // 未接入：目前没有任何「把数据发往外部端点」的路径以本 key 过裁决
+    // （web_extract / image_gen / relay 等都不查本权限）。保留定义待外发路径接上本检查点。
+    enforced: false,
     usage: '授予后：AI 可把数据发往你声明过的端点（含局域网互传）；其它地址一律拒绝。',
     scopeHint: '填接收数据的地址：URL / IP:端口 / 共享路径均可，每行一项。',
     scopeExamples: ['https://example.com/webhook', 'http://192.168.1.10:8080', '\\\\NAS\\inbox'],
@@ -133,6 +148,8 @@ export const T1_CAPABILITIES: readonly CapabilityDef[] = [
     tier: 'T1',
     title: '使用用户提供的凭据',
     description: '使用用户主动提供的凭据访问外部服务',
+    // 未接入：系统里没有「凭据库 + 取用凭据的工具」这条路径，授予没有作用对象。
+    enforced: false,
     usage: '授予后：AI 可用你主动提供的凭据访问外部服务；凭据本身不在这里填写。'
   },
   {
@@ -154,6 +171,8 @@ export const T1_CAPABILITIES: readonly CapabilityDef[] = [
     tier: 'T1',
     title: '降低/关闭自身遥测',
     description: '仅本机范围内的自身遥测开关',
+    // 未接入：没有「AI 可调遥测开关」的工具/接口，授予没有作用对象。
+    enforced: false,
     usage: '授予后：AI 可在本机范围内调低/关闭自身遥测；不影响权限审计落盘。'
   },
   {
@@ -161,6 +180,9 @@ export const T1_CAPABILITIES: readonly CapabilityDef[] = [
     tier: 'T1',
     title: '修改模型池/成本上限/钉死模型',
     description: '模型配置的「改配置」属授予项；AI 只能在池内选择',
+    // 未接入：模型池只由用户路径（modelRouter:setConfig 与设置页）写入，AI 没有改配置的工具，
+    // 「只能在池内选择」由目录 + 无写入入口共同保证，不依赖本授予。
+    enforced: false,
     usage: '授予后：AI 可修改模型池 / 成本上限 / 钉死模型；不授予时它只能在既有池内选。'
   },
   {
@@ -200,6 +222,15 @@ export const ALL_CAPABILITIES: readonly CapabilityDef[] = [
   ...T2_CAPABILITIES
 ]
 
+/**
+ * 授予面目录：从全量目录里剔除 `enforced === false` 的预留能力。
+ * 为什么单列一份而不是让 UI 自己过滤：授予面只有一处口径（`security:listCapabilities` 返回什么，
+ * 面板就展示什么），UI 再过滤一次就又多了一处「以为一致」的判定（本仓反复记录过这类漂移）。
+ */
+export const GRANT_SURFACE_CAPABILITIES: readonly CapabilityDef[] = ALL_CAPABILITIES.filter(
+  (c) => c.enforced !== false
+)
+
 /** key → 定义（O(1) 裁决查表）。 */
 export const CAPABILITY_BY_KEY: ReadonlyMap<string, CapabilityDef> = new Map(
   ALL_CAPABILITIES.map((c) => [c.key, c])
@@ -213,8 +244,11 @@ export function resolveCapability(key: string): CapabilityDef | undefined {
 /**
  * 该能力是否可被用户授予。
  * 只有 T1 可授予——T0 永不可授予（§0「T0 不提供关掉即放行的开关」），
- * T2 默认开无需授予。授予 IPC 与裁决层共用本判定，保证两侧口径一致。
+ * T2 默认开无需授予。
+ * 另外要求 `enforced !== false`：没有生产执行点的预留能力（授予后行为不变）不接受授予，
+ * 避免用户以为自己放开了某项权限。授予 IPC 与裁决层共用本判定，保证两侧口径一致。
  */
 export function isGrantable(key: string): boolean {
-  return resolveCapability(key)?.tier === 'T1'
+  const cap = resolveCapability(key)
+  return cap?.tier === 'T1' && cap.enforced !== false
 }

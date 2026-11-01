@@ -73,7 +73,8 @@ export function createRuntimeServices(deps: RuntimeServicesDeps): RuntimeService
 
   // 地理位置服务：AI 感知当前时间和地区
   // 时间每轮实时注入；单一系统坐标链路（渲染进程 navigator.geolocation → 逆地理中文地址 + 天气），
-  // 由 config.geo.preciseLocationEnabled 显式开关控制（默认 false）。
+  // 由 config.geo.preciseLocationEnabled 开关控制（默认 true；老配置由 config-store 的
+  // featureDefaultsVersion 迁移一次性补齐，用户手动关掉后不会被翻回）。
   // 隐私红线整改：公共免费 API 的 IP 定位兜底已移除——开关关闭时无任何定位来源，
   // 不发起任何外部定位请求，AI 上下文仅注入时区；开启后仅走系统坐标链路。
   const preciseLocationEnabled = configStore.get().geo?.preciseLocationEnabled ?? false

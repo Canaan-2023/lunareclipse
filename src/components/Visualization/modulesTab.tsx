@@ -9,6 +9,7 @@ import { AlertTriangle, Boxes, Send } from 'lucide-react'
 import type { ModuleInfo, VisualizationData } from '@shared/types'
 import { SectionTitle, EmptyHint, StatCard } from './common'
 import { formatDateTime } from '../../utils/time'
+import { useTransientTimer } from '../../hooks/useTransientTimer'
 
 /** 模块监控 Tab（批次 E-5c 从 VisualizationPanel.tsx 拆出） */
 
@@ -96,6 +97,8 @@ function ModuleRow({
   const border = m.ok === false ? 'border-red-400/40 bg-red-400/5' : 'border-border-subtle bg-bg-elevated'
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
+  // 「已引用」提示「2 秒后自动消失」的计时器句柄（卸载清理 + 重复调度先取消）
+  const { schedule: scheduleSentClear } = useTransientTimer()
 
   const handleSendToAI = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -104,7 +107,7 @@ function ModuleRow({
       const ok = await window.lunareclipse.vizReferenceModule(m.id)
       if (ok) {
         setSent(true)
-        setTimeout(() => setSent(false), 2000)
+        scheduleSentClear(() => setSent(false), 2000)
       }
     } finally {
       setSending(false)

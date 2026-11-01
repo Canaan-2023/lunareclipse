@@ -9,9 +9,18 @@
  * 2. registry TOOL_MAP：session_search / curator 已注册且对 frontend 默认启用
  */
 import { describe, it, expect } from 'vitest'
+import { fileURLToPath } from 'url'
 import { HookExecutor } from '../electron/main/hooks/hook-manager'
 import type { ResolvedHook, HookContext } from '../electron/main/hooks/types'
+import { resolveNodeExe } from '../electron/main/utils/node-runtime'
 import { TOOL_MAP } from '../shared/tools/registry'
+
+// 本机可能没有全局 node（见 node-runtime.ts 头注释）：生产启动链先调
+// `ensureNodeOnPath(app.getAppPath())` 把自备 `.tools/node.exe` 并入 PATH，用户 hook 里
+// 裸写 `node` 才能被 resolveExternalCommand 解析到。测试进程不跑启动链，仍写裸 `node`
+// 就会一律 ENOENT（表现为本文件 4 例全挂）。这里直接绑定同一套「内置 Node 定位」：
+// 命令换成解析后的真实路径，用例断言的内容（stdout JSON 解析/退出码语义）一字未动。
+const NODE_EXE = resolveNodeExe(fileURLToPath(new URL('..', import.meta.url)))
 
 const ctx: HookContext = {
   event: 'PreLLMCall',
@@ -23,7 +32,7 @@ const ctx: HookContext = {
 function cmdHook(nodeScript: string): ResolvedHook[] {
   return [{
     event: 'PreLLMCall',
-    handler: { type: 'command', command: 'node', args: ['-e', nodeScript], timeout: 5000 },
+    handler: { type: 'command', command: NODE_EXE, args: ['-e', nodeScript], timeout: 5000 },
     matcher: '.*',
     scope: 'global',
     sourceFile: '<verify>'

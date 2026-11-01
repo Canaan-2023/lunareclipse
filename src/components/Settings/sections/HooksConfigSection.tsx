@@ -8,6 +8,7 @@ import { Plus, Trash2, ShieldAlert, ShieldCheck, FlaskConical, Loader2 } from 'l
 import type { HooksConfig, HookEvent, HookScope, HookMatcherGroup, HookHandler, HookType } from '@shared/types'
 import { Field } from '../Field'
 import { useT } from '../../../i18n/useT'
+import { useTransientTimer } from '../../../hooks/useTransientTimer'
 
 /**
  * Hooks 配置区
@@ -36,6 +37,8 @@ export function HooksConfigSection() {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string>('')
+  // 「N 秒后自动消失」提示的计时器句柄（卸载清理 + 重复调度先取消，不再裸 setTimeout）
+  const { schedule: scheduleMsgClear } = useTransientTimer()
   // 项目级 Hook 确认条（hooksHasProject → hasProject && !allowed 时展示）
   const [projStatus, setProjStatus] = useState<'checking' | 'pending' | 'approved'>('checking')
   const [confirming, setConfirming] = useState(false)
@@ -63,7 +66,7 @@ export function HooksConfigSection() {
     }).catch((e: unknown) => {
       // 加载失败提示（评审 MINOR-9）：不静默停在「空配置」态，避免与「当前无配置」混淆
       setMsg(t('settings.hookSaveFail', { error: e instanceof Error ? e.message : String(e) }))
-      setTimeout(() => setMsg(''), 5000)
+      scheduleMsgClear(() => setMsg(''), 5000)
     })
   }, [scope])
 
@@ -89,14 +92,14 @@ export function HooksConfigSection() {
       if (res.ok) {
         setProjStatus('approved')
         setMsg(t('settings.hookProjectConfirmed'))
-        setTimeout(() => setMsg(''), 4000)
+        scheduleMsgClear(() => setMsg(''), 4000)
       } else {
         setMsg(res.error ?? t('settings.hookProjectCheckFail'))
-        setTimeout(() => setMsg(''), 4000)
+        scheduleMsgClear(() => setMsg(''), 4000)
       }
     } catch {
       setMsg(t('settings.hookProjectCheckFail'))
-      setTimeout(() => setMsg(''), 4000)
+      scheduleMsgClear(() => setMsg(''), 4000)
     } finally {
       setConfirming(false)
     }
@@ -226,7 +229,7 @@ export function HooksConfigSection() {
       // 无论成败复位 saving，避免保存按钮被永久 disabled
       setSaving(false)
     }
-    setTimeout(() => setMsg(''), 3000)
+    scheduleMsgClear(() => setMsg(''), 3000)
   }
 
   // 通用样式

@@ -23,6 +23,14 @@ import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } fr
 const REDIRECT_PORT_RANGE = { min: 39152, max: 49151 }
 const REDIRECT_PORT_FALLBACK = 3118
 
+/**
+ * loopback 回调服务器的空闲超时（毫秒）。
+ * 为什么需要：用户在浏览器里放弃授权时回调永不到达，server 会一直监听端口。
+ * 取 10 分钟与 state() 的过期时长一致（state 过期后即使收到回调也会被 CSRF 校验拒绝）。
+ * 触发时关闭 server 并回调失败，用户可重新发起授权。
+ */
+const CALLBACK_SERVER_TIMEOUT_MS = 10 * 60 * 1000
+
 /** 构建 loopback 回调 URI（RFC 8252：任意端口、固定路径均可匹配） */
 export function buildRedirectUri(port: number = REDIRECT_PORT_FALLBACK): string {
   return `http://localhost:${port}/callback`
@@ -106,6 +114,8 @@ export class McpOAuthProvider implements OAuthClientProvider {
   private _stateSetAt?: number
   private _authorizationUrl?: string
   private _browserOpened = false
+  /** 回调服务器空闲超时定时器（已 unref，不钉住事件循环） */
+  private _callbackTimeout?: NodeJS.Timeout
 
   /** 授权码就绪回调（client-manager 注入：收到 code 后调 transport.finishAuth 并重连） */
   onAuthorizationCode?: (code: string) => void
@@ -221,6 +231,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
       })
       server.listen(this.port, '127.0.0.1', () => {
         this.server = server
+        this.armCallbackTimeout()
         resolve()
       })
       server.unref()
@@ -269,7 +280,27 @@ export class McpOAuthProvider implements OAuthClientProvider {
     res.end('<h1>授权失败</h1><p>回调缺少 code 参数。</p>')
   }
 
+  /**
+   * 登记回调服务器的空闲超时（幂等：重复调用先清旧定时器）。
+   * unref 原因：timer 不得钉住事件循环——测试（mcp-oauth-provider.test.ts）直接调用
+   * ensureCallbackServer 且不显式关闭 server，若 timer 未 unref 会挂住 vitest 进程。
+   */
+  private armCallbackTimeout(): void {
+    if (this._callbackTimeout) clearTimeout(this._callbackTimeout)
+    this._callbackTimeout = setTimeout(() => {
+      this._callbackTimeout = undefined
+      if (!this.server) return
+      this.closeServer()
+      this.onAuthorizationError?.('OAuth 授权超时（10 分钟内未完成），回调服务器已关闭，请重新发起授权')
+    }, CALLBACK_SERVER_TIMEOUT_MS)
+    this._callbackTimeout.unref()
+  }
+
   private closeServer(): void {
+    if (this._callbackTimeout) {
+      clearTimeout(this._callbackTimeout)
+      this._callbackTimeout = undefined
+    }
     if (this.server) {
       const s = this.server
       this.server = undefined

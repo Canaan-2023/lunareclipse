@@ -198,4 +198,32 @@ describe('McpOAuthProvider 持久化与授权流', () => {
     await provider.redirectToAuthorization(url)
     expect(mockState.openExternal).toHaveBeenCalledTimes(1)
   })
+
+  it('回调服务器空转超时计时器已武装且 unref（放弃授权时不占事件循环）', async () => {
+    const provider = new McpOAuthProvider('srv-a', 'https://a.example', 39994)
+    await (provider as unknown as { ensureCallbackServer(): Promise<void> }).ensureCallbackServer()
+    const timer = (provider as unknown as { _callbackTimeout?: { hasRef?: () => boolean } })._callbackTimeout
+    expect(timer).toBeDefined()
+    // unref 是硬约束：未 unref 的 10 分钟超时会挂住 vitest 进程
+    expect(timer?.hasRef?.()).toBe(false)
+  })
+
+  it('回调到达后清掉空转超时计时器', async () => {
+    const provider = new McpOAuthProvider('srv-a', 'https://a.example', 39995)
+    const state = await provider.state()
+    provider.onAuthorizationCode = vi.fn()
+    provider.onAuthorizationError = vi.fn()
+
+    await (provider as unknown as { ensureCallbackServer(): Promise<void> }).ensureCallbackServer()
+
+    await new Promise<void>((resolve) => {
+      const req = http.get(`http://127.0.0.1:39995/callback?code=the-code&state=${state}`, (res) => {
+        res.resume()
+        resolve()
+      })
+      req.on('error', () => resolve())
+    })
+    await new Promise((r) => setTimeout(r, 100))
+    expect((provider as unknown as { _callbackTimeout?: unknown })._callbackTimeout).toBeUndefined()
+  })
 })

@@ -206,10 +206,10 @@ export interface AppState {
   deleteSession: (id: string) => Promise<void>
   sendMessage: (content: string) => Promise<void>
   /**
-   * 房间消息落回会话历史（不触发普通 AI）：用户在房间里的发言 / AI 的直播回复。
-   * `at` 用于幂等（同一条回复切走再回来不会重复追加）。
+   * 房间消息从主进程**重取**会话消息（不写盘、不触发普通 AI）。
+   * 写盘由主进程 `appendHostTurn` 独占——渲染侧写会覆盖主进程刚落的房间轮次。
    */
-  appendRoomMessage: (content: string, role?: 'user' | 'assistant', at?: number) => void
+  syncRoomMessages: (sessionId: string) => Promise<void>
   abortStream: () => void
   /** 撤回消息：标记 recalled，双层同步（session.messages + 内部会话） */
   recallMessage: (messageId: string) => Promise<void>

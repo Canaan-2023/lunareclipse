@@ -15,7 +15,8 @@
  * 1. 护栏判定顺序（由 `evaluateToolGuardrails` 内部保证）；
  * 2. 软超时托管的 `MANAGED_TIMEOUT_TOOLS` 判定 + `registerManagedRun` 登记点（在 `tool-loop-dispatch`）；
  * 3. `reasoning_content` 的读取与回传口径（在 `tool-loop-stream` 与 `tool-loop-dispatch`）；
- * 4. 超时计时器跨工具执行阶段仍武装（由 `runTurnStream` 返回句柄、本模块 finally 释放保证）。
+ * 4. 超时计时器只覆盖流阶段（2026-10-31 修正：`runTurnStream` 在流消费结束时自行清理；
+ *    工具阶段由外墙 / `MANAGED_TIMEOUT_TOOLS` 托管协议负责，流计时器不得跨阶段误杀）。
  * 判据：`test/llm-guardrail-wire.test.ts` / `llm-failure-halt` / `llm-concurrency` /
  * `llm-reasoning-wire` / `llm-reasoning-effort` / `build-turn-pairs-intent` 全绿。
  */
@@ -262,8 +263,8 @@ export async function runToolLoop(
         return
       }
 
-      // 超时计时器句柄：由 runTurnStream 创建、本模块在轮次 finally 释放
-      // （保持「工具执行阶段计时器仍武装」的既有语义，见 tool-loop-stream.ts 警示）
+      // 超时计时器句柄：runTurnStream 在流消费结束即自行清理（只覆盖流阶段）；
+      // 此处保留 finally dispose 仅作异常路径兜底（幂等）。工具阶段由外墙/托管协议负责。
       let turnTimers: TurnTimers | null = null
       try {
         // AUTO 决策点（唯一入口）：每轮建流前解析本轮模型。不切时 activeModel 不变。

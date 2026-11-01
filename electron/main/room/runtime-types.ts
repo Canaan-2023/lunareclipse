@@ -49,8 +49,12 @@ export interface RoomRuntimeDeps {
   /**
    * 采集本轮输入（B4）；未启用/未授予时返回 ok=false 且带原因。
    * 入参 = **当前采集视图**（AI 声明，见 `./collector-view`）——采集实现据此只取被选中的字段。
+   *
+   * `synthetic`（0.54.0）：这段文本**不是真的看到了什么**，而是装配层在「本轮没有采集输入」时
+   * 补的说明（让规划↔主AI的交替循环不因采集缺席而断掉）。运行时据此不把它滚存进
+   * `prevCollect` —— 否则【上一轮】段会反复显示「本轮没有新环境输入」，污染对比。
    */
-  collect: (view: CollectorView) => Promise<{ ok: boolean; text?: string; error?: string }>
+  collect: (view: CollectorView) => Promise<{ ok: boolean; text?: string; error?: string; synthetic?: boolean }>
   /** 规划：把提示词交给 AI，返回其文本回复（`getHeadlessChatRunner`）；空串/null = LLM 未回复 */
   plan: (prompt: string, sessionId: string) => Promise<string | null>
   /**
@@ -140,6 +144,23 @@ export interface RoomRuntimeDeps {
    * 缺省 = 直接 `wake`（单测 / 未接仲裁器时的兜底）。
    */
   reportWake?: (source: WakeSource, detail?: string) => boolean | void
+  /**
+   * 无动作的轮次是否**立刻**接下一轮（0.54.0 用户裁决：规划 ↔ 主AI 交替循环，**不要节拍器**）。
+   * 生产由 bootstrap 传 `() => true`：一轮跑完没有显式 `standbyMs` 就马上进入下一轮，
+   * 唯一的等待来源是 AI 自己声明的待机时长。
+   * 缺省 false = 保留「无动作即 park」语义（手动单步 / 单测的不变量；与引入前逐字一致）。
+   */
+  autoChain?: () => boolean
+  /**
+   * 把房间轮的人类可读记录写回**承载会话**（0.54 落盘修复）。
+   * 只传 `user`（用户在房间里说的话）与 `assistant`（AI 的 reply）——规划提示词与 JSON 计划
+   * 不进会话历史（那是契约文本，混进正常聊天只会污染上下文）。
+   * 落盘失败由实现方吞掉并留痕，不得反向阻断自主循环。
+   */
+  appendHostTurn?: (
+    sessionId: string,
+    entry: { role: 'user' | 'assistant'; content: string; at: number }
+  ) => void
   now?: () => number
 }
 

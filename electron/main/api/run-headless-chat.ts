@@ -99,22 +99,46 @@ export interface HeadlessChatDeps {
    * 结果是同一套 AI 在房间里比在普通会话里**明显简陋**（无路由、无代际、无摘要、无继承）。
    * 宿主注入 `api/internal-session.ts` 的 `resolveStreamSessionContext`（**同源**，不另造一套口径）。
    *
-   * 契约：**返回 null** = 未启用 / 无路由（合法，调用方走线性管线）；
+   * 契约：`sessionContext` 为 null = 未启用 / 无路由（合法，调用方走线性管线）；
    * **抛错** = 真故障 → 调用方**不得吞掉**（让它上浮，别把故障静默降级成简陋上下文）。
+   *
+   * `internalId`（0.54.0）：本轮路由/装载**落定**的内部会话 id（null = 未启用 / 线性管线）。
+   * 为什么一并回传：房间轮要把人类可读的 user/reply 两写进 AI 的内部会话（与普通轮次同一队列），
+   * 而 id 只在这里算得出来；此前只回传 sessionContext，id 被丢弃 → 内部会话建了却永远没人写。
    */
-  resolveSessionContext?: (sessionId: string, messages: ChatMessage[]) => Promise<SessionContext | null>
+  resolveSessionContext?: (
+    sessionId: string,
+    messages: ChatMessage[]
+  ) => Promise<{ sessionContext: SessionContext | null; internalId: string | null }>
+}
+
+/**
+ * 单轮钩子：**按调用传入**，不落进 runner 的共享状态。
+ *
+ * 为什么按调用而非常驻 dep：内部会话 id 是 `resolveSessionContext` 在**本轮队列内**算出来的，
+ * 只有发起这一轮的调用方知道它该绑给谁（房间按 (uid, aiId) 分实例、LAN 消息按外部会话）。
+ * 做成 runner 级依赖会让同一个全局 runner 的多个调用方串号。
+ */
+export interface HeadlessTurnHooks {
+  /**
+   * 本轮路由/装载落定的内部会话 id（`null` = 未启用 / 走线性管线）。
+   * 在 LLM 调用**之前**（组装阶段）回调；调用方据它在落盘阶段把 user/reply 两写进该内部会话。
+   */
+  onInternalSessionResolved?: (internalId: string | null) => void
 }
 
 /**
  * 无头对话运行器签名（LAN 协作层经 getHeadlessChatRunner 取用）。
  * `purpose`：本轮用途（可选）。`'room'` = 自主房间规划轮 → 注入链跳过对话纪律段
  * （见 `prompts/segments.ts` 的 `SegmentBuildCtx.purpose`）；省略 = 普通对话（行为不变）。
+ * `hooks`：单轮钩子（可选，见 `HeadlessTurnHooks`）；省略 = 与引入前逐字一致。
  */
 export type HeadlessChatRunner = (
   text: string,
   sessionId: string,
   aiId?: number,
-  purpose?: PromptPurpose
+  purpose?: PromptPurpose,
+  hooks?: HeadlessTurnHooks
 ) => Promise<string>
 
 /**
@@ -145,7 +169,8 @@ export function createHeadlessChatRunner(deps: HeadlessChatDeps): HeadlessChatRu
     text: string,
     sessionId: string,
     aiId?: number,
-    purpose?: PromptPurpose
+    purpose?: PromptPurpose,
+    hooks?: HeadlessTurnHooks
   ): Promise<{ history: ChatMessage[]; userMsg: ChatMessage; injectedMessages: ChatMessage[] }> => {
     // 前置规划轮（room-preplan）**不落 sessionStore、不走逆生树路由**（2026-10-31 裁决：
     // 前置规划持久体只有 preplan.json 滚动环）。建会话记录会让它出现在用户会话列表里，
@@ -168,15 +193,17 @@ export function createHeadlessChatRunner(deps: HeadlessChatDeps): HeadlessChatRu
 
     // **不兜底**（用户裁决：「兜底不要轻易下放，有时候报错比兜底更好，我不喜欢不干净的东西」）。
     // 必须区分两种「没有锚点」：
-    // - **返回 null** = 机制自己声明「未启用 / 无路由」→ 合法状态，走线性管线；
+    // - **sessionContext 为 null** = 机制自己声明「未启用 / 无路由」→ 合法状态，走线性管线；
     // - **抛错** = 真出了问题 → **让它抛**，由上层看见（静默降级成简陋的线性管线才是「不干净」）。
     // 前置规划轮固定 null：连续性来自 preplan.json（提示词【近期节奏】段），不走路由（见上）。
-    const sessionContext =
-      purpose === 'room-preplan'
+    const resolved =
+      purpose === 'room-preplan' || !deps.resolveSessionContext
         ? null
-        : deps.resolveSessionContext
-          ? await deps.resolveSessionContext(sessionId, [...history, userMsg])
-          : null
+        : await deps.resolveSessionContext(sessionId, [...history, userMsg])
+    const sessionContext = resolved?.sessionContext ?? null
+    // 房间轮据此把 user/reply 两写进本轮落定的内部会话（null = 未启用/线性管线，调用方跳过）。
+    // 回调点在 LLM 之前：id 一旦对本轮可见就固定，后面的落盘阶段用它不会错位。
+    hooks?.onInternalSessionResolved?.(resolved?.internalId ?? null)
     const injectedMessages = await buildInjectedMessages([...history, userMsg], sessionId, sessionContext, purpose)
     // 注入全量注入（与 runStream 同语义）：headless 接入同样不实施注入截断
     lastInjectedEstimateRef.current = estimateMessagesTokens(injectedMessages)
@@ -308,7 +335,13 @@ export function createHeadlessChatRunner(deps: HeadlessChatDeps): HeadlessChatRu
    * 「设 sessionId → 组装 → 流 → 持久化 → 清 sessionId」整体放进同一串行队列，
    * 与 WS 主链路（同样经 streamSession.enqueue）严格互斥。
    */
-  return async (text: string, sessionId: string, aiId?: number, purpose?: PromptPurpose): Promise<string> => {
+  return async (
+    text: string,
+    sessionId: string,
+    aiId?: number,
+    purpose?: PromptPurpose,
+    hooks?: HeadlessTurnHooks
+  ): Promise<string> => {
     let output = ''
     await streamSession.enqueue(async () => {
       // LLM 预热也放进队列：makeLlmClient 会写共享 ref，不能与在飞轮次并发。
@@ -318,7 +351,7 @@ export function createHeadlessChatRunner(deps: HeadlessChatDeps): HeadlessChatRu
       // 多 AI（P2）：headless 同样按会话 aiId 泛化（工具 paths / segment 注入读 serverCtx.sessionId）
       serverCtx.sessionId = sessionId
       try {
-        const { history, userMsg, injectedMessages } = await assembleHeadlessContext(text, sessionId, aiId, purpose)
+        const { history, userMsg, injectedMessages } = await assembleHeadlessContext(text, sessionId, aiId, purpose, hooks)
         const { fullOutput, fullHeadlessReasoning } = await runHeadlessTurn(
           injectedMessages,
           sessionId,
@@ -331,9 +364,11 @@ export function createHeadlessChatRunner(deps: HeadlessChatDeps): HeadlessChatRu
         // - `room-preplan`（前置规划轮）：**全跳过**——不写会话历史、不写 RAW。前置规划是主AI的专属
         //   影子，不占 aiId、不进记忆工作流（防与主AI记忆重复）；它的指令经主AI规划提示词的
         //   【前置规划】段随主AI轮次计入 RAW（「在主AI上下文内所以计入」），自己永不落笔。
-        // - `room`（房间规划轮）：**不写会话历史**（0.53.18：规划是房间自己的 TODO，写进会话历史
-        //   会以「提示词当成用户消息 + JSON 计划当成 AI 回复」的形式混进用户正常聊天），
-        //   但**照常写 RAW**（2026-10-31 用户裁决，覆盖 0.53.18 的 RAW 部分）。
+        // - `room`（房间规划轮）：**轮次本身不落会话历史**（规划提示词与 JSON 计划不是聊天内容，
+        //   写进去会混进用户正常聊天）；用户的发言与 AI 的 reply 由 `room/runtime.ts` 的
+        //   `appendHostTurn` 单独写回承载会话（0.54），其中**展示层会话**与**内部会话层两写**
+        //   都在那里发生（0.54.0：内部会话 id 经本轮 `onInternalSessionResolved` 钩子带出）。
+        //   RAW 照常写（2026-10-31 用户裁决）。
         // - 其余：会话历史与 RAW 都写（普通轮次，行为不变）。
         if (purpose === 'room-preplan') {
           // 全跳过：前置规划不落笔

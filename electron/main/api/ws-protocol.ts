@@ -10,6 +10,7 @@
 
 // 流式引擎依赖注入面复用（除连接级 ws/maxRetry/maxStreamRetries/continuationTimerRef 外全量传入）
 import { createStreamRunner, type StreamRunnerDeps } from './stream-runner'
+import { cancelPendingStreamRetry } from './stream/error-dispatch'
 import { getAppAnchor } from '../utils/app-root'
 import { WebSocket } from 'ws'
 import type { HookManager } from '../hooks'
@@ -31,10 +32,10 @@ export interface WsProtocolDeps {
   missionStoreRef: MissionStore | null
   /** 异步委托管理器（mission 子 agent 后台执行；模块级引用，值语义） */
   asyncDelegationRef: AsyncDelegationManager | null
-  /** createStreamRunner 装配依赖（除连接级 ws/maxRetry/maxStreamRetries/continuationTimerRef） */
+  /** createStreamRunner 装配依赖（除连接级 ws/maxRetry/maxStreamRetries/continuationTimerRef/retryTimerRef） */
   streamRunner: Omit<
     StreamRunnerDeps,
-    'ws' | 'maxRetryDelayMs' | 'maxStreamRetries' | 'continuationTimerRef'
+    'ws' | 'maxRetryDelayMs' | 'maxStreamRetries' | 'continuationTimerRef' | 'retryTimerRef'
   >
 }
 
@@ -56,7 +57,7 @@ export function createWsProtocol(deps: WsProtocolDeps): (ws: WebSocket) => void 
 
   return (ws) => {
     // 流式引擎共享实例解构（message/close handler 自由引用，与 runStream 同一份）
-    const { streamSession, activationManager, llmClientRef } = streamRunner
+    const { streamSession, activationManager, llmClientRef, serverCtx } = streamRunner
     const streamId = `stream_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     activeStreams.set(streamId, ws)
 
@@ -74,6 +75,9 @@ export function createWsProtocol(deps: WsProtocolDeps): (ws: WebSocket) => void 
     const MAX_STREAM_RETRIES = Number.POSITIVE_INFINITY // 重试不设次数上限（调用上限已取消）
     // 代码审查定时器句柄（F-6 ref 容器）：runStream 与 message/close handler 共享同一份
     const continuationTimerRef: { current: ReturnType<typeof setTimeout> | null } = { current: null }
+    // 静默续接定时器句柄（连接级）：退避窗口内用户点停止 / 发新消息时必须能取消，
+    // 否则停止按钮无效、新消息与旧续接并发（2026-10-31 生命周期收口）
+    const retryTimerRef: { current: ReturnType<typeof setTimeout> | null } = { current: null }
     // 主回复轮路由选中的内部会话：审查轮（systemOverride）沿用其上下文装载
     // 连接级内部会话句柄已迁入 stream-runner 工厂闭包（每连接一份），此处不再声明
 
@@ -89,7 +93,8 @@ export function createWsProtocol(deps: WsProtocolDeps): (ws: WebSocket) => void 
       ws,
       maxRetryDelayMs: MAX_RETRY_DELAY_MS,
       maxStreamRetries: MAX_STREAM_RETRIES,
-      continuationTimerRef
+      continuationTimerRef,
+      retryTimerRef
     })
 
     ws.on('message', async (data) => {
@@ -102,6 +107,8 @@ export function createWsProtocol(deps: WsProtocolDeps): (ws: WebSocket) => void 
       }
 
       if (msg.type === 'token' && msg.messages) {
+        // 新消息/新激活到来 → 放弃旧请求已调度的静默续接，避免退避到点与新一轮并发
+        cancelPendingStreamRetry(retryTimerRef)
         // 用户主动发新消息（非激活）→ 重置中断恢复计数，表示中断恢复周期结束
         if (!msg.activation) {
           activationManager.resetInterruptRecovery()
@@ -165,11 +172,19 @@ export function createWsProtocol(deps: WsProtocolDeps): (ws: WebSocket) => void 
             }
           } catch (streamErr) {
             console.error('[server] runStream error:', streamErr)
-            streamSession.push(
-              ws,
-              JSON.stringify({ type: 'error', payload: (streamErr as Error).message, messageId })
-            )
+            if (streamSession.isOpen(ws)) {
+              streamSession.push(
+                ws,
+                JSON.stringify({ type: 'error', payload: (streamErr as Error).message, messageId })
+              )
+            }
+            // 兜底收尾（2026-10-31 生命周期收口）：runStream 内部没有 try/finally，
+            // 流前/中途抛错会留下「streamSession 归属 + serverCtx.sessionId + 活跃标志」三处脏态，
+            // 表现为前端永远 streaming、自主激活被阻塞。这里统一释放（正常路径已释放，重复调用幂等）。
+            streamSession.finish(ws, messageId)
+            serverCtx.sessionId = undefined
             activationManager.setStreamActive(false)
+            broadcastStreamStatus()
           }
         })
       } else if (msg.type === 'takeover') {
@@ -209,6 +224,11 @@ export function createWsProtocol(deps: WsProtocolDeps): (ws: WebSocket) => void 
         if (continuationTimerRef.current) {
           clearTimeout(continuationTimerRef.current)
           continuationTimerRef.current = null
+        }
+        // 退避窗口内没有活跃的 LLM 请求可以 abort——必须显式取消续接定时器并清掉活跃标志，
+        // 否则停止按钮在重试窗口内无效、到点照样 resume（2026-10-31 生命周期收口）。
+        if (cancelPendingStreamRetry(retryTimerRef)) {
+          activationManager.setStreamActive(false)
         }
         activationManager.resetInterruptRecovery()
       } else if (msg.type === 'mission_start') {

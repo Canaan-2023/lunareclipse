@@ -27,6 +27,7 @@ import type { McpClientManager } from '../mcp/client-manager'
 import type { InternalSessionStore } from '../services/internal-session-store'
 import type { ToolContext, SubAgentTask, ContextUsageSnapshot, ToolResult } from '../tools/base-tool'
 import { spreadToolCtx } from './tool-ctx-safe'
+import { clampTokenBudgetForModel } from './model-capability'
 
 export interface ServerCtxDeps {
   toolCtx: ToolContext
@@ -174,9 +175,11 @@ export function createServerCtx(deps: ServerCtxDeps): ToolContext {
       const sid = serverCtx.sessionId ?? undefined
       if (!sid) {
         // 无会话时仍返回基础信息（无消息）
-        const cfgNow = configStore.get()
+        // 读 getEffective 而不是 get：patch / 插件 config.patch 写的预算在覆盖层，
+        // 读核心真相会让「写了 patch、报出来还是 96000」；再按模型窗口夹一次防止覆盖层越窗。
+        const cfgNow = configStore.getEffective()
         const budget =
-          cfgNow.tokenBudget && cfgNow.tokenBudget > 0 ? cfgNow.tokenBudget : getSoftBudget()
+          clampTokenBudgetForModel(cfgNow.tokenBudget, cfgNow.llm?.model) ?? getSoftBudget()
         return {
           sessionId: null,
           messageCount: 0,
@@ -192,9 +195,10 @@ export function createServerCtx(deps: ServerCtxDeps): ToolContext {
       if (!session) return null
       const convMsgs = session.messages.filter((m) => m.role !== 'system')
       const estimated = lastInjectedEstimateRef.current ?? estimateMessagesTokens(convMsgs)
-      const cfgNow = configStore.get()
+      // 同上：生效配置（核心 + 覆盖层）+ 模型窗口限幅，context_usage 报才是「真在用」的预算
+      const cfgNow = configStore.getEffective()
       const budget =
-        cfgNow.tokenBudget && cfgNow.tokenBudget > 0 ? cfgNow.tokenBudget : getSoftBudget()
+        clampTokenBudgetForModel(cfgNow.tokenBudget, cfgNow.llm?.model) ?? getSoftBudget()
       const usagePercent = Math.min(100, Math.round((estimated / budget) * 100))
       return {
         sessionId: sid,

@@ -7,6 +7,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAppStore } from '../../stores/appStore'
 import { useT } from '../../i18n/useT'
+import { useTransientTimer } from '../../hooks/useTransientTimer'
 import type { FriendItem, CandidateItem, FriendMsg, View, AiSocialContact, AiSocialChatListItem, AiChatMessage } from './types'
 import type { RelayEvent } from '../../../electron/main/multi-instance/relay/relay-types'
 import { FriendListView } from './FriendListView'
@@ -28,6 +29,8 @@ export function FriendsPanel({ embedded, externalQuery }: { embedded?: boolean; 
   const closeDrawer = useAppStore((s) => s.closeDrawer)
   const myUid = useAppStore((s) => s.currentUser?.UID ?? 0)
   const t = useT()
+  // 错误提示「4 秒后自动消失」的计时器句柄（卸载清理 + 重复调度先取消，不再裸 setTimeout）
+  const { schedule: scheduleErrorClear } = useTransientTimer()
 
   const [ready, setReady] = useState<boolean | null>(null) // null=检测中
   const [view, setView] = useState<View>('list')
@@ -74,7 +77,7 @@ export function FriendsPanel({ embedded, externalQuery }: { embedded?: boolean; 
 
   const reportError = useCallback((msg: string) => {
     setError(msg)
-    window.setTimeout(() => setError((cur) => (cur === msg ? null : cur)), 4000)
+    scheduleErrorClear(() => setError((cur) => (cur === msg ? null : cur)), 4000)
   }, [])
 
   const loadList = useCallback(async () => {

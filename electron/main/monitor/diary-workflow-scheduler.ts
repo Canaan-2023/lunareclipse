@@ -141,6 +141,22 @@ export class DiaryWorkflowScheduler {
     this.clearTimer()
   }
 
+  /**
+   * 中止在飞批次（退出链调用，与 stop() 分离）。
+   * 为什么需要：stop() 只清定时器与新批次启动，已 runInstance 的实例仍在跑；
+   * 进程退出时不取消会被硬杀在中间态，只能靠下次启动的崩溃恢复兜底。
+   * 取消后实例进入 cancelled，pendingDiary 文件保留（RAW 不丢，下轮重扫）。
+   */
+  abortInFlight(): void {
+    const wm = this.workflowManagerProvider?.()
+    if (!wm) return
+    const instanceId = this.readPendingDiary()?.instanceId
+    if (!instanceId) return
+    void wm.modifyInstance({ instanceId, action: 'cancel' }).catch((err: unknown) => {
+      console.error('[diary-workflow] 取消在飞实例失败:', err)
+    })
+  }
+
   private subscribeEvents(): void {
     if (this.unsubscribe) {
       this.unsubscribe()

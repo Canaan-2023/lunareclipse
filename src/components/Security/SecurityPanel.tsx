@@ -24,11 +24,19 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import type { AuditEntry, CapabilityDef, SecurityGrant } from '@shared/types'
-import { T0_CAPABILITIES, T1_CAPABILITIES, T2_CAPABILITIES } from '@shared/security/tiers'
+import { GRANT_SURFACE_CAPABILITIES, T0_CAPABILITIES, T2_CAPABILITIES } from '@shared/security/tiers'
 import { SECURITY_NOTICE_KEYS, SECURITY_NOTICE_VERSION } from '@shared/security/notice'
 import { useT } from '../../i18n/useT'
 import { ScopeEditor } from './ScopeEditor'
 import { splitScopeLines } from './scope-input'
+
+/**
+ * T1 授予面：只列**有生产执行点**的能力。
+ * 为什么不在面板里直接列 T1_CAPABILITIES：目录里有几条是预留能力（`enforced: false`），
+ * 授予后没有任何代码会检查它——列出来只会让用户误以为自己放开了某项权限。
+ * 过滤口径与主进程 `security:listCapabilities` 同源（GRANT_SURFACE_CAPABILITIES）。
+ */
+const T1_SURFACE = GRANT_SURFACE_CAPABILITIES.filter((c) => c.tier === 'T1')
 
 /** 审计尾部展示条数（够看清最近发生了什么，又不把 DOM 撑大） */
 const AUDIT_TAIL = 50
@@ -192,7 +200,7 @@ export function SecurityPanel({ focusKey }: { focusKey?: string }) {
       const loaded = (r.grants ?? {}) as Record<string, SecurityGrant>
       setDrafts((prev) => {
         const next = { ...prev }
-        for (const cap of T1_CAPABILITIES) {
+        for (const cap of T1_SURFACE) {
           const field = cap.scopeField
           if (!field) continue
           const vals = loaded[cap.key]?.scope?.[field]
@@ -347,10 +355,10 @@ export function SecurityPanel({ focusKey }: { focusKey?: string }) {
       <section>
         <div className="mb-1.5 flex items-baseline gap-2">
           <span className="font-mono text-micro tracking-wider text-warning">{t('security.group.t1')}</span>
-          <span className="text-micro text-fg-muted">{T1_CAPABILITIES.length}</span>
+          <span className="text-micro text-fg-muted">{T1_SURFACE.length}</span>
         </div>
         <ul className="space-y-2">
-          {T1_CAPABILITIES.map((cap) => (
+          {T1_SURFACE.map((cap) => (
             <GrantRow
               key={cap.key}
               cap={cap}

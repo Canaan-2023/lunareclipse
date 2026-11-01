@@ -21,7 +21,10 @@ import { buildPlanPrompt } from './plan-prompt'
 import { recordPreplanTickToHistory, runPreplanTurn } from './preplan-turn'
 import { defaultCollectorView, validateCollectorView, type CollectorView } from './collector-view'
 import { WAKE_SOURCE_LABEL, type WakeSource } from './wake'
-import { createRoomSensor, type RoomSensor } from './sensor'
+import { createSensorBinding } from './sensor-binding'
+import { createStateChannel } from './state-channel'
+import { armStandbyTimer } from './standby-timer'
+import { buildPreviousRoundInfo } from './previous-round'
 import type { TreeIndex } from './tree-index'
 import { parseLanding } from './landing'
 import type { RoomSceneDirective } from '@shared/room/room-scene'
@@ -39,7 +42,6 @@ export { TREE_INDEX_MAX, buildTreeIndexBlock, type TreeSessionLine, type TreeInd
 export { parseLanding, type RoomLanding } from './landing'
 
 import type {
-  RoomEvent,
   RoomPhase,
   RoomRuntime,
   RoomRuntimeDeps,
@@ -59,19 +61,11 @@ export type {
 const EVENT_RING_MAX = 50
 
 /**
- * JS `setTimeout` 的 32 位毫秒上限（2^31-1 ≈ 24.8 天）。
- * 这是**引擎技术限制**，不是产品上限：AI 声明的待机总时长可以更长，运行时按这个上限
- * 分片续排，累计到 `standbyUntil` 才真正到期。
- */
-const MAX_TIMER_DELAY_MS = 2 ** 31 - 1
-
-/**
  * ECMAScript `Date` 能表示的最大时间戳（8.64e15，约公元 275760 年）。
  * 同样不是产品上限：AI 声明的待机时长若把 `standbyUntil` 推到这之后，时间戳/界面格式化
  * 都会失去意义；运行时把「到期时刻」夹到这里，并据此计算可等待的毫秒数。
  */
 const MAX_DATE_MS = 8.64e15
-
 
 // 规划提示词的实现已拆到 `./plan-prompt`（0.53.5 体量红线）；此处再导出保兼容，
 // 消费方（runtime 内部 / 测试 / bootstrap）的 import 路径保持不变。
@@ -79,7 +73,6 @@ export { buildPlanPrompt }
 
 export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
   const now = deps.now ?? (() => Date.now())
-  const events: RoomEvent[] = []
   let phase: RoomPhase = 'stopped'
   let standbyUntil: number | undefined
   let lastTick: LoopTickResult | undefined
@@ -126,6 +119,12 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
   let lastWake: { source: WakeSource; detail?: string; at: number } | undefined
   let lastCollect: { text: string; at: number } | undefined
   /**
+   * 上一轮的采集快照（0.54）：与 `lastCollect` 一起滚存，规划时把「上次看到什么」交给 AI。
+   * 为什么需要：没有对比对象时每轮采集都像第一次睁眼——采集器看起来只是个摆设；
+   * 有上一轮才能看出「环境变了没有」，采集才真正驱动下一轮决策。
+   */
+  let prevCollect: { text: string; at: number } | undefined
+  /**
    * 本轮 tick 期间到达的唤醒（`running` 时不能打断，但**不能丢**）。
    * 驱动退出（park）时若仍有它，就再激活一轮——与用户消息同一范式。
    */
@@ -139,6 +138,12 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
    * （两条链路并发采集/执行）。先记下来，`onResult` / 手动 tick 收尾时统一应用。
    */
   let pendingStandbyMs: number | null = null
+  /**
+   * 本轮 park 后是否**立刻**接下一轮（0.54.0 用户裁决：规划 ↔ 主AI 交替循环，不要节拍器）。
+   * 由 `onResult` 在「没有动作、还没有待处理输入、AI 也没声明 standbyMs」时置位，
+   * `onDriveEnd` 消费一次就地重新激活——中间没有任何定时器。
+   */
+  let chainNext = false
   /**
    * 本轮 tick 生效的前置规划指令（两段式第一段产出）。
    * plan 回调里设置，tick 收尾（onResult / 手动 tick 两处）写入前置规划历史环后清零；
@@ -155,12 +160,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
    * 新驱动可能已经 park（stopFn 被 `onDriveEnd` 清空），但用户的开启意图仍然有效。
    */
   let armEpoch = 0
-  /**
-   * 感知器（0.53.1）：驱动 park 后在 idle / standby 里按 AI 策略采样，只在环境变化时上报 `collector`。
-   * **不调用模型**；`running` / `stopped` 停（见 `syncSensor`）；AI 可用 `sensor.enabled=false` 关掉。
-   */
-  let sensor: RoomSensor | null = null
-  let sensing = false
+  // 感知器本体（创建 / 开关同步 / 策略下发）已拆到 `./sensor-binding`（0.54.0 体量红线）：此处只用它的 sync / configure / isSensing。
   /**
    * 用户在房间视图里发的消息（待下一轮消费）。
    * 与采集器**并列**：采集未授权 / 未开启时，用户的话仍然要到达 AI。
@@ -195,7 +195,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
       ...(standbyUntil != null ? { standbyUntil } : {}),
       ...(lastTick ? { lastTick } : {}),
       ...(lastPlan ? { lastPlan } : {}),
-      events: [...events],
+      events: stateChannel.list(),
       avatarRev,
       collectorView,
       // 返回副本：状态会被推送 / 序列化给渲染侧，任何消费者都不应能改到运行时的策略对象
@@ -210,7 +210,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
       ...(lastReplyAt != null ? { lastReplyAt } : {}),
       // `sensing` 对用户要诚实：被闸门拦下时感知器仍在排期，但**看不到任何东西**——
       // 界面不能显示「感知中」，否则「未感知原因」提示永远不可达（0.53.1 评审 P1）。
-      sensing: sensing && deps.senseAllowed?.() !== false,
+      sensing: sensorBinding.isSensing() && deps.senseAllowed?.() !== false,
       ...(lastWake ? { lastWake } : {}),
       ...(lastCollect ? { lastCollect } : {}),
       planner: { kind: route.kind },
@@ -219,77 +219,35 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
     }
   }
 
-  /** 状态变了就推（安静期零开销）；推送失败不阻断循环，但必须留痕。 */
-  const notify = (): void => {
-    try {
-      deps.onStateChange?.(getState())
-    } catch (err) {
-      console.error('[room] 状态推送失败:', (err as Error).message)
-    }
-  }
-
-  /** 事件入环（带裁剪）。提成函数是因为「重画形象」也要进事件流（不只 loop 的相位事件）。 */
-  const pushEvent = (ev: RoomEvent): void => {
-    events.push(ev)
-    if (events.length > EVENT_RING_MAX) events.splice(0, events.length - EVENT_RING_MAX)
-    try {
-      deps.onEvent?.(ev)
-    } catch (err) {
-      // 不静默：落盘失败要看得见（不阻断循环，但绝不装作没发生）
-      console.error('[room] 事件落盘失败:', (err as Error).message)
-    }
-    notify()
-  }
+  // 事件环与状态推送已拆到 `./state-channel`（0.54.0 体量红线）：裁剪与失败留痕只留一份实现。
+  const stateChannel = createStateChannel({
+    max: EVENT_RING_MAX,
+    ...(deps.onEvent ? { onEvent: deps.onEvent } : {}),
+    ...(deps.onStateChange ? { onStateChange: deps.onStateChange } : {}),
+    snapshot: getState
+  })
+  const notify = stateChannel.notify
+  const pushEvent = stateChannel.push
 
   /**
-   * 感知器（0.53.1）：只在「驱动已 park 且相位为 idle」时运行。
-   * 为什么放在这里而不是渲染进程：唤醒必须走主进程单 owner（`./wake`），渲染进程只表达「用户来了」。
-   * 采样本身**不调用模型**；`standby`（AI 主动说别吵）与 `running`（正在采集）都不采样。
+   * 感知器绑定（0.53.1 行为，0.54.0 拆出实现）：只在「驱动已 park 且相位为 idle / standby」时运行。
+   * 为什么唤醒必须走主进程单 owner（`./wake`）：渲染进程只表达「用户来了」，不持有唤醒权。
+   * 采样本身**不调用模型**；`running`（正在采集）与 `stopped`（用户关停）都不采样。
    */
-  const ensureSensor = (): RoomSensor | null => {
-    if (!deps.sense) return null
-    if (!sensor) {
-      sensor = createRoomSensor({
-        sample: async () =>
-          deps.senseAllowed?.() === false ? null : deps.sense!(collectorView, sensorPolicy),
-        // 上报走仲裁器（生产注入 `reportRoomWake`）；缺省直接唤醒（单测 / 未装配兜底）。
-        // **把接受/拒绝原样返回**：被去抖拦下时感知器保留基线，下一次重试。
-        onChange: (reasons) => {
-          const detail = reasons.join('；')
-          if (deps.reportWake) return deps.reportWake('collector', detail) !== false
-          wake('collector', detail)
-          return true
-        },
-        ...(deps.timers ? { timers: deps.timers } : {}),
-        // AI 的初始策略：enabled / mute / 间隔 / 阈值。运行时后续用 configure 更新。
-        enabled: sensorPolicy.enabled,
-        muted: sensorPolicy.mute,
-        ...(sensorPolicy.intervalMs != null ? { intervalMs: sensorPolicy.intervalMs } : {}),
-        ...(sensorPolicy.thresholds ? { thresholds: sensorPolicy.thresholds } : {}),
-        onError: (err) => console.error('[room] 感知采样失败:', err.message)
-      })
-    }
-    return sensor
-  }
-
-  /**
-   * 让感知器的开关与相位一致（幂等；只在真的变了时推状态）。
-   *
-   * **`standby` 也要感知**（用户 2026-10-20 纠正）：待机是 AI 说「先别主动做事」，
-   * 不是「把眼睛闭上」——采集器仍应感知事件，真的有事时把 AI 叫醒；
-   * `standbyMs` 只是「最迟多久后主动醒一次」的兜底。
-   * 只有 `running`（正在采集）与 `stopped`（用户关停）不采样。
-   */
-  const syncSensor = (): void => {
-    const sensingPhase = phase === 'idle' || phase === 'standby'
-    // AI 可以完全关掉感知（sensor.enabled=false）：此时只剩待机到期这一条兜底。
-    const shouldSense = sensingPhase && sensorPolicy.enabled && stopFn == null && deps.sense != null
-    if (shouldSense === sensing) return
-    if (shouldSense) ensureSensor()?.start()
-    else sensor?.stop()
-    sensing = shouldSense
-    notify()
-  }
+  const sensorBinding = createSensorBinding({
+    deps,
+    getView: () => collectorView,
+    getPolicy: () => sensorPolicy,
+    getPhase: () => phase,
+    canSense: () => stopFn == null,
+    report: (detail) => {
+      if (deps.reportWake) return deps.reportWake('collector', detail) !== false
+      wake('collector', detail)
+      return true
+    },
+    onSensingChange: notify
+  })
+  const syncSensor = sensorBinding.sync
 
   /**
    * 前置规划历史环落笔：一轮 tick 收尾时把「指令 + 执行结果摘要」写入滚动环。
@@ -303,23 +261,31 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
     recordPreplanTickToHistory(deps, instruction, r, lastPlan?.decisions, now)
   }
 
+  /**
+   * 默认续跑（0.54.0 用户裁决）：**不设节拍器**。一轮结束立刻接下一轮（前置规划 → 主AI），
+   * 唯一的等待来源是 AI 自己声明的 `standbyMs`（`onResult` / 手动 tick 的待机分支）。
+   */
   const loop: AutonomousLoop = createAutonomousLoop({
     // 每轮读**当时**的采集视图（AI 可能在上一轮改了它）；
     // 顺手记下「它看到了什么」（截断），界面「感知」页与排障都靠这句
     collect: async () => {
       const r = await deps.collect(collectorView)
-      if (r.ok && r.text) lastCollect = { text: r.text.slice(0, 400), at: now() }
+      // 上一轮的采集要先滚存：本轮的新快照会覆盖 lastCollect（不滚存就永远没有对比对象）。
+      // `synthetic` 不是「看到的」，只是装配层补的「本轮没有采集输入」说明——不滚存，
+      // 否则【上一轮】段会一直重复同一句「没有新环境输入」。
+      if (r.ok && r.text && !r.synthetic) {
+        prevCollect = lastCollect
+        lastCollect = { text: r.text.slice(0, 400), at: now() }
+      }
       return r
     },
     consumeUserInput,
     hasPendingInput,
     // 关停守卫：stop() 只 disarm，不中断在飞的 plan/execute；驱动在关键点自检
     isStopped: () => phase === 'stopped',
-    // **不再接线 `recall`**（ADR-30）：原先它只在「长线」轮注入一份「最近内部会话摘要」，
-    // 那是「宿主替 AI 列全部」。现在**承载会话的树索引每轮都注入**（见 `buildPlanPrompt` 的
-    // 【会话树】段），候选清单与「长线先召回内部会话」的诉求一并被覆盖；
-    // 记忆系统那一跳本就由 AI 在 plan 里用自己的记忆工具完成（ADR-20）。
-    // `loop.ts` 的 `recall` 保留为可选扩展点（其契约与单测不变）。
+    // **不再接线 `recall`**（ADR-30）：原先它只在「长线」轮注入一份「最近内部会话摘要」（「宿主替 AI 列全部」）；
+    // **承载会话的树索引每轮都注入**（`buildPlanPrompt` 的【会话树】段）已覆盖该诉求，记忆那一跳由 AI 用自己的工具完成（ADR-20）。
+    // `loop.ts` 的 `recall` 保留为可选扩展点（契约与单测不变）。
     plan: async ({ text, mode, repeat }) => {
       // 规划者路由（前置规划功能）：每轮实时读，配置即时生效。
       const route = deps.plannerRoute?.() ?? { kind: 'self' as const }
@@ -342,6 +308,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
       // 唤醒原因只喂**这一轮**（消费一次即清），不然后续轮次会一直以为自己是刚被叫醒的
       const wake = wakeForPlan
       wakeForPlan = null
+      const previous = buildPreviousRoundInfo({ lastTick, lastPlan, lastReply, prevCollect })
       const prompt = buildPlanPrompt({
         text,
         mode,
@@ -350,7 +317,8 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
         sensorPolicy,
         ...(wake ? { wake } : {}),
         ...(repeat ? { repeat } : {}),
-        ...(preplanInstruction ? { preplanInstruction } : {})
+        ...(preplanInstruction ? { preplanInstruction } : {}),
+        ...(previous ? { previous } : {})
       })
       let reply: string | null = null
       try {
@@ -379,21 +347,34 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
         return failed
       }
       const parsed = parsePlan(reply, deps.allowedTools())
+      // AI 没按计划格式输出（文本里没有 JSON）= 契约破了，但它确实说了话：
+      // 把原文当 reply 落进输出流 / 字幕 / 承载会话（同样截断 500）。
+      // 不这么做时用户只看到「解析失败：未找到 JSON 计划块」，AI 说的内容全丢——
+      // 用户反馈「他对我说的话没有进输出框」正是这条路径。
+      const proseReply = parsed.parseError && !parsed.reply ? reply.trim().slice(0, 500) : null
+      const effectiveReply = parsed.reply ?? proseReply
       const decision: PlanDecision = {
         decisions: parsed.decisions,
         ...(parsed.note ? { note: parsed.note } : {}),
         ...(parsed.parseError ? { note: `解析失败：${parsed.parseError}` } : {}),
         ...(parsed.dropped.length > 0 ? { note: `${parsed.note ?? ''}（丢弃 ${parsed.dropped.length} 个动作）`.trim() } : {}),
-        ...(parsed.reply ? { reply: parsed.reply } : {}),
+        ...(effectiveReply ? { reply: effectiveReply } : {}),
         ...(parsed.scene ? { scene: parsed.scene } : {}),
         ...(parsed.repeat ? { repeat: parsed.repeat } : {})
       }
       lastPlan = decision
       // 对用户/镜头说的话：进输出流 + 直播字幕；渲染侧按 `lastReplyAt` 幂等落回会话历史
-      if (parsed.reply) {
-        lastReply = parsed.reply
+      if (effectiveReply) {
+        lastReply = effectiveReply
         lastReplyAt = now()
-        pushEvent({ phase: 'plan', ts: now(), detail: `回复：${parsed.reply}` })
+        pushEvent({ phase: 'plan', ts: now(), detail: `回复：${effectiveReply}` })
+        // 落回承载会话（0.54）：不落盘时用户在内置会话里看不到房间做过什么；
+        // 只写 reply（人类可读），规划提示词与 JSON 计划不写进会话
+        deps.appendHostTurn?.(hostSessionId, {
+          role: 'assistant',
+          content: effectiveReply,
+          at: lastReplyAt
+        })
       }
       // AI 直接控制小人：去哪 / 做什么（渲染侧的 actorIntent 以它优先）
       if (parsed.scene) {
@@ -437,7 +418,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
           pushEvent({ phase: 'plan', ts: now(), detail: `感知策略未更新：${p.error}` })
         } else {
           sensorPolicy = applySensorPolicy(sensorPolicy, p.patch)
-          sensor?.configure(sensorPolicy)
+          sensorBinding.configure()
           try {
             deps.saveSensorPolicy?.(sensorPolicy)
           } catch (err) {
@@ -471,7 +452,20 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
       }
       return decision
     },
-    execute: async (d: ExecutorDecision): Promise<ExecutorResult> => deps.executor.execute(d),
+    /**
+     * 每个动作执行完都入一条事件流（0.54.0 用户反馈「他做的事情没有进输出框」）：loop 只发一条
+     * `执行：N 个动作`，这里逐条补上 AI 自己写的 description + 成败——不额外调模型，不改变执行链路。
+     */
+    execute: async (d: ExecutorDecision): Promise<ExecutorResult> => {
+      const result = await deps.executor.execute(d)
+      pushEvent({
+        phase: 'execute',
+        ts: now(),
+        // 失败原因优先取工具结果里的 error，其次取裁决结论的 reason（被拒时才有）
+        detail: `${result.ok ? '完成' : '失败'}：${d.description}${result.ok ? '' : `（${result.result?.error ?? result.decision.reason}）`}`
+      })
+      return result
+    },
     onEvent: (ev) => pushEvent(ev),
     onPhase: (p) => {
       // 驱动只在「非待机/非停止」时改相位（待机是 AI 的主动决定，不能被 idle 回调覆盖）
@@ -490,12 +484,22 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
         pendingWake = null
         wakeForPlan = null
         pendingStandbyMs = null
+        chainNext = false
         phase = 'stopped'
       } else if (pendingStandbyMs != null) {
         // 本轮完整结束后才进入待机：execute 已经跑完，不会再出现「tick 在飞 + 新驱动」的并发
         const ms = pendingStandbyMs
         pendingStandbyMs = null
         standby(ms)
+      } else if (!r.acted && !hasPendingInput()) {
+        // 没有显式待机 = **立刻**接下一轮（0.54.0 用户裁决：不要节拍器）。
+        // **只在驱动真的要 park 时置位**（`!acted && !有用户消息` 正是 loop.drive 的 break 条件）：
+        // 本轮有实质动作时驱动会自己接着跑下一轮；还有用户消息待消费时也由驱动接上。
+        // 例外：`no-input` / `busy` 是本轮根本没拿到输入（采集接线坏了）或上一轮还没收尾——接下一轮只会空转。
+        // `autoChain` 未接线 = false：保留「无动作即 park」语义（单步/单测）。
+        if (deps.autoChain?.() === true && r.idleReason !== 'no-input' && r.idleReason !== 'busy') {
+          chainNext = true
+        }
       }
       notify()
     },
@@ -528,6 +532,19 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
         })
         activate()
         return
+      }
+      // 无节拍器（0.54.0 用户裁决）：本轮 park 后**立刻**接下一轮（前置规划 → 主AI 交替），
+      // 不排任何定时器；唯一让房间等一等的是 AI 自己声明的 standbyMs。
+      if (chainNext) {
+        chainNext = false
+        if (phase !== 'stopped' && phase !== 'standby' && hostSessionId) {
+          // 让出一轮事件循环再激活：接续是「立刻」的，但不把整条自驱链压在同一微任务栈里——
+          // 否则定时器 / IO / 界面事件会被这条链饿死（停在 idle 的定时器永远轮不到）。
+          setImmediate(() => {
+            if (phase !== 'stopped' && phase !== 'standby') activate()
+          })
+          return
+        }
       }
       // **AI 静默后由采集器接管**（0.53.1）：驱动一 park，感知器就开始睁眼等变化
       syncSensor()
@@ -597,32 +614,8 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
       standbyUntil = undefined
       if (phase === 'standby') activate()
     }
-    /**
-     * 分片续排：把剩余时长拆成不超过引擎上限的若干段。
-     * 不用 `standbyUntil - now()` 计算剩余，是因为假时钟（单测）不会推进 `now`；
-     * 用本地 `remaining` 累计更可测，也更直接表达「总时长 = 各段之和」。
-     */
-    let remaining = wait
-    const arm = (): void => {
-      const chunk = Math.min(remaining, MAX_TIMER_DELAY_MS)
-      const onChunk = (): void => {
-        remaining -= chunk
-        if (remaining > 0) {
-          arm()
-          return
-        }
-        onExpire()
-      }
-      if (deps.timers) {
-        const handle = deps.timers.setTimeout(onChunk, chunk, 'room-standby')
-        clearStandbyTimer = () => deps.timers?.clearTimeout(handle)
-      } else {
-        const handle = setTimeout(onChunk, chunk)
-        if (typeof handle.unref === 'function') handle.unref()
-        clearStandbyTimer = () => clearTimeout(handle)
-      }
-    }
-    arm()
+    // 分片续排已拆到 `./standby-timer`（0.54.0 体量红线）：按引擎 32 位毫秒上限逐段续排。
+    clearStandbyTimer = armStandbyTimer({ ...(deps.timers ? { timers: deps.timers } : {}), waitMs: wait, onExpire })
   }
 
   /**
@@ -681,6 +674,11 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
         // 从 stopped 发起的一次性动作**不 arm 待机**：用户并没有开启自主模式，
         // 一次「立即行动」不该让房间在后台自己醒来。
         if (!wasStopped) standby(ms)
+      } else if (!wasStopped) {
+        // 手动「立即行动」也要把交替链接上（0.54.0）：否则点一次动一下就停，所谓自主循环不成立。
+        // 从 stopped 发起的一次性动作不续跑——用户没开自主。
+        // 走到这里说明本轮没声明 standbyMs（声明了会走上一支），此刻相位就是 running，无需再判。
+        if (hostSessionId) activate()
       }
       return r
     } finally {
@@ -707,7 +705,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
     standby,
     resetSensorPolicy: () => {
       sensorPolicy = { ...DEFAULT_SENSOR_POLICY, mute: [] }
-      sensor?.configure(sensorPolicy)
+      sensorBinding.configure()
       try {
         deps.saveSensorPolicy?.(sensorPolicy)
       } catch (err) {
@@ -746,6 +744,14 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
       if (phase === 'stopped') return { ok: false, error: '房间未开启（自主模式未启动）' }
       // 兜底：启动路径忘了绑定时，用发消息的窗口补上；**已绑定则不动**（不静默换树）
       if (!hostSessionId && hostSid) hostSessionId = hostSid
+      // 落回承载会话（0.54）：用户在房间里说的话必须在内置会话里看得见
+      if (hostSessionId) {
+        deps.appendHostTurn?.(hostSessionId, { role: 'user', content: text, at: now() })
+      }
+      // 输出框（直播输出带）里也要看得见用户自己的话（0.54.0 用户反馈）：
+      // 此前用户消息只写承载会话、不进事件环，房间输出带只剩 AI 的动静，
+      // 表现为「我输入的话不在输出框里」。入环后与本轮事件同一条流、同款持久化。
+      pushEvent({ phase: 'idle', ts: now(), detail: `你：${text}` })
       if (pendingUserMessages.length >= MAX_PENDING_USER_MESSAGES) pendingUserMessages.shift()
       pendingUserMessages.push(text)
       if (phase === 'standby') {

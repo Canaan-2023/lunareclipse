@@ -168,8 +168,10 @@ export function initSupervisor(state: AppState, deps: BootstrapDeps, opts: {
     return null
   }
   const tools = Array.from(opts.workflowToolRegistry.tools.values())
-  // 文档 15.4：记忆工作流的 LLM 独立配置不跟随前端 AI。记忆工作流用独立 LLMClient 实例，
-  // 避免与前端 AI 抢占同一本地模型推理资源（Ollama 默认串行 NUM_PARALLEL=1）
+  // 文档 15.4：记忆工作流用独立 LLMClient 实例（不共享前端 AI 的实例），避免与前端 AI 抢占
+  // 同一本地模型推理资源（Ollama 默认串行 NUM_PARALLEL=1）。
+  // 配置来源由 workflowLlm.followMain 决定：默认 true = 跟随前端 AI 的接入方式与模型（开箱即用），
+  // 用户关掉后可单独配轻量模型；两边都空时工作流不执行 LLM 调用（下方日志即此情形）。
   // 注意：前端 AI 的 LLMClient 由 server.ts 内部创建，此处不创建（原 llmClient 是死代码已删除）
   // workflowLlm 服务记忆工作流 + 工作流评测。
 const workflowLlmClient = new LLMClient(resolveLlmConfig(config.workflowLlm, config.llm))

@@ -324,6 +324,17 @@ private freezeManager: FreezeManagerImpl
     this.logger.clearAll()
   }
 
+  /**
+   * 中止记忆/日记工作流的在飞批次（退出链调用，须在 stop() 之后）。
+   * 为什么需要：stop() 只停调度（不再启动新批次），已启动的 workflow 实例仍在跑；
+   * 进程退出前取消它们，避免实例被硬杀在中间态（否则落入崩溃恢复路径）。
+   * 取消动作异步发出（不阻塞退出链）；未取消的极端情况仍由崩溃恢复兜底。
+   */
+  abortInFlight(): void {
+    this.memoryWorkflowScheduler.abortInFlight()
+    this.diaryWorkflowScheduler.abortInFlight()
+  }
+
   answerWorkflowQuestion(taskId: string, answer: string | null): void {
     this.freezeManager.unfreeze(taskId, answer)
   }

@@ -43,6 +43,7 @@ import {
   SOFT_BUDGET_RATIO,
   estimateModelWindow
 } from './server-utils'
+import { clampTokenBudgetForModel } from './model-capability'
 // 内部会话层独立模块（F-5 拆分）：摘要配置/上下文装配/两写摘要压缩单飞队列。
 import { createInternalSessionLayer } from './internal-session'
 // WS 协议层（F-7 拆分）：连接生命周期与消息路由独立模块。
@@ -77,17 +78,18 @@ import { createWsBroadcast } from './ws-broadcast'
 import { createHttpWsServer } from './http-ws-server'
 // 进程级引用容器（ADR-02 第 3 步外移）：13 个引用的唯一 owner、只读 getter 与释放链见该模块头注释。
 import { serviceRefs, releaseServiceRefs, getExtraToolExecutors, getRestrictTools } from './service-refs'
-// 对外 API 面不变：以下 5 符号仍从本入口导出（re-export），消费方导入路径与符号名零改动。
+// 对外 API 面不变：以下符号仍从本入口导出（re-export），消费方导入路径与符号名零改动。
 export {
   getApiToken,
   getMessagingService,
   getHeadlessChatRunner,
   getGeoEnvText,
+  flushPendingInternalSessionJobs,
   SYSTEM_INJECTED_SESSION_ID
 } from './service-refs'
 
 // ===== 进程级引用（ADR-02 第 3 步）=====
-// 13 个引用（server/wss/订阅解绑/加载器与调度器/令牌/无头对话运行器等）已收进 ./service-refs
+// 进程级引用（server/wss/订阅解绑/加载器与调度器/令牌/无头对话运行器等）已收进 ./service-refs
 // 的 serviceRefs 容器：本文件只写 `serviceRefs.xxx`，释放统一由 closeApiServer → releaseServiceRefs() 触发。
 // 新增引用时：在 service-refs.ts 的 ServiceRefs 与 releaseServiceRefs() 同时登记（创建与释放同文件对齐）。
 
@@ -146,8 +148,15 @@ export async function startApiServer(
   // /api/v1 网关（ADR-02 第 2 步外移至 ./master-gateway）：惰性转发语义与 503 口径见该模块头注释。
   installMasterGateway(app, { masterRouter, getMasterRouter })
 
+  // 生效预算（核心 + 覆盖层），按模型窗口夹一次：patch 写的预算必须在这里真正生效，
+  // 但不得越过真实窗口（越窗 = 压缩阈值永不触发，堆满就崩）。
+  // 注意：resolveSoftBudget 在本文件后面才定义，闭包在调用期求值，不会触发 TDZ。
+  const effectiveBudget = (): number => {
+    const eff = configStore.getEffective()
+    return clampTokenBudgetForModel(eff.tokenBudget, eff.llm?.model) ?? resolveSoftBudget()
+  }
   // 核心服务门面：ctx 存在时经 ctx 统一构造点，否则退回直接构造（向后兼容）
-  const makeLlmClient = (cfg: LLMConfig) => attachContextRatio(ctx ? ctx.llm.create(cfg) : new LLMClient(cfg), () => lastInjectedEstimateRef.current, () => configStore.get().tokenBudget || resolveSoftBudget())
+  const makeLlmClient = (cfg: LLMConfig) => attachContextRatio(ctx ? ctx.llm.create(cfg) : new LLMClient(cfg), () => lastInjectedEstimateRef.current, effectiveBudget)
   const makeToolRegistry = (c: ToolContext = {}, o?: ToolRegistryOptions) =>
     ctx ? ctx.tools.createRegistry(c, o) : createToolRegistry(c, o)
 
@@ -166,6 +175,13 @@ export async function startApiServer(
     makeLlmClient
   })
   const { enqueueInternalSessionJob, resolveStreamSessionContext } = internalSessionLayer
+  // 登记 flush 提供者：退出链在 closeApiServer 之前经 ./service-refs 读取并调用它，
+  // 把 500ms 合并窗口内的维护待办立即派发（释放链置空本容器，故须早于 closeApiServer）。
+  serviceRefs.internalSessionFlushRef = internalSessionLayer.flushPendingInternalSessionJobs
+  // 两写入口登记（0.54.0）：房间轮在 `bootstrap/` 里，拿不到本闭包的 layer 实例；
+  // 与 flush 同走容器。登记的是**同一个函数**，所以房间轮与 WS 主链路共享
+  // 同一 500ms 合并窗口与同一串行链（不是第二套队列）。
+  serviceRefs.internalSessionEnqueueRef = internalSessionLayer.enqueueInternalSessionJob
 
 
   // raw_memory 写入器与地理位置服务随运行时服务一起外移（见下方 createRuntimeServices 调用）。
@@ -273,6 +289,9 @@ const resolveSessionAiId = (sessionId?: string): number => resolveSessionAiIdWit
   toolExecutorsRef.current = Array.from(toolRegistry.tools.values()).map((t) =>
     toToolExecutor(t, toolRegistry)
   )
+  // 登记前端注册表（ROOM 自主模式的工具面真源）：房间域只经 serviceRefs 只读它，
+  // 工具策略热更新时由 server-assembly 的 rebuildToolExecutors 同步覆盖同一字段。
+  serviceRefs.frontendToolRegistryRef = toolRegistry
   // 初始化 SubAgentManager（executeFn 包装 llmClientRef.current.streamWithTools）
   // 通过 getter 传入 llmClientRef.current，配置变更重建时 getter 自动读到新实例
   // onEvent：子 agent 过程事件 → currentSubAgentForwarder（runStream 绑定的 ws+messageId）→ 前端
@@ -358,7 +377,8 @@ const resolveSessionAiId = (sessionId?: string): number => resolveSessionAiIdWit
   }
 
   const resolveSoftBudget = (): number => {
-    const cfg = configStore.get()
+    // 用生效模型：patch 若换了模型，软预算必须跟着换（否则窗口口径两套）
+    const cfg = configStore.getEffective()
     const model = cfg.llm?.model ?? ''
     return Math.max(16000, Math.floor(estimateModelWindow(model) * SOFT_BUDGET_RATIO))
   }
@@ -394,7 +414,9 @@ const resolveSessionAiId = (sessionId?: string): number => resolveSessionAiIdWit
         messages,
         activeInternalContext: null
       })
-      return r.sessionContext
+      // 一并回传**本轮落定的内部会话 id**（0.54.0）：房间轮拿它把 user/reply 两写进内部会话。
+      // 此前只回 sessionContext，id 在这里被丢掉——路由每轮新建/承接的节点永远收不到任何消息。
+      return { sessionContext: r.sessionContext, internalId: r.activeInternalContext?.internalId ?? null }
     }
   })
 
@@ -475,7 +497,7 @@ const resolveSessionAiId = (sessionId?: string): number => resolveSessionAiIdWit
  * 关闭 API server：释放 HTTP 端口 + WebSocket 连接
  * 在 app before-quit 时调用，避免端口/句柄泄漏
  *
- * 释放链单点：13 个进程级引用的释放全在 `releaseServiceRefs()`（service-refs.ts），
+ * 释放链单点：全部进程级引用的释放全在 `releaseServiceRefs()`（service-refs.ts），
  * 本函数只负责「单次调用 + 兜底日志」——不得在此就地展开释放（否则创建与释放重新分裂）。
  */
 export function closeApiServer(): void {

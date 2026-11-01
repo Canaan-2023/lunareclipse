@@ -222,4 +222,27 @@ describe('McpClientManager remote transports', () => {
     expect(statuses[0].promptCount).toBe(0)
     expect(statuses[0].lastError).toBeNull()
   })
+
+  it('disconnectAll 置 disposed：connectServer / reloadFromConfig 不再重建传输（退出中标志）', async () => {
+    const manager = new McpClientManager()
+    const cfg = {
+      name: 'http-srv',
+      transport: 'streamable-http' as const,
+      url: 'https://mcp.example.com',
+      enabled: true
+    }
+    await manager.connectServer(cfg)
+    expect(state.httpInstances).toHaveLength(1)
+
+    await manager.disconnectAll()
+    const afterDisconnect = state.httpInstances.length
+
+    // 已 disposed：connectServer 早退，不把刚关闭的连接重新拉起
+    await manager.connectServer(cfg)
+    expect(state.httpInstances).toHaveLength(afterDisconnect)
+
+    // 已 disposed：reloadFromConfig 早退，重连定时器不再拉起子进程
+    await manager.reloadFromConfig({ mcpServers: { 'http-srv': cfg } })
+    expect(state.httpInstances).toHaveLength(afterDisconnect)
+  })
 })

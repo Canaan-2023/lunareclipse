@@ -123,6 +123,22 @@ export class MemoryWorkflowScheduler {
     this.scopeQueue.clear()
   }
 
+  /**
+   * 中止在飞批次（退出链调用，与 stop() 分离）。
+   * 为什么需要：stop() 只清定时器与新批次启动，已 runInstance 的实例仍在跑；
+   * 进程退出时不取消会被硬杀在中间态，只能靠下次启动的崩溃恢复兜底。
+   * 取消后实例进入 cancelled，pendingBatch 文件保留（RAW 不丢，下轮重取）。
+   */
+  abortInFlight(): void {
+    const wm = this.workflowManagerProvider?.()
+    if (!wm) return
+    const instanceId = readPendingBatchFile(this.pendingBatchPath)?.instanceId
+    if (!instanceId) return
+    void wm.modifyInstance({ instanceId, action: 'cancel' }).catch((err: unknown) => {
+      console.error('[memory-workflow] 取消在飞实例失败:', err)
+    })
+  }
+
   private subscribeEvents(): void {
     if (this.unsubscribe) {
       this.unsubscribe()
@@ -182,7 +198,7 @@ export class MemoryWorkflowScheduler {
     }
 
     // ===== 崩溃恢复：检查未完成批次（按 stage 恢复） =====
-    const pending = this.readPendingBatch()
+    const pending = readPendingBatchFile(this.pendingBatchPath)
     if (pending) {
       const recovered = await this.recoverPending(wm, pending)
       if (recovered) {
@@ -245,7 +261,7 @@ export class MemoryWorkflowScheduler {
                 `[memory-workflow] dispatcher 实例 ${pending.instanceId} 已完成但无决策产物（LLM 空输出或解析失败），重跑本批次`
               )
               pending.instanceId = null
-              this.writePendingBatch(pending)
+              writePendingBatchFile(this.pendingBatchPath, pending)
               this.running = true
               if (pending.scope) this.setScopeProvider?.(pending.scope)
               await this.launchDispatcher(wm, pending.batch, pending.nextProgress, pending.scope)
@@ -264,7 +280,7 @@ export class MemoryWorkflowScheduler {
           `[memory-workflow] 恢复：实例 ${pending.instanceId} 状态=${instance?.status ?? '不存在'}，重跑 ${pending.stage} 阶段`
         )
         pending.instanceId = null
-        this.writePendingBatch(pending)
+        writePendingBatchFile(this.pendingBatchPath, pending)
         this.running = true
         // 分层：恢复时重新设置作用域（工作流 ctx.paths 依赖）
         if (pending.scope) this.setScopeProvider?.(pending.scope)
@@ -278,7 +294,7 @@ export class MemoryWorkflowScheduler {
       // 无实例（启动前崩溃）→ 重跑当前阶段
       this.running = true
       if (pending.stage === 'dispatcher') {
-        const reloaded = this.reloadBatchContents(pending.batch)
+        const reloaded = reloadBatchContentsImpl(pending.batch)
         if (reloaded.length > 0) {
           if (pending.scope) this.setScopeProvider?.(pending.scope)
           await this.launchDispatcher(wm, reloaded, pending.nextProgress, pending.scope)
@@ -331,7 +347,7 @@ export class MemoryWorkflowScheduler {
           }
         }
       }
-      this.writePendingBatch(pending)
+      writePendingBatchFile(this.pendingBatchPath, pending)
       // 恢复后重新排水：启动排队中（并发限流未启动）的任务；队列空且无在跑 → drain 内部转入 review
       await this.drainAgentQueue(wm, pending)
       return true
@@ -373,7 +389,7 @@ export class MemoryWorkflowScheduler {
       rawContent: raw.content,
       scope
     }
-    this.writePendingBatch(pending)
+    writePendingBatchFile(this.pendingBatchPath, pending)
 
     try {
       this.callbacks.onWorkflowStart?.('memory-workflow')
@@ -386,7 +402,7 @@ export class MemoryWorkflowScheduler {
         }
       })
       pending.instanceId = instance.id
-      this.writePendingBatch(pending)
+      writePendingBatchFile(this.pendingBatchPath, pending)
 
       // 边界：实例立即完成/失败
       if (instance.status === 'completed') {
@@ -416,7 +432,7 @@ export class MemoryWorkflowScheduler {
     pending.agentTaskMap = {}
     pending.agentRetries = {}
     pending.agentResults = []
-    this.writePendingBatch(pending)
+    writePendingBatchFile(this.pendingBatchPath, pending)
     await this.drainAgentQueue(wm, pending)
   }
 
@@ -433,7 +449,7 @@ export class MemoryWorkflowScheduler {
         (pending.agentInstanceIds ?? []).length < MAX_CONCURRENT_AGENTS
       ) {
         const task = pending.agentQueue!.shift()!
-        this.writePendingBatch(pending)
+        writePendingBatchFile(this.pendingBatchPath, pending)
         await this.launchAgent(wm, pending, task, 0)
         // launchAgent 内部"立即完成"分支会同步移除实例，while 条件重新评估，不会死循环
       }
@@ -445,7 +461,7 @@ export class MemoryWorkflowScheduler {
       ) {
         pending.stage = 'review'
         pending.instanceId = null
-        this.writePendingBatch(pending)
+        writePendingBatchFile(this.pendingBatchPath, pending)
         await this.launchReview(wm, pending)
       }
     } finally {
@@ -475,7 +491,7 @@ export class MemoryWorkflowScheduler {
       pending.agentInstanceIds = [...(pending.agentInstanceIds ?? []), instance.id]
       pending.agentTaskMap = { ...(pending.agentTaskMap ?? {}), [instance.id]: task }
       pending.agentRetries = { ...(pending.agentRetries ?? {}), [instance.id]: retryCount }
-      this.writePendingBatch(pending)
+      writePendingBatchFile(this.pendingBatchPath, pending)
 
       // 边界：立即完成/失败
       if (instance.status === 'completed') {
@@ -507,7 +523,7 @@ export class MemoryWorkflowScheduler {
           ...(pending.agentResults ?? []),
           `[子AGENT启动失败] 记忆 ${task.记忆路径}`
         ]
-        this.writePendingBatch(pending)
+        writePendingBatchFile(this.pendingBatchPath, pending)
       }
     }
   }
@@ -516,7 +532,7 @@ export class MemoryWorkflowScheduler {
   private async launchReview(wm: WorkflowManager, pending: PendingBatch): Promise<void> {
     pending.stage = 'review'
     pending.instanceId = null
-    this.writePendingBatch(pending)
+    writePendingBatchFile(this.pendingBatchPath, pending)
     try {
       const instance = await wm.runInstance({
         templateId: 'wf_default_memory_review',
@@ -528,7 +544,7 @@ export class MemoryWorkflowScheduler {
         }
       })
       pending.instanceId = instance.id
-      this.writePendingBatch(pending)
+      writePendingBatchFile(this.pendingBatchPath, pending)
 
       if (instance.status === 'completed') {
         await this.handleStageCompleted(wm, pending)
@@ -550,7 +566,7 @@ export class MemoryWorkflowScheduler {
       this.callbacks.onOutput?.('memory-workflow', event.token)
       return
     }
-    const pending = this.readPendingBatch()
+    const pending = readPendingBatchFile(this.pendingBatchPath)
     if (!pending) return
     const id = 'instanceId' in event ? event.instanceId : ''
     const isMain = id === pending.instanceId
@@ -628,7 +644,7 @@ if (!isMain && !isAgent) return
         pending.instanceId = null
         pending.dispatcherResult = JSON.stringify(tasksRaw)
         pending.taskList = tasks
-        this.writePendingBatch(pending)
+        writePendingBatchFile(this.pendingBatchPath, pending)
         console.log(`[memory-workflow] 主调度器生成 ${tasks.length} 条记忆，派发子 AGENT 工作流`)
         await this.launchAgents(wm, pending)
         return
@@ -684,7 +700,7 @@ if (!isMain && !isAgent) return
       : `[子AGENT ${agentId}] (无上下文)`
     pending.agentResults = [...(pending.agentResults ?? []), summary]
     pending.agentInstanceIds = pending.agentInstanceIds?.filter((x) => x !== agentId) ?? []
-    this.writePendingBatch(pending)
+    writePendingBatchFile(this.pendingBatchPath, pending)
 
     // 补位启动排队的下一个；队列空且无在跑 → drain 内部转入 review
     await this.drainAgentQueue(wm, pending)
@@ -701,7 +717,7 @@ if (!isMain && !isAgent) return
     const task = pending.agentTaskMap?.[agentId]
     const retries = pending.agentRetries?.[agentId] ?? 0
     pending.agentInstanceIds = pending.agentInstanceIds?.filter((x) => x !== agentId) ?? []
-    this.writePendingBatch(pending)
+    writePendingBatchFile(this.pendingBatchPath, pending)
 
     if (task && retries < this.config.agentMaxRetries) {
       console.warn(
@@ -714,7 +730,7 @@ if (!isMain && !isAgent) return
         ...(pending.agentResults ?? []),
         `[子AGENT失败] 记忆 ${task?.记忆路径 ?? agentId}：${error.slice(0, 100)}`
       ]
-      this.writePendingBatch(pending)
+      writePendingBatchFile(this.pendingBatchPath, pending)
     }
     // 补位启动排队的下一个；队列空且无在跑 → drain 内部转入 review
     await this.drainAgentQueue(wm, pending)
@@ -749,7 +765,7 @@ if (!isMain && !isAgent) return
     } catch (err) {
       console.error('[memory-workflow] 更新进度失败:', err)
     }
-    this.clearPendingBatch()
+    clearPendingBatchFile(this.pendingBatchPath)
     this.finishRun()
     if (!this.shouldStop && this.config.enabled) {
       this.scheduleCheck(100)
@@ -774,26 +790,9 @@ if (!isMain && !isAgent) return
   }
 
 // ===== 未完成批次持久化（崩溃恢复） =====
-  // 实现已拆至 memory-workflow-persist.ts（纯函数），此处保留薄封装保持调用点不变
+  // 实现已拆至 memory-workflow-persist.ts（纯函数），调用点直接调用这些纯函数（不设薄封装）
 
   private get pendingBatchPath(): string {
     return pendingBatchPathFor(this.paths)
-  }
-
-  private readPendingBatch(): PendingBatch | null {
-    return readPendingBatchFile(this.pendingBatchPath)
-  }
-
-  private writePendingBatch(data: PendingBatch): void {
-    writePendingBatchFile(this.pendingBatchPath, data)
-  }
-
-  private clearPendingBatch(): void {
-    clearPendingBatchFile(this.pendingBatchPath)
-  }
-
-  /** 重新加载批次文件内容（崩溃恢复时文件内容可能已变） */
-  private reloadBatchContents(batch: RawMemoryEntry[]): RawMemoryEntry[] {
-    return reloadBatchContentsImpl(batch)
   }
 }

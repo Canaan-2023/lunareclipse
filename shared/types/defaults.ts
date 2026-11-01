@@ -57,9 +57,12 @@ export const DEFAULT_LLM_CONFIG: LLMConfig = {
 
 export const DEFAULT_CONFIG: AppConfig = {
   llm: DEFAULT_LLM_CONFIG,
-  // 记忆工作流独立 LLM 配置：默认空 model，表示未配置，记忆工作流不执行 LLM 调用
-  // 用户可在设置中为记忆工作流配置轻量模型（如 qwen2.5:3b），与前端 AI 分离
-  workflowLlm: { ...DEFAULT_LLM_CONFIG, model: '' },
+  // 记忆工作流独立 LLM 配置：默认空 model（不单独指定模型），followMain=true 表示直接复用前端 AI 的
+  // 接入方式与模型（解析点见 startup-helpers.ts 的 resolveWorkflowLlm）。
+  // 为什么默认 followMain=true：记忆工作流与日记工作流的调度器（monitor-config.ts）默认就是开着的，
+  // 但 workflowLlm.model 为空时它们无法执行 LLM 调用——表现就是「功能默认关闭」。
+  // 跟随前端配置后开箱即用；用户仍可在设置页关掉 followMain 并单独配轻量模型。
+  workflowLlm: { ...DEFAULT_LLM_CONFIG, model: '', followMain: true },
   llmProfiles: {},
   llmActiveProfile: '',
   workflowLlmProfiles: {},
@@ -156,11 +159,20 @@ export const DEFAULT_CONFIG: AppConfig = {
     downloadDir: '',
     retentionDays: 7
   },
-  // 地理位置隐私配置：默认关闭系统精确坐标链路（隐私红线整改）。
-  // 关闭时无任何定位来源——不请求 navigator.geolocation、不发生 IP 定位请求，
-  // AI 环境注入仅用时区（公共 IP 兜底链路已移除，不触碰 GPS/photon/open-meteo）；
-  // 用户显式开启 preciseLocationEnabled 后才发起系统坐标链路（仍不写入日志/记忆/缓存）。
+  // 局域网协作：默认开启，但只绑 127.0.0.1（仅本机回环）。
+  // 为什么默认开：好友/聊天室/公示板/技能市场同步全部由 LAN 承载，默认关会让这批功能看起来不存在；
+  // 绑回环地址不产生跨机监听面（用户若已显式写过 enabled=false / bindHost，仍以用户配置为准）。
+  // 跨机协作须知：必须由用户显式把 bindHost 改成 '0.0.0.0'，默认值不替用户做这个决定。
+  lan: {
+    enabled: true,
+    bindHost: '127.0.0.1'
+  },
+  // 地理位置隐私配置：默认开启系统精确坐标链路。
+  // 为什么默认开：位置感知本身是特色能力，默认关等于该能力不存在；隐私口径不变——
+  // 精确坐标仍只用于本机 AI 环境感知，不写入日志、记忆与持久化缓存，也不发给任何第三方。
+  // 用户可在设置里关掉：关闭后无任何定位来源（不请求 navigator.geolocation、不发生 IP 定位请求，
+  // AI 环境注入退化为仅时区）。
   geo: {
-    preciseLocationEnabled: false
+    preciseLocationEnabled: true
   }
 }

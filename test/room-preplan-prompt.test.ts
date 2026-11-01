@@ -63,6 +63,13 @@ describe('buildPreplanPrompt', () => {
     expect(p).toContain('没有方向也是一种方向')
   })
 
+  it('护栏（0.54）：前置规划的文字只给主AI看，不得对用户说话/替它回答', () => {
+    const p = buildPreplanPrompt({ aiName: 'X', text: '【用户刚说的话】你好', history: [], readonlyTools: [] })
+    expect(p).toContain('【护栏】')
+    expect(p).toContain('用户看不到你')
+    expect(p).toContain('不是要你回答的问题')
+  })
+
   it('无硬编码本地路径、无固定日期（提示词规范红线）', () => {
     const p = buildPreplanPrompt({
       aiName: 'X',

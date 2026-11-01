@@ -6,8 +6,9 @@
  * 为什么存在：AI 后台自维护的会话池（v11 双层会话上下文层）承载「内部会话 → LLM 注入上下文」
  * 与「两写/摘要/超限继承延迟维护」两件事，跨 runStream / runHeadlessChat 消费。
  * 独立成文件：把读 monitor 配置、摘要预算推导、锚点/缓存索引装配、单飞+末次合并的维护队列
- * 收拢为单一 Layer，调用方只拿五个能力点（internalLlmChat / buildSessionContext /
- * getSessionSummaryCfg / enqueueInternalSessionJob / resolveStreamSessionContext），
+ * 收拢为单一 Layer，调用方只拿六个能力点（internalLlmChat / buildSessionContext /
+ * getSessionSummaryCfg / enqueueInternalSessionJob / flushPendingInternalSessionJobs /
+ * resolveStreamSessionContext），
  * 不再与 server.ts 的主对话闭包互相纠缠。
  *
  * 超限处理语义（0.17 起，取代旧「原地压缩」）：
@@ -87,6 +88,12 @@ export interface InternalSessionLayer {
   getSessionSummaryCfg: () => SessionSummaryConfig
   /** 两写/摘要/压缩单飞队列入口（500ms 末次合并） */
   enqueueInternalSessionJob: (sid: string, internalId: string, job: InternalSessionJob) => void
+  /**
+   * 立即派发并等待全部维护批次落定（退出链调用）。
+   * 为什么需要：500ms 合并窗口内的 job 会随进程退出而丢失（最多丢一轮的两写/摘要），
+   * 退出前 flush 可把窗口内的待办立即执行并等其完成。
+   */
+  flushPendingInternalSessionJobs: () => Promise<void>
   /**
    * 主回复轮路由（continue/create）+ 审查轮沿用 → sessionContext 与 activeInternalContext。
    * 任何未启用/路由失败 → 返回 null（线性管线，不截断）。
@@ -299,11 +306,28 @@ export function createInternalSessionLayer(deps: InternalSessionLayerDeps): Inte
   // 且 500ms 内连发的新回合合并进当前待办（多轮 jobs 合并一次摘要）。
   // 必要性：K3 摘要竞态已确认为 High 级缺陷；串行化是竞态的机制层修复，不依赖 LLM 时序。
   interface InternalSessionJobSlot {
+    /** 归属会话（flush 与派发需要，原实现闭包内捕获 sid/internalId 无法在 flush 时还原） */
+    sid: string
+    internalId: string
     timer: ReturnType<typeof setTimeout> | null
     chain: Promise<void>
     jobs: InternalSessionJob[]
   }
   const internalSessionJobQueue = new Map<string, InternalSessionJobSlot>()
+
+  // 派发一个 slot 的待办批次：清计时器 → 取出当前全部 job → 顺延到该 key 的串行链尾执行。
+  // 抽成独立函数，供「500ms 到期」与「退出前 flush」两条路径共用（避免两处实现漂移）。
+  const dispatchSlot = (slot: InternalSessionJobSlot): void => {
+    if (slot.timer) {
+      clearTimeout(slot.timer)
+      slot.timer = null
+    }
+    const batches = slot.jobs.splice(0)
+    if (batches.length === 0) return
+    slot.chain = slot.chain
+      .then(() => runInternalSessionMaintenance(slot.sid, slot.internalId, batches))
+      .catch((err) => console.error('[session] 内部会话两写/摘要维护失败:', err))
+  }
 
   // 入队 + 500ms 末次合并：新到达的 job 先并入同 key 待办，重置计时器；
   // 计时到点后把当前所有 job 作为一个批次，顺延到该 key 的串行链尾执行。
@@ -311,19 +335,26 @@ export function createInternalSessionLayer(deps: InternalSessionLayerDeps): Inte
     const key = `${sid}/${internalId}`
     let slot = internalSessionJobQueue.get(key)
     if (!slot) {
-      slot = { timer: null, chain: Promise.resolve(), jobs: [] }
+      slot = { sid, internalId, timer: null, chain: Promise.resolve(), jobs: [] }
       internalSessionJobQueue.set(key, slot)
     }
-    slot.jobs.push(job)
-    if (slot.timer) clearTimeout(slot.timer)
-    slot.timer = setTimeout(() => {
-      slot.timer = null
-      const batches = slot.jobs.splice(0)
-      if (batches.length === 0) return
-      slot.chain = slot.chain
-        .then(() => runInternalSessionMaintenance(sid, internalId, batches))
-        .catch((err) => console.error('[session] 内部会话两写/摘要维护失败:', err))
-    }, 500)
+    const current = slot
+    current.jobs.push(job)
+    if (current.timer) clearTimeout(current.timer)
+    current.timer = setTimeout(() => dispatchSlot(current), 500)
+  }
+
+  /**
+   * 立即派发并等待全部维护批次落定（退出链在 closeApiServer 之前调用）。
+   * 为什么需要：500ms 合并窗口内的 job 会随进程退出而消失——最多丢一轮的两写/摘要
+   * （会话消息本身已由 sessionStore.flush 落盘，此处补的是摘要/继承推算）。
+   */
+  const flushPendingInternalSessionJobs = async (): Promise<void> => {
+    const slots = Array.from(internalSessionJobQueue.values())
+    for (const slot of slots) {
+      dispatchSlot(slot)
+    }
+    await Promise.all(slots.map((s) => s.chain))
   }
 
   // 批次执行：一整个批次（含合并的多轮 jobs）只跑一次 append + 一次摘要 + 一次压缩。
@@ -617,6 +648,7 @@ export function createInternalSessionLayer(deps: InternalSessionLayerDeps): Inte
     buildSessionContext,
     getSessionSummaryCfg,
     enqueueInternalSessionJob,
+    flushPendingInternalSessionJobs,
     resolveStreamSessionContext
   }
 }

@@ -94,8 +94,15 @@ describe('T1 显式授予：十一项逐条双向', () => {
     }
   })
 
-  it('T1 均可授予（isGrantable=true）', () => {
-    for (const cap of T1_CAPABILITIES) expect(isGrantable(cap.key), cap.key).toBe(true)
+  it('T1 中有执行点的均可授予（isGrantable=true）', () => {
+    for (const cap of T1_CAPABILITIES) {
+      if (cap.enforced === false) {
+        // 预留能力（无生产执行点）不接受授予，避免「授予了却没用」
+        expect(isGrantable(cap.key), cap.key).toBe(false)
+        continue
+      }
+      expect(isGrantable(cap.key), cap.key).toBe(true)
+    }
   })
 })
 
@@ -260,10 +267,11 @@ describe('用户 IPC：授予/撤回（AI 不可自我授权的结构面）', ()
   it('grant：scoped 能力必须带范围', async () => {
     const ipc = makeIpc()
     register(ipc, makeStore())
-    const noScope = (await ipc.handlers.get('security:grant')!({}, { key: 't1.authorized-target-ops' })) as { ok: boolean }
+    // 用有执行点的 scoped 能力（t1.migrate，nodes）验证：未接入的预留能力现在一律不可授予
+    const noScope = (await ipc.handlers.get('security:grant')!({}, { key: 't1.migrate' })) as { ok: boolean }
     const withScope = (await ipc.handlers.get('security:grant')!({}, {
-      key: 't1.authorized-target-ops',
-      scope: { targets: ['x.test'] }
+      key: 't1.migrate',
+      scope: { nodes: ['1'] }
     })) as { ok: boolean }
     expect(noScope.ok).toBe(false)
     expect(withScope.ok).toBe(true)

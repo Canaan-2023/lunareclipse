@@ -8,6 +8,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { FolderOpen, Puzzle, RefreshCw, AlertTriangle, X, Trash2, Boxes, PanelTop, ChevronDown } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useT, type TFunc } from '../../i18n/useT'
+import { useTransientTimer } from '../../hooks/useTransientTimer'
 
 /**
  * 来源层级 → 本地化标签。
@@ -72,6 +73,8 @@ export function PluginPanel() {
   const [rootDir, setRootDir] = useState('')
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
+  // 错误提示「N 秒后自动消失」的计时器句柄（卸载清理 + 重复调度先取消，不再裸 setTimeout）
+  const { schedule: scheduleErrClear } = useTransientTimer()
   /** 正在切换启停的插件（dirName 或 `feature:${id}`）；飞行中禁用该开关，
    * 防止连点触发两次反向切换并给出在途反馈——禁止移除。 */
   const [busyToggle, setBusyToggle] = useState<string | null>(null)
@@ -110,7 +113,7 @@ export function PluginPanel() {
       const res = await window.lunareclipse.pluginToggle(dirName, enabled)
       if (!res?.ok) {
         setErr(res?.error ?? '操作失败')
-        setTimeout(() => setErr(''), 3000)
+        scheduleErrClear(() => setErr(''), 3000)
       }
     } finally {
       setBusyToggle(null)
@@ -125,7 +128,7 @@ export function PluginPanel() {
       const res = await window.lunareclipse.featurePluginToggle(id, enabled)
       if (!res?.ok) {
         setErr(res?.error ?? '操作失败')
-        setTimeout(() => setErr(''), 3000)
+        scheduleErrClear(() => setErr(''), 3000)
       }
     } finally {
       setBusyToggle(null)
@@ -146,14 +149,14 @@ export function PluginPanel() {
       const res = await window.lunareclipse.pluginDelete(dirName)
       if (!res?.ok) {
         setErr(res?.error ?? '删除失败')
-        setTimeout(() => setErr(''), 3000)
+        scheduleErrClear(() => setErr(''), 3000)
         return
       }
     } catch (e) {
       // plugin:delete 挂了 requireAuth：未登录时主进程抛 Unauthorized → IPC reject。
       // 不捕获会变成未处理异常，界面无任何反馈，用户看到的就是"删除完全失效"。
       setErr((e as Error)?.message === 'Unauthorized' ? '请先登录后再删除插件' : `删除插件失败：${(e as Error)?.message ?? '未知错误'}`)
-      setTimeout(() => setErr(''), 4000)
+      scheduleErrClear(() => setErr(''), 4000)
       return
     } finally {
       setBusyDelete(null)

@@ -52,6 +52,13 @@ export class McpClientManager {
   private reconnectTimers = new Map<string, NodeJS.Timeout>()
   /** 手动断开标记（阻止自动重连） */
   private manualDisconnect = new Set<string>()
+  /**
+   * 已销毁标记（进程退出时由 disconnectAll 置位）。
+   * 为什么存在：退出途中 stdio server 的 onclose 或 OAuth 授权回调仍可能触发
+   * scheduleReconnect / connectServer，把已关闭的子进程重新拉起，与退出链赛跑
+   * （最多被拖到 QUIT_DEADLINE_MS）。本实例仅存活至进程退出，置位后永久禁用重连是安全的。
+   */
+  private disposed = false
   private onStatusChange?: (serverName: string, status: McpServerStatus) => void
 
   /** 设置状态变更回调（前端 UI 用于显示连接状态） */
@@ -70,6 +77,8 @@ export class McpClientManager {
 
   /** 连接单个 MCP server */
   async connectServer(config: McpServerConfig): Promise<void> {
+    // 已销毁（进程退出中）：不再拉起新连接/子进程
+    if (this.disposed) return
     // 已存在则先断开（清理旧连接和定时器）
     if (this.servers.has(config.name)) {
       await this.disconnectServer(config.name)
@@ -210,8 +219,19 @@ export class McpClientManager {
     this.setStatus(name, 'disconnected')
   }
 
-  /** 断开所有 MCP server */
+  /**
+   * 断开所有 MCP server（进程退出链调用）。
+   * 为什么先置 disposed：退出途中 onclose / OAuth 授权回调会触发 scheduleReconnect，
+   * 把 stdio 子进程重新拉起；先置位可永久关闭本实例的重连，再统一清理全部待执行
+   * 重连定时器，避免退出被重连定时器拖到总 deadline。
+   */
   async disconnectAll(): Promise<void> {
+    this.disposed = true
+    // 清理所有待执行的重连定时器（含不在 servers 中的残留项）
+    for (const timer of this.reconnectTimers.values()) {
+      clearTimeout(timer)
+    }
+    this.reconnectTimers.clear()
     const names = Array.from(this.servers.keys())
     await Promise.all(names.map((name) => this.disconnectServer(name)))
   }
@@ -227,8 +247,8 @@ export class McpClientManager {
    * 会让退避计数失真。
    */
   private scheduleReconnect(name: string): void {
-    // 手动断开的 server 不重连
-    if (this.manualDisconnect.has(name)) return
+    // 已销毁（进程退出中）或手动断开的 server 不重连
+    if (this.disposed || this.manualDisconnect.has(name)) return
     const instance = this.servers.get(name)
     if (!instance) return
     if (instance.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -384,6 +404,8 @@ export class McpClientManager {
 
   /** 根据配置重新加载所有 server（热重载） */
   async reloadFromConfig(config: { mcpServers: Record<string, McpServerConfig> }): Promise<void> {
+    // 已销毁（进程退出中）：不再按配置重连
+    if (this.disposed) return
     const newNames = new Set(Object.keys(config.mcpServers).filter((k) => config.mcpServers[k].enabled))
     const currentNames = new Set(this.servers.keys())
 

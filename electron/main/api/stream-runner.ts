@@ -36,6 +36,7 @@ import { createToolEventHandlers } from './stream/tool-events'
 import { scheduleReviewContinuation } from './stream/review-chain'
 import { persistTurn } from './stream/persistence'
 import { applyBudgetWarnings } from './stream/budget'
+import { clampTokenBudgetForModel } from './model-capability'
 import { enforceOutputDiscipline } from './stream/chat-enforcement'
 import { emitDoneFrame, finalizeTurnCompletion } from './stream/turn-completion'
 import { REVIEWER_SYSTEM_PROMPT } from './code-review'
@@ -56,6 +57,8 @@ export interface StreamRunnerDeps {
   maxRetryDelayMs: number
   maxStreamRetries: number
   continuationTimerRef: { current: ReturnType<typeof setTimeout> | null }
+  /** 静默续接定时器句柄（连接级；用户中止/发新消息时由 ws-protocol 取消） */
+  retryTimerRef: { current: ReturnType<typeof setTimeout> | null }
   configStore: ConfigStore
   streamSession: StreamSession
   serverCtx: ToolContext
@@ -253,12 +256,18 @@ export function createStreamRunner(deps: StreamRunnerDeps): { runStream: StreamR
       const droppedCount = 0
 
       // 上下文预算：估算帧 + 达阈值时的用量提示（./stream/budget）
+      // 预算读生效配置（核心 + 覆盖层，patch 才管用），并按模型窗口夹一次（不得越窗）
+      const effBudgetCfg = configStore.getEffective()
+      const effectiveTokenBudget = clampTokenBudgetForModel(
+        effBudgetCfg.tokenBudget,
+        effBudgetCfg.llm?.model
+      )
       applyBudgetWarnings({
         ws,
         messageId,
         streamSession,
         injectedMessages,
-        tokenBudget: cfg.tokenBudget,
+        tokenBudget: effectiveTokenBudget,
         resolveSoftBudget,
         lastInjectedEstimateRef: deps.lastInjectedEstimateRef,
         droppedCount
@@ -428,6 +437,7 @@ export function createStreamRunner(deps: StreamRunnerDeps): { runStream: StreamR
               maxStreamRetries: MAX_STREAM_RETRIES,
               maxRetryDelayMs: MAX_RETRY_DELAY_MS,
               continuationTimerRef: deps.continuationTimerRef,
+              retryTimerRef: deps.retryTimerRef,
               streamSession,
               activationManager,
               messages,
@@ -435,20 +445,40 @@ export function createStreamRunner(deps: StreamRunnerDeps): { runStream: StreamR
               fullReasoning,
               writeRawMemoryForStream,
               resume: (continuedMessages, nextRetryCount) => {
-                runStream(
-                  continuedMessages,
-                  activation,
-                  messageId,
-                  sessionId,
-                  model,
-                  nextRetryCount,
-                  fullOutput,
-                  // 重试沿用原请求的覆盖参数：审查轮重试保持独立审查提示词，普通流程保持 undefined
-                  opts
-                ).catch((streamErr) => {
-                  activationManager.setStreamActive(false)
-                  throw streamErr
-                })
+                // 必须回到串行队列（2026-10-31 生命周期收口）：LLMClient 已并发化，
+                // 直接递归 runStream 会与用户新消息并发第二条流（双流写同一 ws、
+                // streamSession.begin 被覆盖、token 交错）。重试是独立一轮，与新消息同样排队。
+                void streamSession
+                  .enqueue(() =>
+                    runStream(
+                      continuedMessages,
+                      activation,
+                      messageId,
+                      sessionId,
+                      model,
+                      nextRetryCount,
+                      fullOutput,
+                      // 重试沿用原请求的覆盖参数：审查轮重试保持独立审查提示词，普通流程保持 undefined
+                      opts
+                    )
+                  )
+                  .catch((streamErr) => {
+                    console.error('[server] 重试续流失败:', streamErr)
+                    if (streamSession.isOpen(ws)) {
+                      streamSession.push(
+                        ws,
+                        JSON.stringify({
+                          type: 'error',
+                          payload: (streamErr as Error).message,
+                          messageId
+                        })
+                      )
+                    }
+                    streamSession.finish(ws, messageId)
+                    serverCtx.sessionId = undefined
+                    activationManager.setStreamActive(false)
+                    broadcastStreamStatus()
+                  })
               }
             })
           },

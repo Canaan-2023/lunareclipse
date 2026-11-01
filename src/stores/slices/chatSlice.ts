@@ -28,7 +28,7 @@ export type ChatSlice = Pick<AppState,
   | 'togglePinSession' | 'setChatViewMode' | 'loadInternalSessions' | 'createInternalSession'
   | 'updateInternalSession' | 'deleteInternalSession' | 'setActiveInternalSession'
   | 'loadSessions' | 'selectSession' | 'createSession' | 'renameSession' | 'deleteSession'
-  | 'sendMessage' | 'abortStream' | 'recallMessage' | 'deleteMessage' | 'editAndResend' | 'appendRoomMessage'  | 'regenerateResponse' | 'rewindToMessage' | 'setEditingMessageId' | 'setInputPrefill' | 'addAttachment'
+  | 'sendMessage' | 'abortStream' | 'recallMessage' | 'deleteMessage' | 'editAndResend' | 'syncRoomMessages'  | 'regenerateResponse' | 'rewindToMessage' | 'setEditingMessageId' | 'setInputPrefill' | 'addAttachment'
   | 'removeAttachment' | 'setSessionModel' | 'toggleCodeReview' | 'triggerActivation'
   | 'ais' | 'currentAiId' | 'loadAis'
   | 'planModeActive' | 'refreshPlanMode' | 'setPlanModeActive'
@@ -220,26 +220,21 @@ export function createChatSlice(set: SliceSet, get: SliceGet): ChatSlice {
     },
 
     /**
-     * 房间消息落回会话历史：用户在房间里的发言、AI 的直播回复。
-     * **不触发普通 AI stream**（房间自己回应），只写历史；按 (role, createdAt, content) 幂等，
-     * 避免切走再回房间时把同一条回复重复追加。
+     * 房间消息**从主进程重取**，渲染侧不再自己写盘（0.54）。
+     * 为什么改：房间轮次的用户消息与 AI reply 现在由主进程 `appendHostTurn` 独占写入承载会话；
+     * 若渲染侧仍用 `safeSave` 整数组覆盖，就会把主进程刚写的内容用陈旧数组冲掉
+     * （「自主模式不落盘」的另一半根因）。这里只读主进程的落盘结果，不产生任何写。
      */
-    appendRoomMessage: (content, role = 'user', at = Date.now()) => {
-      const { currentSessionId, currentMessages } = get()
-      if (!currentSessionId || !content.trim()) return
-      const exists = currentMessages.some(
-        (m) => m.role === role && m.content === content && m.createdAt === at
-      )
-      if (exists) return
-      const msg: ChatMessage = {
-        id: nextMsgId(role === 'user' ? 'u' : 'a'),
-        role,
-        content,
-        createdAt: at
+    syncRoomMessages: async (sessionId) => {
+      if (!sessionId) return
+      try {
+        const session = await window.lunareclipse.getSession(sessionId)
+        // 取回时用户可能已经切走会话：不要拿旧会话的消息覆盖当前会话
+        if (!session || get().currentSessionId !== sessionId) return
+        set({ currentMessages: session.messages ?? [] })
+      } catch (err) {
+        console.warn('[chat] syncRoomMessages failed:', err)
       }
-      const next = [...currentMessages, msg]
-      set({ currentMessages: next })
-      safeSave(currentSessionId, next)
     },
 
     sendMessage: async (content) => {
