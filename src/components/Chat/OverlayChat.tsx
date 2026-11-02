@@ -8,6 +8,8 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { Send, Square, X, GripHorizontal, Paperclip, Globe, FileText, Loader2 } from 'lucide-react'
 import type { ChatMessage } from '@shared/types'
 import { MarkdownRenderer } from './MarkdownRenderer'
+import { IconButton } from '../IconButton'
+import { useT } from '../../i18n/useT'
 
 /**
  * 独立悬浮小窗的聊天视图（?overlay=1 路由）
@@ -32,6 +34,7 @@ interface PendingAtt {
 const THEME_CLASSES = ['frost-glass', 'parchment', 'night', 'violet-night', 'eclipse', 'gilded']
 
 export function OverlayChat() {
+  const t = useT()
   const [messages, setMessages] = useState<OverlayMsg[]>([])
   const [status, setStatus] = useState<string>('idle')
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
@@ -142,21 +145,22 @@ export function OverlayChat() {
       >
         <GripHorizontal size={13} className="text-fg-muted shrink-0" />
         <span className="text-caption font-medium text-fg-primary truncate flex-1">{aiName}</span>
-        <button
+        <IconButton
           onClick={handleClose}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           className="flex h-5 w-5 items-center justify-center rounded text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-          title="关闭"
+          title={t('common.close')}
+          aria-label={t('common.close')}
         >
           <X size={12} />
-        </button>
+        </IconButton>
       </div>
 
       {/* 消息列表 */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2 min-h-0">
         {recentMessages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-caption text-fg-muted">
-            开始与 {aiName} 对话...
+            {t('chatui.startChatWith', { name: aiName })}
           </div>
         ) : (
           recentMessages.map((msg) => {
@@ -172,7 +176,7 @@ export function OverlayChat() {
                   }`}
                 >
                   <MarkdownRenderer
-                    content={msg.content || ((msg.attachments?.length ?? 0) > 0 ? '' : isStreamingThis ? '' : '(空)')}
+                    content={msg.content || ((msg.attachments?.length ?? 0) > 0 ? '' : isStreamingThis ? '' : t('chatui.emptyMsg'))}
                     streaming={isStreamingThis}
                   />
                   {/* 附件：图片带 dataUrl 内联缩略图预览，其余文件图标+名称（与主会话 MessageBubble 同款式） */}
@@ -233,7 +237,7 @@ export function OverlayChat() {
               <button
                 onClick={() => void window.lunareclipse?.overlayRemoveAttachment?.(i)}
                 className="shrink-0 text-fg-muted hover:text-danger"
-                title="移除附件"
+                title={t('chatui.removeAttachment')}
               >
                 <X size={10} />
               </button>
@@ -246,7 +250,7 @@ export function OverlayChat() {
       {isStreaming && (
         <div className="flex shrink-0 items-center gap-1.5 border-t border-border-subtle px-3 py-1 text-[11px] text-fg-muted">
           <Loader2 size={11} className="animate-spin text-accent" />
-          <span>正在生成回复…</span>
+          <span>{t('chatui.generatingReply')}</span>
         </div>
       )}
 
@@ -257,7 +261,7 @@ export function OverlayChat() {
           <button
             onClick={() => fileInputRef.current?.click()}
             className="flex h-6 w-6 items-center justify-center rounded text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-            title="添加附件"
+            title={t('input.attachFile')}
           >
             <Paperclip size={12} />
           </button>
@@ -268,10 +272,10 @@ export function OverlayChat() {
                 ? 'bg-accent/15 text-accent'
                 : 'text-fg-muted hover:bg-bg-muted hover:text-fg-primary'
             }`}
-            title={webSearchEnabled ? '联网搜索：开' : '联网搜索：关'}
+            title={webSearchEnabled ? t('chatui.webSearchOn') : t('chatui.webSearchOff')}
           >
             <Globe size={12} />
-            联网
+            {t('chatui.webSearch')}
           </button>
           <input
             ref={fileInputRef}
@@ -287,7 +291,7 @@ export function OverlayChat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入消息... (Enter 发送)"
+            placeholder={t('chatui.overlayInputPlaceholder')}
             rows={1}
             className="flex-1 resize-none rounded-md border border-border bg-bg-elevated px-2.5 py-1.5 text-[12.5px] text-fg-primary placeholder:text-fg-muted focus:border-accent focus:outline-none min-h-[32px] max-h-[100px]"
           />
@@ -295,7 +299,7 @@ export function OverlayChat() {
             <button
               onClick={() => void window.lunareclipse?.overlayAbort?.()}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-danger/15 text-danger hover:bg-danger/25"
-              title="停止"
+              title={t('input.stop')}
             >
               <Square size={12} fill="currentColor" />
             </button>
@@ -304,7 +308,7 @@ export function OverlayChat() {
               onClick={() => void handleSend()}
               disabled={!input.trim() && pendingAttachments.length === 0}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent text-accent-fg hover:bg-accent/90 disabled:opacity-30 disabled:cursor-not-allowed"
-              title="发送"
+              title={t('input.send')}
             >
               <Send size={12} />
             </button>

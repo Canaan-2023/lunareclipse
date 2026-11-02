@@ -60,7 +60,7 @@ export function InstanceSection() {
       setName('')
       await refresh()
     } else {
-      setMsg(r.error ?? '启动失败')
+      setMsg(r.error ?? t('settings.instanceLaunchFail'))
     }
     setLaunching(false)
   }
@@ -82,7 +82,7 @@ export function InstanceSection() {
     if (r.ok) {
       setMsg(`${t('settings.instance.renameDone')} "${oldName}" → "${r.name ?? newName}"`)
     } else {
-      setMsg(r.error ?? '改名失败')
+      setMsg(r.error ?? t('settings.instanceRenameFail'))
     }
     setRenaming(null)
     await refresh()
@@ -99,7 +99,7 @@ export function InstanceSection() {
     if (r.ok) {
       setMsg(`${t('settings.instance.deleteDone')} "${inst}"`)
     } else {
-      setMsg(r.error ?? '删除失败')
+      setMsg(r.error ?? t('settings.instanceDeleteFail'))
     }
     setConfirmDelete(null)
     await refresh()

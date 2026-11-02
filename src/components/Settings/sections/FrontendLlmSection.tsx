@@ -105,7 +105,7 @@ export function FrontendLlmSection({
               <span
                 className={`text-caption ${
                   /^(失败|错误|未发现|Failed|Error|No models)/.test(llm.testResult ?? '')
-                    ? 'text-red-400'
+                    ? 'text-danger'
                     : 'text-accent'
                 }`}
               >
@@ -255,7 +255,7 @@ export function FrontendLlmSection({
                   <button
                     type="button"
                     onClick={() => llm.removeModel(m)}
-                    className="text-fg-muted hover:text-red-400"
+                    className="text-fg-muted hover:text-danger"
                     title={t('settings.remove')}
                   >
                     <Trash2 size={11} />
@@ -286,7 +286,7 @@ export function FrontendLlmSection({
             </div>
           </div>
           {local.permissionGreenlight && (
-            <div className="flex items-start gap-2 rounded-btn border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-caption text-amber-300">
+            <div className="flex items-start gap-2 rounded-btn border border-warning/30 bg-warning/10 px-3 py-2 text-caption text-warning">
               <AlertTriangle size={13} className="mt-0.5 shrink-0" />
               <span>{t('settings.greenlightWarn')}</span>
             </div>

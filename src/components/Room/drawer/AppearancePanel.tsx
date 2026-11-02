@@ -166,7 +166,7 @@ export function AppearancePanel({ aiId }: { aiId: number }) {
         )}
         {field(
           t('room.appearance.lift'),
-          `${ROOM_CHARACTER_LIMITS.lift.min} ~ ${ROOM_CHARACTER_LIMITS.lift.max}（正数向上）`,
+          `${ROOM_CHARACTER_LIMITS.lift.min} ~ ${ROOM_CHARACTER_LIMITS.lift.max}${t('chatui.positiveUp')}`,
           <input
             type="number"
             step="1"
@@ -239,12 +239,12 @@ export function AppearancePanel({ aiId }: { aiId: number }) {
       </div>
       {state.live2d && (
         <div className="mt-3 rounded-card border border-border-subtle/60 p-2 text-micro">
-          <div className="text-success">Live2D：{state.live2d.model}</div>
+          <div className="text-success">{t('chatui.live2dPrefix')}{state.live2d.model}</div>
           <div className="mt-1 text-fg-secondary">
-            模型与 Cubism Core 由你自备（放在房间数据目录的 live2d/ 下），不随安装包分发。
+            {t('chatui.live2dSelfProvided')}
           </div>
           <div className="mt-1 leading-5 text-warning">
-            Live2D 核心是专有软件（不是 AGPL）；请确认你有权使用该模型，并遵守 Live2D 的发布许可。
+            {t('chatui.live2dLicense')}
           </div>
         </div>
       )}

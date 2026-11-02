@@ -10,10 +10,20 @@ import type { ModuleInfo, VisualizationData } from '@shared/types'
 import { SectionTitle, EmptyHint, StatCard } from './common'
 import { formatDateTime } from '../../utils/time'
 import { useTransientTimer } from '../../hooks/useTransientTimer'
+import { useT } from '../../i18n/useT'
 
 /** 模块监控 Tab（批次 E-5c 从 VisualizationPanel.tsx 拆出） */
 
 const CATEGORY_ORDER: Array<ModuleInfo['category']> = ['核心', '工具', '记忆系统', '监控', '渲染', '基础设施']
+
+const CATEGORY_LABEL_KEYS: Record<ModuleInfo['category'], string> = {
+  '核心': 'vizui.modules.cat.core',
+  '工具': 'vizui.modules.cat.tools',
+  '记忆系统': 'vizui.modules.cat.memory',
+  '监控': 'vizui.modules.cat.monitor',
+  '渲染': 'vizui.modules.cat.render',
+  '基础设施': 'vizui.modules.cat.infra'
+}
 
 /**
  * 全架构模块清单 + 运行时状态（报错标红）。
@@ -23,14 +33,15 @@ const CATEGORY_ORDER: Array<ModuleInfo['category']> = ['核心', '工具', '记�
  * AI 侧也可通过同一数据源主动盘点自己的模块（主对话查询 "有哪些模块"）。
  */
 export function ModulesTab({ data }: { data: VisualizationData | null }) {
+  const t = useT()
   const modules = data?.modules ?? null
   const [expanded, setExpanded] = useState<string | null>(null)
 
   if (!modules) {
     return (
       <div className="space-y-5">
-        <SectionTitle icon={Boxes} title="模块监控" />
-        <EmptyHint text="模块注册表未初始化（主进程模块尚未启动，稍后刷新本页）" />
+        <SectionTitle icon={Boxes} title={t('vizui.modules.title')} />
+        <EmptyHint text={t('vizui.modules.notInit')} />
       </div>
     )
   }
@@ -43,17 +54,17 @@ export function ModulesTab({ data }: { data: VisualizationData | null }) {
     <div className="space-y-5">
       {/* 总览卡片 */}
       <div className="grid grid-cols-3 gap-2">
-        <StatCard label="模块总数" value={modules.length} />
-        <StatCard label="异常" value={failing.length} accent={failing.length > 0 ? 'danger' : 'normal'} />
-        <StatCard label="健康/未知" value={healthy.length + unknown.length} />
+        <StatCard label={t('vizui.modules.total')} value={modules.length} />
+        <StatCard label={t('vizui.modules.failing')} value={failing.length} accent={failing.length > 0 ? 'danger' : 'normal'} />
+        <StatCard label={t('vizui.modules.healthyUnknown')} value={healthy.length + unknown.length} />
       </div>
 
       {/* 异常模块优先置顶 */}
       <section>
-        <SectionTitle icon={AlertTriangle} title={`异常模块（${failing.length}）`} />
+        <SectionTitle icon={AlertTriangle} title={t('vizui.modules.failingTitle', { n: failing.length })} />
         {failing.length === 0 ? (
           <div className="rounded-btn border border-border-subtle bg-bg-elevated px-3 py-2 text-caption text-fg-secondary">
-            ✅ 所有模块正常，无异常上报
+            {t('vizui.modules.allOk')}
           </div>
         ) : (
           <div className="space-y-1.5">
@@ -70,7 +81,7 @@ export function ModulesTab({ data }: { data: VisualizationData | null }) {
         if (list.length === 0) return null
         return (
           <section key={cat}>
-            <SectionTitle icon={Boxes} title={`${cat}（${list.length}）`} />
+            <SectionTitle icon={Boxes} title={t('vizui.modules.categoryTitle', { category: t(CATEGORY_LABEL_KEYS[cat]), n: list.length })} />
             <div className="space-y-1.5">
               {list.map((m) => (
                 <ModuleRow key={m.id} m={m} expanded={expanded} setExpanded={setExpanded} />
@@ -92,9 +103,10 @@ function ModuleRow({
   expanded: string | null
   setExpanded: (id: string | null) => void
 }) {
+  const t = useT()
   const isOpen = expanded === m.id
-  const dot = m.ok === false ? 'bg-red-400' : m.ok === true ? 'bg-green-400' : 'bg-fg-muted/40'
-  const border = m.ok === false ? 'border-red-400/40 bg-red-400/5' : 'border-border-subtle bg-bg-elevated'
+  const dot = m.ok === false ? 'bg-danger' : m.ok === true ? 'bg-success' : 'bg-fg-muted/40'
+  const border = m.ok === false ? 'border-danger/40 bg-danger/5' : 'border-border-subtle bg-bg-elevated'
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   // 「已引用」提示「2 秒后自动消失」的计时器句柄（卸载清理 + 重复调度先取消）
@@ -120,8 +132,8 @@ function ModuleRow({
         <div className="flex items-center gap-2">
           <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
           <span className="flex-1 text-caption text-fg-primary">{m.name}</span>
-          <span className="shrink-0 rounded bg-bg-muted px-1.5 py-0.5 text-[9px] text-fg-muted">{m.category}</span>
-          {m.ok === false && <span className="shrink-0 text-[9px] text-red-400">异常</span>}
+          <span className="shrink-0 rounded bg-bg-muted px-1.5 py-0.5 text-[9px] text-fg-muted">{t(CATEGORY_LABEL_KEYS[m.category])}</span>
+          {m.ok === false && <span className="shrink-0 text-[9px] text-danger">{t('vizui.modules.abnormal')}</span>}
           {m.updatedAt && (
             <span className="shrink-0 text-[10px] text-fg-muted">
               {formatDateTime(m.updatedAt)}
@@ -132,14 +144,14 @@ function ModuleRow({
       </button>
       {isOpen && (
         <div className="mt-2 space-y-1 border-t border-border-subtle pt-2">
-          <div className="text-[10px] text-fg-muted">关键文件</div>
+          <div className="text-[10px] text-fg-muted">{t('vizui.modules.keyFiles')}</div>
           {Array.isArray(m.keyFiles) && m.keyFiles.map((f) => (
             <div key={f} className="rounded bg-bg-base px-2 py-1 font-mono text-[10px] text-fg-secondary">{f}</div>
           ))}
           {m.ok === false && m.error && (
             <div className="mt-1">
-              <div className="text-[10px] text-fg-muted">最近错误</div>
-              <div className="mt-0.5 line-clamp-3 whitespace-pre-wrap break-all rounded bg-red-400/5 px-2 py-1 font-mono text-[10px] text-red-400">
+              <div className="text-[10px] text-fg-muted">{t('vizui.modules.recentError')}</div>
+              <div className="mt-0.5 line-clamp-3 whitespace-pre-wrap break-all rounded bg-danger/5 px-2 py-1 font-mono text-[10px] text-danger">
                 {m.error}
               </div>
             </div>
@@ -148,11 +160,11 @@ function ModuleRow({
             onClick={handleSendToAI}
             disabled={sending || sent}
             className={`mt-1 flex items-center gap-1 rounded px-2 py-1 text-[10px] transition-colors ${
-              sent ? 'bg-green-500/15 text-green-400' : 'bg-accent/10 text-accent hover:bg-accent/20'
+              sent ? 'bg-success/15 text-success' : 'bg-accent/10 text-accent hover:bg-accent/20'
             } disabled:opacity-60`}
           >
             <Send className="h-3 w-3" />
-            {sent ? '已发送' : sending ? '发送中…' : '发送给 AI'}
+            {sent ? t('vizui.modules.sent') : sending ? t('vizui.modules.sending') : t('vizui.modules.sendToAi')}
           </button>
         </div>
       )}

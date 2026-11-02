@@ -30,17 +30,17 @@ export function MemoryWorkflowConfigSection({
     setResetMsg(null)
     // 破坏性操作护栏：重置会把全部 AI 工具策略打回默认，自定义开关与参数被覆盖且无
     // 撤销入口，先 confirm 再执行（项目删除/清理类操作统一惯例，防手滑误清）
-    if (!confirm('重置将把所有 AI 工具策略恢复为默认值，自定义的开关与参数会被覆盖。确定继续？')) return
+    if (!confirm(t('settings.mwrConfirm'))) return
     try {
       const result = await window.lunareclipse.resetToolPolicy()
       if (result.ok && result.config) {
         onChange(result.config)
-        setResetMsg({ text: '记忆工作流工具策略已重置为默认', kind: 'ok' })
+        setResetMsg({ text: t('settings.mwrDone'), kind: 'ok' })
       } else {
-        setResetMsg({ text: `重置失败：${result.error ?? '未知错误'}`, kind: 'err' })
+        setResetMsg({ text: t('settings.mwrFail', { error: result.error ?? t('settings.wsUnknownError') }), kind: 'err' })
       }
     } catch (err) {
-      setResetMsg({ text: `重置失败：${err instanceof Error ? err.message : String(err)}`, kind: 'err' })
+      setResetMsg({ text: t('settings.mwrFail', { error: err instanceof Error ? err.message : String(err) }), kind: 'err' })
     } finally {
       scheduleResetMsgClear(() => setResetMsg(null), 3000)
     }

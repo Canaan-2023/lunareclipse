@@ -22,6 +22,11 @@ import memoryDict from './domains/memory'
 import evalDict from './domains/eval'
 import messagingDict from './domains/messaging'
 import securityDict from './domains/security'
+import chatuiDict from './domains/chatui'
+import paneluiDict from './domains/panelui'
+import vizuiDict from './domains/vizui'
+import storemsgDict from './domains/storemsg'
+import authuiDict from './domains/authui'
 import type { DictEntry } from './dict-types'
 
 export type Lang = 'zh' | 'en'
@@ -43,6 +48,11 @@ const DICT: Record<string, DictEntry> = {
   ...evalDict,
   ...messagingDict,
   ...securityDict,
+  ...chatuiDict,
+  ...paneluiDict,
+  ...vizuiDict,
+  ...storemsgDict,
+  ...authuiDict,
 }
 
 export function getDictEntry(key: string): DictEntry | undefined {

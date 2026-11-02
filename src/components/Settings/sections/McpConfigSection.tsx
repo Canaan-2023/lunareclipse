@@ -4,12 +4,13 @@
  * 作用：渲染 MCP Server 管理区——server 增删改（本地副本编辑 → 保存应用），
  * 运行时状态（connected/error/toolCount）2 秒轮询展示。
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import type { McpConfig, McpServerConfig, McpServerStatusSummary, McpTransportType } from '@shared/types'
 import { Field } from '../Field'
 import { useT } from '../../../i18n/useT'
 import { useTransientTimer } from '../../../hooks/useTransientTimer'
+import { useVisibleInterval } from '../../../hooks/useVisibleInterval'
 
 /**
  * MCP Server 管理
@@ -40,15 +41,18 @@ export function McpConfigSection() {
     })
   }, [])
 
-  // 轮询运行时状态（2 秒，反映连接/重连进度）
-  useEffect(() => {
+  /** 运行时状态拉取（连接/重连进度） */
+  const tickStatuses = useCallback(() => {
     const api = window.lunareclipse
     if (!api?.mcpGetStatuses) return
-    const tick = () => api.mcpGetStatuses().then((s: McpServerStatusSummary[]) => setStatuses(s))
-    tick()
-    const id = setInterval(tick, 2000)
-    return () => clearInterval(id)
+    void api.mcpGetStatuses().then((s: McpServerStatusSummary[]) => setStatuses(s))
   }, [])
+
+  // 首次立即拉取一次；2 秒轮询交给 useVisibleInterval（窗口隐藏时暂停，恢复可见立即补刷）
+  useEffect(() => {
+    tickStatuses()
+  }, [tickStatuses])
+  useVisibleInterval(tickStatuses, 2000)
 
   const selected = config.mcpServers[selectedName]
   const statusOf = (name: string) => statuses.find((s) => s.name === name)

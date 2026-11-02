@@ -105,7 +105,7 @@ export function SessionBudgetCard({ onClose }: { onClose: () => void }) {
       {/* 加载失败：重试入口 */}
       {loadFailed && !info ? (
         <div className="flex items-center justify-between gap-2">
-          <span className="text-caption text-red-400">{t('internal.budgetLoadFailed')}</span>
+          <span className="text-caption text-danger">{t('internal.budgetLoadFailed')}</span>
           <button
             onClick={() => void load()}
             className="flex h-7 items-center gap-1.5 rounded-btn border border-border-subtle px-2.5 text-caption text-fg-secondary transition-all hover:border-accent/30 hover:text-accent"
@@ -120,7 +120,7 @@ export function SessionBudgetCard({ onClose }: { onClose: () => void }) {
           <div className="space-y-1 rounded-btn border border-border-subtle bg-bg-elevated/60 px-3 py-2">
             <div className="flex items-center gap-2">
               <span className="text-caption text-fg-muted">{t('internal.budgetMode')}</span>
-              <span className={`rounded-full px-2 py-0.5 text-caption font-medium ${info.auto ? 'bg-accent/15 text-accent' : 'bg-emerald-500/15 text-emerald-400'}`}>
+              <span className={`rounded-full px-2 py-0.5 text-caption font-medium ${info.auto ? 'bg-accent/15 text-accent' : 'bg-success/15 text-success'}`}>
                 {info.auto ? t('internal.budgetAuto') : t('internal.budgetManual')}
               </span>
             </div>
@@ -164,11 +164,11 @@ export function SessionBudgetCard({ onClose }: { onClose: () => void }) {
             </div>
             <div className="text-caption text-fg-muted/80">
               {draftError
-                ? <span className="text-red-400">{t('internal.budgetInvalid')}</span>
+                ? <span className="text-danger">{t('internal.budgetInvalid')}</span>
                 : saveState === 'saved'
                   ? <span className="text-accent">{t('internal.budgetSaved')}</span>
                   : saveState === 'error'
-                    ? <span className="text-red-400">{t('internal.budgetSaveFailed')}</span>
+                    ? <span className="text-danger">{t('internal.budgetSaveFailed')}</span>
                     : t('internal.budgetInputHint')}
             </div>
           </div>

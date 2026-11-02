@@ -1,8 +1,9 @@
-import { describe, it, expect, afterEach } from 'vitest'
+﻿import { describe, it, expect, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { ChatRoomService, type ChatRoomServiceDeps } from '../electron/main/multi-instance/chat-rooms/chat-room-service'
+import { ChatRoomChatStore, CHAT_ROOM_MESSAGE_MAX } from '../electron/main/multi-instance/chat-rooms/chat-room-chat-store'
 import { SYSTEM_ROOM_GID } from '../electron/main/multi-instance/chat-rooms/chat-room-types'
 import type { ChatRoomAiSpeaker, ChatRoomEvent, ChatRoomInfo, ChatRoomInvitePayload, ChatRoomMessage } from '../electron/main/multi-instance/chat-rooms/chat-room-types'
 import { formatIdentity } from '../electron/main/multi-instance/lan/lan-types'
@@ -218,20 +219,21 @@ describe('ChatRoomService 聊天室功能生命周期（L2）', () => {
     // 但聊天室主侧离开时若还有成员，应更新 ownerUid 并通知；单端语义：聊天室主本地成员>1 时顺延。
   })
 
-  it('聊天室消息上限：最多保留 2000 条', () => {
-    // 存储为整文件原子覆写（load→splice→save），2050 条消息是 O(n²) 的 JSON 全量读写，
-    // Windows 冷磁盘下实测约 11s，显式放宽超时（不改变断言规模与生产逻辑）
-    const { svc } = makeService(newRoot(), 1, '主')
-    const gid = svc.create('上限聊天室').gid!
-    const total = 2050
-    for (let i = 0; i < total; i++) {
-      svc.sendMessage(gid, `msg-${i}`)
+  it('聊天室消息上限：默认 2000，超限裁剪旧消息（用小上限验证裁剪语义）', () => {
+    // 2000 是产品硬上限；裁剪算法本身用 maxMessages=5 验证。
+    // 存储是整文件原子覆写（load→splice→save），逐条写 2050 次是 O(n²) 重 I/O，
+    // 耗时取决于磁盘与杀软，既拖慢全量套件又容易撞全局超时；小上限覆盖同一条裁剪分支。
+    expect(CHAT_ROOM_MESSAGE_MAX).toBe(2000)
+    const store = new ChatRoomChatStore(newRoot(), 5)
+    const gid = 'cap-room'
+    for (let i = 0; i < 6; i++) {
+      store.append(gid, { id: `cap-${i}`, gid, from: 1, text: `msg-${i}`, ts: i })
     }
-    const msgs = svc.messages(gid)
-    expect(msgs).toHaveLength(2000)
-    expect(msgs[0].text).toBe('msg-50')
-    expect(msgs[1999].text).toBe('msg-2049')
-  }, 60000)
+    const msgs = store.load(gid)
+    expect(msgs).toHaveLength(5)
+    expect(msgs[0].text).toBe('msg-1')
+    expect(msgs[msgs.length - 1].text).toBe('msg-5')
+  })
 
 it('聊天室信息与消息落盘为 JSON 文件（federation/chat-rooms/ 下）', () => {
     const root = newRoot()

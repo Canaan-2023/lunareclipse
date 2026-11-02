@@ -84,7 +84,7 @@ export function InternalSessionConfigSection() {
                 {t('settings.summaryBudgetCharsDesc')}
                 {saveState === 'saved' && <span className="ml-2 text-accent">✓</span>}
                 {saveState === 'error' && (
-                  <span className="ml-2 text-red-400" title={errorMsg ?? ''}>✗</span>
+                  <span className="ml-2 text-danger" title={errorMsg ?? ''}>✗</span>
                 )}
               </div>
             </Field>
@@ -105,7 +105,7 @@ export function InternalSessionConfigSection() {
                 {t('settings.routePreviewTurnPairsDesc')}
                 {saveState === 'saved' && <span className="ml-2 text-accent">✓</span>}
                 {saveState === 'error' && (
-                  <span className="ml-2 text-red-400" title={errorMsg ?? ''}>✗</span>
+                  <span className="ml-2 text-danger" title={errorMsg ?? ''}>✗</span>
                 )}
               </div>
             </Field>

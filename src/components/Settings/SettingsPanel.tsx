@@ -8,6 +8,7 @@ import { useState, useEffect, useRef } from 'react'
 import { X, KeyRound, Database, Gauge, Server, Activity, Layers, Cat, Lock, Network, Webhook, Folder, MessageSquare, Languages, Share2, Wand2, ShieldCheck } from 'lucide-react'
 import type { AppConfig } from '@shared/types'
 import { useAppStore } from '../../stores/appStore'
+import { Modal } from '../Modal'
 import { AiChatSection } from './AiChatSection'
 import { GenerationSection } from './GenerationSection'
 import { useT } from '../../i18n/useT'
@@ -67,18 +68,6 @@ export function SettingsPanel() {
     // 关闭再打开会读到最新值。
   }, [open])
 
-  // Esc 关闭：设置是模态遮罩层，键盘用户应能用 Esc 退出（侧边栏/浏览器标签等
-  // 面板均有同一惯例，缺了它就等于键盘无法关闭遮罩）。焦点在面板内 input 时
-  // 也需响应，所以挂 window 级 keydown 而非遮罩的 onKeyDown。
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') useAppStore.getState().closeSettings()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
-
   if (!open) return null
 
   const handleSave = async () => {
@@ -125,11 +114,15 @@ export function SettingsPanel() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="flex max-h-[88vh] w-[720px] flex-col rounded-window border border-border bg-bg-surface">
+    <Modal
+      open
+      onClose={closeSettings}
+      labelledBy="settings-modal-title"
+      cardClassName="flex max-h-[88vh] w-[720px] flex-col rounded-window border border-border bg-bg-surface"
+    >
         {/* 标题栏 */}
         <div className="flex items-center justify-between border-b border-border-subtle px-6 py-4">
-          <h2 className="text-title font-medium text-fg-primary">{t('settings.title')}</h2>
+          <h2 id="settings-modal-title" className="text-title font-medium text-fg-primary">{t('settings.title')}</h2>
           <div className="flex items-center gap-3">
             {/* 语言切换 */}
             <div className="flex items-center gap-1 rounded-btn border border-border-subtle bg-bg-elevated p-0.5">
@@ -150,8 +143,8 @@ export function SettingsPanel() {
             </div>
             <button
               onClick={closeSettings}
-              aria-label="关闭设置"
-              title="关闭"
+              aria-label={t('settings.closeSettings')}
+              title={t('common.close')}
               className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-fg-primary active:scale-95"
             >
               <X size={14} />
@@ -359,7 +352,7 @@ export function SettingsPanel() {
         <div className="flex items-center justify-between border-t border-border-subtle px-6 py-4">
           <div className="text-caption text-fg-muted">
             {saveError ? (
-              <span className="text-red-500" role="alert">{saveError}</span>
+              <span className="text-danger" role="alert">{saveError}</span>
             ) : (
               t('settings.saveHint')
             )}
@@ -379,7 +372,6 @@ export function SettingsPanel() {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -103,7 +103,7 @@ export function ModeMenu() {
           <span
             role="img"
             aria-label={t('mode.auto.running')}
-            className="status-breath inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400"
+            className="status-breath inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-success"
           />
         )}
         <span>{t(currentMode.labelKey)}</span>
@@ -169,7 +169,7 @@ export function ModeMenu() {
                   <span
                     role="img"
                     aria-label={t('mode.auto.running')}
-                    className="status-breath inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400"
+                    className="status-breath inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-success"
                   />
                 )}
               </div>

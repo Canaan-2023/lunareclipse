@@ -7,6 +7,7 @@
  * 对应 AppState 中 sandbox* 字段与 sandbox* / initSandboxStreams actions。
  */
 import type { CodeSandboxResult } from '../../../electron/main/tools/code-sandbox'
+import { getDictEntry } from '../../i18n/locales'
 import type { AppState } from '../appStore-types'
 import {
   SANDBOX_FALLBACK_TIMEOUT_MS,
@@ -79,10 +80,15 @@ export function createSandboxSlice(set: SliceSet, get: SliceGet): SandboxSlice {
     sandboxRun: async () => {
       const api = window.lunareclipse
       if (!api?.codeRunStream) return
+      const lang = get().lang ?? 'zh'
+      const t = (key: string, vars?: Record<string, string | number>): string => {
+        const text = getDictEntry(key)?.[lang] ?? key
+        return vars ? text.replace(/\{([^{}]+)\}/g, (whole, name: string) => (Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : whole)) : text
+      }
       const { sandboxLanguage, sandboxCode, sandboxRunning } = get()
       if (sandboxRunning) return
       if (!sandboxCode.trim()) {
-        set({ sandboxOutput: '[错误] 代码不能为空', sandboxResult: null })
+        set({ sandboxOutput: t('storemsg.sandbox.emptyCode'), sandboxResult: null })
         return
       }
       set({
@@ -101,7 +107,7 @@ export function createSandboxSlice(set: SliceSet, get: SliceGet): SandboxSlice {
           s.sandboxRunning
             ? {
                 sandboxRunning: false,
-                sandboxOutput: s.sandboxOutput + '\n[超时] 执行状态丢失，已复位（代码可能仍在后台运行）\n'
+                sandboxOutput: s.sandboxOutput + t('storemsg.sandbox.timeoutReset')
               }
             : {}
         )
@@ -111,7 +117,7 @@ export function createSandboxSlice(set: SliceSet, get: SliceGet): SandboxSlice {
       } catch (err) {
         if (wsRuntime.sandboxRunFallbackTimer) { clearTimeout(wsRuntime.sandboxRunFallbackTimer); wsRuntime.sandboxRunFallbackTimer = undefined }
         set((s) => ({
-          sandboxOutput: s.sandboxOutput + `[执行失败] ${(err as Error).message}\n`,
+          sandboxOutput: s.sandboxOutput + t('storemsg.sandbox.execFailed', { error: (err as Error).message }),
           sandboxRunning: false
         }))
       }
@@ -125,6 +131,11 @@ export function createSandboxSlice(set: SliceSet, get: SliceGet): SandboxSlice {
     initSandboxStreams: () => {
       const api = window.lunareclipse
       if (!api?.onCodeStream) return () => {}
+      const lang = get().lang ?? 'zh'
+      const t = (key: string, vars?: Record<string, string | number>): string => {
+        const text = getDictEntry(key)?.[lang] ?? key
+        return vars ? text.replace(/\{([^{}]+)\}/g, (whole, name: string) => (Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : whole)) : text
+      }
 
       const unsubscribe = api.onCodeStream({
         onStdout: (chunk: string) => {
@@ -141,7 +152,11 @@ export function createSandboxSlice(set: SliceSet, get: SliceGet): SandboxSlice {
             sandboxResult: result,
             // 末尾追加结果摘要
             sandboxOutput: s.sandboxOutput +
-              `\n[完成] 耗时 ${result.durationMs}ms${result.timedOut ? ' (超时)' : ''}${result.ok ? '' : ' 失败'}\n`
+              t('storemsg.sandbox.doneSummary', {
+                duration: result.durationMs,
+                timeout: result.timedOut ? t('storemsg.sandbox.doneTimeout') : '',
+                fail: result.ok ? '' : t('storemsg.sandbox.doneFailed')
+              })
           }))
           // 推送到主进程 workspace-state，供 AI 下一轮上下文注入
           if (runInfo) {

@@ -11,6 +11,7 @@ import {
   Share2, ZoomIn, ZoomOut, RotateCcw, AlertTriangle, CircleStop
 } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
+import { useT } from '../../i18n/useT'
 import type { BrowserHistoryEntry } from '../../../electron/main/tools/browser-view-manager'
 import { formatDateTime } from '../../utils/time'
 
@@ -47,6 +48,7 @@ export function BrowserPanel() {
   const sidebarWidth = useAppStore((s) => s.sidebarWidth)
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed)
   const activeDrawer = useAppStore((s) => s.activeDrawer)
+  const t = useT()
 
   const [urlInput, setUrlInput] = useState('')
   const [showHistory, setShowHistory] = useState(false)
@@ -159,7 +161,7 @@ export function BrowserPanel() {
         // 截图失败（视图未显示/页面销毁/主进程异常）时提示具体原因，避免按钮点后无任何反应。
         // 作用：失败横幅高度计入顶部布局预留（shotExtra），保证渲染在 WebContentsView 之上可见。
         // 不删的理由：无此反馈用户只能盲点，无法判断是视图还是主进程问题。
-        setShotError(res?.error || '截图失败，请重试')
+        setShotError(res?.error || t('panelui.browser.shotFailed'))
         return
       }
       // 走到这说明 ok=true（screenshot 返回类型为准联合：ok 分支必带 data），
@@ -177,7 +179,7 @@ export function BrowserPanel() {
       setActiveRightPanel('chat')
       await sendMessage('')
     } catch (err) {
-      setShotError((err as Error).message || '截图失败，请重试')
+      setShotError((err as Error).message || t('panelui.browser.shotFailed'))
     } finally {
       setShotBusy(false)
     }
@@ -187,9 +189,8 @@ export function BrowserPanel() {
   const handleSharePage = async () => {
     if (!url) return
     const text = browserTitle
-      ? `网页分享：${browserTitle}
-${url}`
-      : `网页分享：${url}`
+      ? t('panelui.browser.shareTextWithTitle', { title: browserTitle, url })
+      : t('panelui.browser.shareText', { url })
     setActiveRightPanel('chat')
     await sendMessage(text)
   }
@@ -206,11 +207,11 @@ ${url}`
       if (res?.ok) {
         const result = res.data?.result
         const text = result === undefined
-          ? '(无返回值)'
+          ? t('panelui.browser.noReturnValue')
           : typeof result === 'string' ? result : JSON.stringify(result, null, 2)
         setEvalResult(text)
       } else {
-        setEvalError(res?.error ?? '执行失败')
+        setEvalError(res?.error ?? t('panelui.browser.evalFailed'))
       }
     } catch (err) {
       setEvalError((err as Error).message)
@@ -229,8 +230,8 @@ ${url}`
         <button
           onClick={() => closeTab('browser')}
           className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-          title="关闭浏览器标签（Esc）"
-          aria-label="关闭浏览器标签"
+          title={t('panelui.browser.closeTabTitle')}
+          aria-label={t('panelui.browser.closeTab')}
         >
           <X size={14} />
         </button>
@@ -239,8 +240,8 @@ ${url}`
         <button
           onClick={() => void back()}
           className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary disabled:opacity-30"
-          title="后退"
-          aria-label="后退"
+          title={t('panelui.browser.back')}
+          aria-label={t('panelui.browser.back')}
           disabled={!canGoBack}
         >
           <ArrowLeft size={14} />
@@ -248,8 +249,8 @@ ${url}`
         <button
           onClick={() => void forward()}
           className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary disabled:opacity-30"
-          title="前进"
-          aria-label="前进"
+          title={t('panelui.browser.forward')}
+          aria-label={t('panelui.browser.forward')}
           disabled={!canGoForward}
         >
           <ArrowRight size={14} />
@@ -257,8 +258,8 @@ ${url}`
         <button
           onClick={() => void window.lunareclipse?.browserReload?.()}
           className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-          title="刷新当前页"
-          aria-label="刷新当前页"
+          title={t('panelui.browser.refresh')}
+          aria-label={t('panelui.browser.refresh')}
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </button>
@@ -268,8 +269,8 @@ ${url}`
           <button
             onClick={() => void window.lunareclipse?.browserStop?.()}
             className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-            title="停止加载"
-            aria-label="停止加载"
+            title={t('panelui.browser.stopLoading')}
+            aria-label={t('panelui.browser.stopLoading')}
           >
             <CircleStop size={13} />
           </button>
@@ -279,8 +280,8 @@ ${url}`
         <button
           onClick={() => void navigate('https://www.baidu.com')}
           className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-          title="打开百度搜索"
-          aria-label="打开百度搜索"
+          title={t('panelui.browser.openBaidu')}
+          aria-label={t('panelui.browser.openBaidu')}
         >
           <Search size={14} />
         </button>
@@ -304,7 +305,7 @@ ${url}`
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="输入 URL 或搜索关键词..."
+              placeholder={t('panelui.browser.urlPlaceholder')}
               className="w-full rounded-btn border border-border bg-bg-elevated pl-7 pr-7 py-1.5 text-caption text-fg-primary placeholder:text-fg-muted focus:border-accent focus:outline-none"
             />
           </div>
@@ -312,7 +313,7 @@ ${url}`
             type="submit"
             className="rounded-btn bg-accent px-3 py-1.5 text-caption text-accent-fg hover:bg-accent/90"
           >
-            访问
+            {t('panelui.browser.go')}
           </button>
         </form>
 
@@ -321,8 +322,8 @@ ${url}`
           <button
             onClick={() => void window.lunareclipse?.browserZoomStep?.(-0.1)}
             className="flex h-5 w-5 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-bg-muted hover:text-fg-primary"
-            title="网页缩小（Ctrl+-）"
-            aria-label="网页缩小"
+            title={t('panelui.browser.zoomOutTitle')}
+            aria-label={t('panelui.browser.zoomOut')}
           >
             <ZoomOut size={12} />
           </button>
@@ -335,10 +336,10 @@ ${url}`
             className="flex h-5 min-w-10 items-center justify-center gap-0.5 rounded-md px-1 text-[11px] tabular-nums text-fg-secondary transition-colors hover:bg-bg-muted hover:text-fg-primary"
             title={
               browserZoomMode === 'auto'
-                ? `网页分辨率自适应（${Math.round(browserZoom * 100)}%），点击固定当前比例`
-                : `网页手动 ${Math.round(browserZoom * 100)}%，点击恢复自适应`
+                ? t('panelui.browser.zoomAutoTitle', { pct: Math.round(browserZoom * 100) })
+                : t('panelui.browser.zoomManualTitle', { pct: Math.round(browserZoom * 100) })
             }
-            aria-label="网页缩放比例，点击切换自适应与手动"
+            aria-label={t('panelui.browser.zoomAria')}
           >
             {browserZoomMode === 'auto' && <RotateCcw size={9} />}
             {Math.round(browserZoom * 100)}%
@@ -346,8 +347,8 @@ ${url}`
           <button
             onClick={() => void window.lunareclipse?.browserZoomStep?.(0.1)}
             className="flex h-5 w-5 items-center justify-center rounded-md text-fg-muted transition-colors hover:bg-bg-muted hover:text-fg-primary"
-            title="网页放大（Ctrl+=）"
-            aria-label="网页放大"
+            title={t('panelui.browser.zoomInTitle')}
+            aria-label={t('panelui.browser.zoomIn')}
           >
             <ZoomIn size={12} />
           </button>
@@ -358,16 +359,16 @@ ${url}`
           <button
             onClick={() => void scroll('up', 500)}
             className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-            title="向上滚动 500px"
-            aria-label="向上滚动 500px"
+            title={t('panelui.browser.scrollUp')}
+            aria-label={t('panelui.browser.scrollUp')}
           >
             <ArrowUp size={13} />
           </button>
           <button
             onClick={() => void scroll('down', 500)}
             className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-            title="向下滚动 500px"
-            aria-label="向下滚动 500px"
+            title={t('panelui.browser.scrollDown')}
+            aria-label={t('panelui.browser.scrollDown')}
           >
             <ArrowDown size={13} />
           </button>
@@ -375,8 +376,8 @@ ${url}`
             onClick={() => void handleScreenshotSend()}
             disabled={shotBusy}
             className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary disabled:opacity-30 disabled:cursor-not-allowed"
-            title="截图并发送到当前会话"
-            aria-label="截图并发送到当前会话"
+            title={t('panelui.browser.screenshotSend')}
+            aria-label={t('panelui.browser.screenshotSend')}
           >
             {shotBusy ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />}
           </button>
@@ -384,8 +385,8 @@ ${url}`
             onClick={() => void handleSharePage()}
             disabled={!url}
             className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary disabled:opacity-30 disabled:cursor-not-allowed"
-            title="分享当前网页到会话"
-            aria-label="分享当前网页到会话"
+            title={t('panelui.browser.sharePage')}
+            aria-label={t('panelui.browser.sharePage')}
           >
             <Share2 size={13} />
           </button>
@@ -394,8 +395,8 @@ ${url}`
             className={`flex h-7 w-7 items-center justify-center rounded-btn ${
               showEval ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:bg-bg-muted hover:text-fg-primary'
             }`}
-            title="执行 JavaScript"
-            aria-label="执行 JavaScript"
+            title={t('panelui.browser.runJs')}
+            aria-label={t('panelui.browser.runJs')}
           >
             <Code size={13} />
           </button>
@@ -404,8 +405,8 @@ ${url}`
             className={`flex h-7 w-7 items-center justify-center rounded-btn ${
               showHistory ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:bg-bg-muted hover:text-fg-primary'
             }`}
-            title="操作历史"
-            aria-label="操作历史"
+            title={t('panelui.browser.history')}
+            aria-label={t('panelui.browser.history')}
           >
             <History size={13} />
           </button>
@@ -415,21 +416,21 @@ ${url}`
       {/* 截图失败横幅：位于工具栏正下方，高度计入 browserSetLayout 的 shotExtra，
           保证原生 WebContentsView 预留出本行空间，横幅始终可见可点击。 */}
       {shotError && (
-        <div className="flex items-center gap-2 border-b border-red-500/20 bg-red-500/10 px-3 py-1 text-caption text-red-400">
+        <div className="flex items-center gap-2 border-b border-danger/20 bg-danger/10 px-3 py-1 text-caption text-danger">
           <AlertTriangle size={12} className="shrink-0" />
           <span className="flex-1 truncate">{shotError}</span>
           <button
             onClick={() => void handleScreenshotSend()}
             disabled={shotBusy}
-            className="shrink-0 rounded-btn bg-red-500/15 px-2 py-0.5 text-[11px] text-red-400 transition-colors hover:bg-red-500/25 disabled:opacity-40"
+            className="shrink-0 rounded-btn bg-danger/15 px-2 py-0.5 text-[11px] text-danger transition-colors hover:bg-danger/25 disabled:opacity-40"
           >
-            重试
+            {t('panelui.browser.retry')}
           </button>
           <button
             onClick={() => setShotError(null)}
-            className="shrink-0 rounded p-0.5 text-red-400/70 transition-colors hover:bg-red-500/15 hover:text-red-400"
-            title="关闭提示"
-            aria-label="关闭截图失败提示"
+            className="shrink-0 rounded p-0.5 text-danger/70 transition-colors hover:bg-danger/15 hover:text-danger"
+            title={t('panelui.browser.dismissHint')}
+            aria-label={t('panelui.browser.dismissShotError')}
           >
             <X size={11} />
           </button>
@@ -441,13 +442,13 @@ ${url}`
         <div
           className="border-b border-border-subtle bg-bg-surface px-3 py-2"
         >
-          <div className="text-caption text-fg-muted mb-1">在浏览器页面执行 JavaScript：</div>
+          <div className="text-caption text-fg-muted mb-1">{t('panelui.browser.evalHint')}</div>
           <div className="flex gap-2">
             <input
               type="text"
               value={evalScript}
               onChange={(e) => setEvalScript(e.target.value)}
-              placeholder="例如：document.title 或 location.href"
+              placeholder={t('panelui.browser.evalPlaceholder')}
               className="flex-1 rounded-btn border border-border bg-bg-elevated px-3 py-1.5 text-caption font-mono text-fg-primary placeholder:text-fg-muted focus:border-accent focus:outline-none"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -460,11 +461,11 @@ ${url}`
               disabled={!evalScript.trim() || evalRunning}
               className="rounded-btn bg-accent px-3 py-1.5 text-caption text-accent-fg hover:bg-accent/90 disabled:opacity-40"
             >
-              {evalRunning ? '...' : '执行'}
+              {evalRunning ? '...' : t('panelui.browser.exec')}
             </button>
           </div>
           {evalError && (
-            <div className="mt-1.5 rounded bg-red-500/10 px-2 py-1 text-caption text-red-400 font-mono break-all max-h-32 overflow-y-auto">
+            <div className="mt-1.5 rounded bg-danger/10 px-2 py-1 text-caption text-danger font-mono break-all max-h-32 overflow-y-auto">
               {evalError}
             </div>
           )}
@@ -482,7 +483,7 @@ ${url}`
           className="bg-accent/10 border-b border-accent/30 px-3 py-1.5 text-caption text-accent flex items-center gap-2"
         >
           <Loader2 size={11} className="animate-spin" />
-          <span className="font-medium">AI 正在{actionLabel(currentAction.action)}:</span>
+          <span className="font-medium">{t('panelui.browser.aiDoing', { action: t(actionLabel(currentAction.action)) })}</span>
           <span className="text-fg-secondary truncate flex-1">{currentAction.detail}</span>
         </div>
       )}
@@ -497,7 +498,7 @@ ${url}`
           <div className="sticky top-0 bg-bg-surface px-3 py-2 border-b border-border-subtle flex items-center justify-between">
             <div className="text-caption font-medium text-fg-primary flex items-center gap-1.5">
               <History size={11} />
-              操作历史
+              {t('panelui.browser.history')}
               <span className="text-fg-muted">({history.length})</span>
             </div>
             <button
@@ -511,8 +512,8 @@ ${url}`
             {history.length === 0 ? (
               <div className="px-3 py-6 text-center text-caption text-fg-muted">
                 <Globe size={20} className="mx-auto mb-1.5 opacity-40" />
-                还没有操作记录
-                <div className="mt-1 text-[10px]">让 AI 调用浏览器工具，或输入 URL 导航</div>
+                {t('panelui.browser.emptyHistory')}
+                <div className="mt-1 text-[10px]">{t('panelui.browser.emptyHistoryHint')}</div>
               </div>
             ) : (
               history.map((entry) => <HistoryItem key={entry.id} entry={entry} />)
@@ -529,7 +530,7 @@ ${url}`
         >
           <ChevronUp size={11} />
           <History size={11} />
-          {history.length} 条操作历史
+          {t('panelui.browser.historyCount', { n: history.length })}
         </button>
       )}
     </div>
@@ -538,45 +539,46 @@ ${url}`
 
 function actionLabel(action: string): string {
   const labels: Record<string, string> = {
-    navigate: '导航',
-    click: '点击',
-    type: '输入',
-    scroll: '滚动',
-    snapshot: '获取页面结构',
-    screenshot: '截图',
-    evaluate: '执行 JS',
-    close: '关闭'
+    navigate: 'panelui.browser.action.navigate',
+    click: 'panelui.browser.action.click',
+    type: 'panelui.browser.action.type',
+    scroll: 'panelui.browser.action.scroll',
+    snapshot: 'panelui.browser.action.snapshot',
+    screenshot: 'panelui.browser.action.screenshot',
+    evaluate: 'panelui.browser.action.evaluate',
+    close: 'panelui.browser.action.close'
   }
   return labels[action] ?? action
 }
 
 function HistoryItem({ entry }: { entry: BrowserHistoryEntry }) {
+  const t = useT()
   const time = formatDateTime(entry.timestamp)
   const isOk = entry.result === 'success'
 
   return (
     <div
       className={`px-3 py-1.5 border-b border-border-subtle/50 hover:bg-bg-muted/30 ${
-        isOk ? '' : 'bg-red-500/5'
+        isOk ? '' : 'bg-danger/5'
       }`}
     >
       <div className="flex items-center gap-2">
         <span
           className={`inline-block h-1.5 w-1.5 rounded-full shrink-0 ${
-            isOk ? 'bg-emerald-400' : 'bg-red-400'
+            isOk ? 'bg-success' : 'bg-danger'
           }`}
         />
         <span className="text-[10px] text-fg-muted font-mono shrink-0">{time}</span>
         <span className="text-caption font-medium text-fg-primary shrink-0">
-          {actionLabel(entry.action)}
+          {t(actionLabel(entry.action))}
         </span>
         <span className="text-[10px] text-fg-muted ml-auto shrink-0">{entry.durationMs}ms</span>
       </div>
       <div className="text-caption text-fg-secondary mt-0.5 truncate font-mono">
-        {entry.detail || '(无参数)'}
+        {entry.detail || t('panelui.browser.noArgs')}
       </div>
       {!isOk && entry.errorMessage && (
-        <div className="text-[11px] text-red-400 mt-0.5 truncate">{entry.errorMessage}</div>
+        <div className="text-[11px] text-danger mt-0.5 truncate">{entry.errorMessage}</div>
       )}
     </div>
   )

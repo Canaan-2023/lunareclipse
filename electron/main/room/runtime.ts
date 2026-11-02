@@ -139,7 +139,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
    */
   let pendingStandbyMs: number | null = null
   /**
-   * 本轮 park 后是否**立刻**接下一轮（0.54.0 用户裁决：规划 ↔ 主AI 交替循环，不要节拍器）。
+   * 本轮 park 后是否**立刻**接下一轮（0.54.1 用户裁决：规划 ↔ 主AI 交替循环，不要节拍器）。
    * 由 `onResult` 在「没有动作、还没有待处理输入、AI 也没声明 standbyMs」时置位，
    * `onDriveEnd` 消费一次就地重新激活——中间没有任何定时器。
    */
@@ -262,7 +262,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
   }
 
   /**
-   * 默认续跑（0.54.0 用户裁决）：**不设节拍器**。一轮结束立刻接下一轮（前置规划 → 主AI），
+   * 默认续跑（0.54.1 用户裁决）：**不设节拍器**。一轮结束立刻接下一轮（前置规划 → 主AI），
    * 唯一的等待来源是 AI 自己声明的 `standbyMs`（`onResult` / 手动 tick 的待机分支）。
    */
   const loop: AutonomousLoop = createAutonomousLoop({
@@ -453,7 +453,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
       return decision
     },
     /**
-     * 每个动作执行完都入一条事件流（0.54.0 用户反馈「他做的事情没有进输出框」）：loop 只发一条
+     * 每个动作执行完都入一条事件流（0.54.2 用户反馈「他做的事情没有进输出框」）：loop 只发一条
      * `执行：N 个动作`，这里逐条补上 AI 自己写的 description + 成败——不额外调模型，不改变执行链路。
      */
     execute: async (d: ExecutorDecision): Promise<ExecutorResult> => {
@@ -492,7 +492,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
         pendingStandbyMs = null
         standby(ms)
       } else if (!r.acted && !hasPendingInput()) {
-        // 没有显式待机 = **立刻**接下一轮（0.54.0 用户裁决：不要节拍器）。
+        // 没有显式待机 = **立刻**接下一轮（0.54.1 用户裁决：不要节拍器）。
         // **只在驱动真的要 park 时置位**（`!acted && !有用户消息` 正是 loop.drive 的 break 条件）：
         // 本轮有实质动作时驱动会自己接着跑下一轮；还有用户消息待消费时也由驱动接上。
         // 例外：`no-input` / `busy` 是本轮根本没拿到输入（采集接线坏了）或上一轮还没收尾——接下一轮只会空转。
@@ -533,7 +533,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
         activate()
         return
       }
-      // 无节拍器（0.54.0 用户裁决）：本轮 park 后**立刻**接下一轮（前置规划 → 主AI 交替），
+      // 无节拍器（0.54.1 用户裁决）：本轮 park 后**立刻**接下一轮（前置规划 → 主AI 交替），
       // 不排任何定时器；唯一让房间等一等的是 AI 自己声明的 standbyMs。
       if (chainNext) {
         chainNext = false
@@ -675,7 +675,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
         // 一次「立即行动」不该让房间在后台自己醒来。
         if (!wasStopped) standby(ms)
       } else if (!wasStopped) {
-        // 手动「立即行动」也要把交替链接上（0.54.0）：否则点一次动一下就停，所谓自主循环不成立。
+        // 手动「立即行动」也要把交替链接上（0.54.1）：否则点一次动一下就停，所谓自主循环不成立。
         // 从 stopped 发起的一次性动作不续跑——用户没开自主。
         // 走到这里说明本轮没声明 standbyMs（声明了会走上一支），此刻相位就是 running，无需再判。
         if (hostSessionId) activate()
@@ -748,7 +748,7 @@ export function createRoomRuntime(deps: RoomRuntimeDeps): RoomRuntime {
       if (hostSessionId) {
         deps.appendHostTurn?.(hostSessionId, { role: 'user', content: text, at: now() })
       }
-      // 输出框（直播输出带）里也要看得见用户自己的话（0.54.0 用户反馈）：
+      // 输出框（直播输出带）里也要看得见用户自己的话（0.54.1 用户反馈）：
       // 此前用户消息只写承载会话、不进事件环，房间输出带只剩 AI 的动静，
       // 表现为「我输入的话不在输出框里」。入环后与本轮事件同一条流、同款持久化。
       pushEvent({ phase: 'idle', ts: now(), detail: `你：${text}` })

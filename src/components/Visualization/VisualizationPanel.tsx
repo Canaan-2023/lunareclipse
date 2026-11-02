@@ -7,6 +7,8 @@
 import { useEffect, useState } from 'react'
 import { X, RefreshCw, Activity, Terminal, Database, ShieldCheck, Boxes } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
+import { useVisibleInterval } from '../../hooks/useVisibleInterval'
+import { useT } from '../../i18n/useT'
 import { MemoryWorkflowTab } from './MemoryWorkflowTab'
 import { MemoryTab } from './memoryTab'
 import { LogTab } from './logTab'
@@ -23,14 +25,13 @@ export function VisualizationPanel() {
   const refresh = useAppStore((s) => s.refreshVisualization)
   const workflowLog = useAppStore((s) => s.workflowLog)
   const [tab, setTab] = useState<Tab>('workflow')
+  const t = useT()
 
-  // 打开时启动 5s 轮询，关闭时停止
+  // 打开时立即刷新一次；轮询交给 useVisibleInterval（窗口隐藏时暂停，恢复可见立即补刷）
   useEffect(() => {
-    if (!open) return
-    void refresh()
-    const timer = setInterval(() => void refresh(), 5000)
-    return () => clearInterval(timer)
+    if (open) void refresh()
   }, [open, refresh])
+  useVisibleInterval(() => void refresh(), 5000, open)
 
   // 浏览器 view 显隐已由 appStore.syncBrowserVisibility 统一控制（setVizPanelOpen 时调用）：
   // 监控面板打开 → overlay=true + browserHide()；关闭 → 恢复浏览器标签显隐。
@@ -69,20 +70,20 @@ export function VisualizationPanel() {
       >
         {/* 标题栏 */}
         <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3">
-          <h2 className="text-title font-medium text-fg-primary">监控可视化</h2>
+          <h2 className="text-title font-medium text-fg-primary">{t('vizui.panel.title')}</h2>
           <div className="flex items-center gap-2">
             <button
               onClick={() => void refresh()}
               disabled={loading}
               className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary disabled:opacity-50"
-              title="刷新"
+              title={t('vizui.panel.refresh')}
             >
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             </button>
             <button
               onClick={close}
-              aria-label="关闭可视化"
-              title="关闭"
+              aria-label={t('vizui.panel.closeAria')}
+              title={t('vizui.panel.close')}
               className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
             >
               <X size={14} />
@@ -93,16 +94,16 @@ export function VisualizationPanel() {
         {/* Tab 栏 */}
         <nav className="flex border-b border-border-subtle">
           {([{
-            id: 'workflow' as Tab, label: '记忆工作流', icon: Activity
+            id: 'workflow' as Tab, labelKey: 'vizui.panel.tab.workflow', icon: Activity
           }, {
-            id: 'memory' as Tab, label: '记忆系统', icon: Database
+            id: 'memory' as Tab, labelKey: 'vizui.panel.tab.memory', icon: Database
           }, {
-            id: 'log' as Tab, label: '运行日志', icon: Terminal
+            id: 'log' as Tab, labelKey: 'vizui.panel.tab.log', icon: Terminal
           }, {
-            id: 'health' as Tab, label: '健康检查', icon: ShieldCheck
+            id: 'health' as Tab, labelKey: 'vizui.health.title', icon: ShieldCheck
           }, {
-            id: 'modules' as Tab, label: '模块监控', icon: Boxes
-          }]).map(({ id, label, icon: Icon }) => (
+            id: 'modules' as Tab, labelKey: 'vizui.modules.title', icon: Boxes
+          }]).map(({ id, labelKey, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -113,7 +114,7 @@ export function VisualizationPanel() {
               }`}
             >
               <Icon size={12} />
-              {label}
+              {t(labelKey)}
             </button>
           ))}
         </nav>

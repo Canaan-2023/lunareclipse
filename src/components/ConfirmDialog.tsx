@@ -70,9 +70,9 @@ export function ConfirmDialog({
         {/* 标题栏 */}
         <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
           {icon ? (
-            <span className={`shrink-0 ${danger ? 'text-red-400' : 'text-accent'}`}>{icon}</span>
+            <span className={`shrink-0 ${danger ? 'text-danger' : 'text-accent'}`}>{icon}</span>
           ) : (
-            <span className={`h-2 w-2 shrink-0 rounded-full ${danger ? 'bg-red-400' : 'bg-accent'}`} />
+            <span className={`h-2 w-2 shrink-0 rounded-full ${danger ? 'bg-danger' : 'bg-accent'}`} />
           )}
           <span className="flex-1 truncate text-caption font-medium text-fg-primary">{title}</span>
           <button
@@ -103,7 +103,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             className={`rounded-btn px-3 py-1.5 text-caption font-medium transition-colors ${
               danger
-                ? 'bg-red-500/90 text-white hover:bg-red-500'
+                ? 'bg-danger/90 text-white hover:bg-danger'
                 : 'bg-accent text-accent-fg hover:bg-accent-hover'
             }`}
           >

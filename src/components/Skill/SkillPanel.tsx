@@ -8,13 +8,14 @@ import { useEffect, useState, useMemo } from 'react'
 import { X, GraduationCap, RefreshCw, ArrowLeft, Loader2, AlertTriangle, Power, Zap, EyeOff, Clock, Hash, Store, Trash2, Folder, Upload } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useSkillStore } from '../../stores/skillStore'
+import { useT, type TFunc } from '../../i18n/useT'
 import type { SkillMetadata, SkillRuntimeStatus } from '../../../electron/main/skills'
 import { MarkdownRenderer } from '../Chat/MarkdownRenderer'
 import { MarketTab } from './MarketTab'
 
 const SOURCE_LABELS: Record<string, string> = {
-  user: '用户级',
-  domain: '领域级'
+  user: 'panelui.skill.source.user',
+  domain: 'panelui.skill.source.domain'
 }
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -23,13 +24,13 @@ const SOURCE_COLORS: Record<string, string> = {
 }
 
 /** 格式化时间戳为相对时间 */
-function formatRelativeTime(ts: number | null): string {
-  if (!ts) return '从未使用'
+function formatRelativeTime(ts: number | null, t: TFunc): string {
+  if (!ts) return t('panelui.skill.neverUsed')
   const diff = Date.now() - ts
-  if (diff < 60_000) return '刚刚'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
-  return `${Math.floor(diff / 86_400_000)} 天前`
+  if (diff < 60_000) return t('panelui.skill.justNow')
+  if (diff < 3_600_000) return t('panelui.skill.minutesAgo', { n: Math.floor(diff / 60_000) })
+  if (diff < 86_400_000) return t('panelui.skill.hoursAgo', { n: Math.floor(diff / 3_600_000) })
+  return t('panelui.skill.daysAgo', { n: Math.floor(diff / 86_400_000) })
 }
 
 /**
@@ -43,6 +44,7 @@ function formatRelativeTime(ts: number | null): string {
 export function SkillPanel() {
   const open = useAppStore((s) => s.activeDrawer === 'skill' && !s.vizPanelOpen && !s.settingsOpen)
   const closeDrawer = useAppStore((s) => s.closeDrawer)
+  const t = useT()
 
   const skills = useSkillStore((s) => s.skills)
   const currentSkill = useSkillStore((s) => s.currentSkill)
@@ -73,7 +75,7 @@ const init = useSkillStore((s) => s.init)
   if (!open) return null
 
   const handleDelete = async (name: string, _source: string) => {
-    if (!confirm(`删除技能「${name}」？\n此操作不可撤销，技能目录及其所有文件将被永久删除。`)) return
+    if (!confirm(t('panelui.skill.deleteConfirm', { name }))) return
     const ok = await deleteSkill(name)
     if (ok) void reloadSkills()
   }
@@ -88,10 +90,10 @@ const init = useSkillStore((s) => s.init)
       const res = await window.lunareclipse.skill.marketUpload()
       if (!res.ok) {
         // 用户主动取消目录选择不是错误，不打扰；其余失败如实提示
-        if (res.error !== '已取消选择目录') setUploadError(res.error ?? '上传失败')
+        if (res.error !== '已取消选择目录') setUploadError(res.error ?? t('panelui.skill.uploadFailed'))
         return
       }
-      setUploadNotice(`✅ ${res.name} 已上传到技能商场${res.lint && res.lint.errors > 0 ? '（有 lint 错误）' : ''}`)
+      setUploadNotice(t('panelui.skill.uploadSuccess', { name: res.name ?? '', lint: res.lint && res.lint.errors > 0 ? t('panelui.skill.lintWarn') : '' }))
       void useSkillStore.getState().refresh()
     } finally {
       setUploading(false)
@@ -107,10 +109,10 @@ const init = useSkillStore((s) => s.init)
     try {
       const res = await window.lunareclipse.skill.marketUploadByName(name)
       if (!res.ok) {
-        setUploadError(res.error ?? `上传 ${name} 失败`)
+        setUploadError(res.error ?? t('panelui.skill.uploadNameFailed', { name }))
         return
       }
-      setUploadNotice(`✅ ${res.name} 已上传到技能商场${res.lint && res.lint.errors > 0 ? '（有 lint 错误）' : ''}`)
+      setUploadNotice(t('panelui.skill.uploadSuccess', { name: res.name ?? '', lint: res.lint && res.lint.errors > 0 ? t('panelui.skill.lintWarn') : '' }))
       void useSkillStore.getState().refresh()
     } finally {
       setUploadName(null)
@@ -130,8 +132,8 @@ const init = useSkillStore((s) => s.init)
             <button
               onClick={clearCurrent}
               className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-fg-primary active:scale-95"
-              title="返回列表"
-              aria-label="返回列表"
+              title={t('panelui.skill.backToList')}
+              aria-label={t('panelui.skill.backToList')}
             >
               <ArrowLeft size={14} />
             </button>
@@ -149,7 +151,7 @@ const init = useSkillStore((s) => s.init)
           )}
           {/* 错误数量 */}
           {!currentSkill && loadErrors.length > 0 && (
-            <span className="flex items-center gap-0.5 rounded-full bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-400" title={`${loadErrors.length} 个 SKILL 加载失败`}>
+            <span className="flex items-center gap-0.5 rounded-full bg-danger/10 px-1.5 py-0.5 text-[10px] text-danger" title={t('panelui.skill.loadErrorsTitle', { n: loadErrors.length })}>
               <AlertTriangle size={9} />
               {loadErrors.length}
             </span>
@@ -162,10 +164,10 @@ const init = useSkillStore((s) => s.init)
               className={`flex h-7 items-center gap-1 rounded-btn px-2 text-caption transition-colors ${
                 view === 'market' ? 'bg-accent/15 text-accent' : 'text-fg-muted hover:bg-bg-muted hover:text-fg-primary'
               }`}
-              title={view === 'market' ? '返回 SKILL 列表' : '打开 SKILL 市场'}
+              title={view === 'market' ? t('panelui.skill.backToSkillList') : t('panelui.skill.openMarket')}
             >
               <Store size={12} />
-              {view === 'market' ? '列表' : '市场'}
+              {view === 'market' ? t('panelui.skill.list') : t('panelui.skill.market')}
             </button>
           )}
           {/* 上传到技能商场（列表/市场视图均可用，须选含 SKILL.md 的本地目录） */}
@@ -174,10 +176,10 @@ const init = useSkillStore((s) => s.init)
               onClick={() => void handleUpload()}
               disabled={uploading}
               className="flex h-7 items-center gap-1 rounded-btn px-2 text-caption text-fg-muted transition-colors hover:bg-bg-muted hover:text-fg-primary disabled:opacity-40 disabled:cursor-not-allowed"
-              title="从列表上传到技能商场"
+              title={t('panelui.skill.uploadFromList')}
             >
               {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-              上传
+              {t('panelui.skill.upload')}
             </button>
           )}
           {/* 手动重载（强制重新扫描） */}
@@ -185,8 +187,8 @@ const init = useSkillStore((s) => s.init)
             onClick={() => void reloadSkills()}
             disabled={loading}
             className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-fg-primary disabled:opacity-30"
-            title="强制重载所有 SKILL"
-            aria-label="强制重载所有 SKILL"
+            title={t('panelui.skill.forceReload')}
+            aria-label={t('panelui.skill.forceReload')}
           >
             {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
           </button>
@@ -194,8 +196,8 @@ const init = useSkillStore((s) => s.init)
           <button
             onClick={() => closeDrawer()}
             className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-fg-primary active:scale-95"
-            title="关闭"
-            aria-label="关闭"
+            title={t('panelui.skill.close')}
+            aria-label={t('panelui.skill.close')}
           >
             <X size={14} />
           </button>
@@ -203,13 +205,14 @@ const init = useSkillStore((s) => s.init)
 
         {/* 错误提示 */}
         {error && (
-          <div className="flex items-center gap-2 border-b border-red-500/20 bg-red-500/10 px-3 py-2 text-caption text-red-400">
+          <div className="flex items-center gap-2 border-b border-danger/20 bg-danger/10 px-3 py-2 text-caption text-danger">
             <AlertTriangle size={12} className="shrink-0" />
             <span className="flex-1">{error}</span>
             <button
               onClick={clearError}
               className="flex h-4 w-4 items-center justify-center rounded text-fg-muted hover:text-fg-primary"
-              title="清除错误"
+              title={t('panelui.skill.clearError')}
+              aria-label={t('panelui.skill.clearError')}
             >
               <X size={10} />
             </button>
@@ -218,13 +221,14 @@ const init = useSkillStore((s) => s.init)
 
         {/* 上传失败提示 */}
         {uploadError && (
-          <div className="flex items-center gap-2 border-b border-red-500/20 bg-red-500/10 px-3 py-2 text-caption text-red-400">
+          <div className="flex items-center gap-2 border-b border-danger/20 bg-danger/10 px-3 py-2 text-caption text-danger">
             <AlertTriangle size={12} className="shrink-0" />
             <span className="flex-1">{uploadError}</span>
             <button
               onClick={() => setUploadError('')}
               className="flex h-4 w-4 items-center justify-center rounded text-fg-muted hover:text-fg-primary"
-              title="清除错误"
+              title={t('panelui.skill.clearError')}
+              aria-label={t('panelui.skill.clearError')}
             >
               <X size={10} />
             </button>
@@ -233,12 +237,12 @@ const init = useSkillStore((s) => s.init)
 
         {/* 上传成功提示 */}
         {uploadNotice && (
-          <div className="flex items-center gap-2 border-b border-green-500/20 bg-green-500/10 px-3 py-2 text-caption text-green-400">
+          <div className="flex items-center gap-2 border-b border-success/20 bg-success/10 px-3 py-2 text-caption text-success">
             <span className="flex-1">{uploadNotice}</span>
             <button
               onClick={() => setUploadNotice('')}
               className="flex h-4 w-4 items-center justify-center rounded text-fg-muted hover:text-fg-primary"
-              title="关闭"
+              title={t('panelui.skill.close')}
             >
               <X size={10} />
             </button>
@@ -262,8 +266,8 @@ const init = useSkillStore((s) => s.init)
                     <button
                       onClick={() => void handleDelete(currentSkill.name, currentSkill.source)}
                       className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-muted transition-colors hover:bg-danger-soft hover:text-danger"
-                      title="删除技能"
-                      aria-label="删除技能"
+                      title={t('panelui.skill.deleteSkill')}
+                      aria-label={t('panelui.skill.deleteSkill')}
                     >
                       <Trash2 size={11} />
                     </button>
@@ -277,7 +281,7 @@ const init = useSkillStore((s) => s.init)
                     className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${
                       currentSkill.runtime.enabled ? 'bg-accent' : 'bg-bg-muted border border-border-subtle'
                     }`}
-                    title={currentSkill.runtime.enabled ? '点击禁用' : '点击启用'}
+                    title={currentSkill.runtime.enabled ? t('panelui.skill.clickDisable') : t('panelui.skill.clickEnable')}
                   >
                     <span
                       className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
@@ -290,63 +294,63 @@ const init = useSkillStore((s) => s.init)
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   {/* 来源 */}
                   <span className={`rounded-full px-2 py-0.5 text-[10px] ${SOURCE_COLORS[currentSkill.source] ?? SOURCE_COLORS.domain}`}>
-                    {SOURCE_LABELS[currentSkill.source] ?? currentSkill.source}
+                    {t(SOURCE_LABELS[currentSkill.source] ?? currentSkill.source)}
                   </span>
                   {/* 领域（领域级） */}
                   {currentSkill.source === 'domain' && currentSkill.domain && (
-                    <span className="flex items-center gap-0.5 rounded-full bg-accent/5 px-2 py-0.5 text-[10px] text-accent/80" title={`领域（文件夹）: ${currentSkill.domain}`}>
+                    <span className="flex items-center gap-0.5 rounded-full bg-accent/5 px-2 py-0.5 text-[10px] text-accent/80" title={t('panelui.skill.domainFolder', { domain: currentSkill.domain })}>
                       <Folder size={9} />
                       {currentSkill.domain}
                     </span>
                   )}
                   {/* 自动触发状态 */}
                   {currentSkill.runtime.enabled && !currentSkill.disableModelInvocation ? (
-                    <span className="flex items-center gap-0.5 rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] text-green-400" title="AI 可自动触发">
+                    <span className="flex items-center gap-0.5 rounded-full bg-success/10 px-2 py-0.5 text-[10px] text-success" title={t('panelui.skill.autoTriggerable')}>
                       <Zap size={9} />
-                      自动触发
+                      {t('panelui.skill.autoTrigger')}
                     </span>
                   ) : currentSkill.disableModelInvocation ? (
-                    <span className="flex items-center gap-0.5 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-400" title="禁用 AI 自动触发">
+                    <span className="flex items-center gap-0.5 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] text-warning" title={t('panelui.skill.autoTriggerDisabled')}>
                       <Power size={9} />
-                      禁用自动
+                      {t('panelui.skill.autoDisabled')}
                     </span>
                   ) : null}
                   {/* 用户可见性 */}
                   {currentSkill.userInvocable === false && (
-                    <span className="flex items-center gap-0.5 rounded-full bg-bg-muted px-2 py-0.5 text-[10px] text-fg-muted" title="用户菜单不可见">
+                    <span className="flex items-center gap-0.5 rounded-full bg-bg-muted px-2 py-0.5 text-[10px] text-fg-muted" title={t('panelui.skill.userMenuHidden')}>
                       <EyeOff size={9} />
-                      隐藏
+                      {t('panelui.skill.hidden')}
                     </span>
                   )}
                   {/* 执行上下文 */}
                   {currentSkill.context === 'fork' && (
-                    <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-400" title="子 agent 隔离执行">
+                    <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-400" title={t('panelui.skill.forkTitle')}>
                       fork
                     </span>
                   )}
                   {/* 工具白名单 */}
                   {currentSkill.allowedTools && currentSkill.allowedTools.length > 0 && (
-                    <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-400" title={`工具白名单: ${currentSkill.allowedTools.join(', ')}`}>
-                      {currentSkill.allowedTools.length} 工具
+                    <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-400" title={t('panelui.skill.allowedTools', { tools: currentSkill.allowedTools.join(', ') })}>
+                      {t('panelui.skill.toolCount', { n: currentSkill.allowedTools.length })}
                     </span>
                   )}
                   {/* 路径自动激活 */}
                   {currentSkill.paths && currentSkill.paths.length > 0 && (
-                    <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-[10px] text-teal-400" title={`路径匹配: ${currentSkill.paths.join(', ')}`}>
-                      {currentSkill.paths.length} 路径
+                    <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] text-success" title={t('panelui.skill.pathMatch', { paths: currentSkill.paths.join(', ') })}>
+                      {t('panelui.skill.pathCount', { n: currentSkill.paths.length })}
                     </span>
                   )}
                 </div>
                 {/* 使用统计 */}
                 {statusMap.get(currentSkill.name) && (
                   <div className="mt-2 flex items-center gap-3 text-[10px] text-fg-muted">
-                    <span className="flex items-center gap-0.5" title="使用次数">
+                    <span className="flex items-center gap-0.5" title={t('panelui.skill.useCount')}>
                       <Hash size={9} />
                       {statusMap.get(currentSkill.name)?.useCount ?? 0}
                     </span>
-                    <span className="flex items-center gap-0.5" title="最后使用时间">
+                    <span className="flex items-center gap-0.5" title={t('panelui.skill.lastUsed')}>
                       <Clock size={9} />
-                      {formatRelativeTime(statusMap.get(currentSkill.name)?.lastUsedAt ?? null)}
+                      {formatRelativeTime(statusMap.get(currentSkill.name)?.lastUsedAt ?? null, t)}
                     </span>
                   </div>
                 )}
@@ -354,15 +358,15 @@ const init = useSkillStore((s) => s.init)
               {/* 正文（Markdown 渲染，复用 Chat 的 MarkdownRenderer） */}
               {currentSkill.body
                 ? <div className="text-body leading-relaxed text-fg-secondary"><MarkdownRenderer content={currentSkill.body} /></div>
-                : <div className="px-3 py-8 text-center text-caption text-fg-muted">（无正文）</div>}
+                : <div className="px-3 py-8 text-center text-caption text-fg-muted">{t('panelui.skill.noBody')}</div>}
             </div>
           ) : (
             // ===== 列表视图 =====
             <div className="px-2 py-2">
               {skills.length === 0 && !loading ? (
                 <div className="px-3 py-8 text-center text-caption text-fg-muted">
-                  暂无 SKILL
-                  <div className="mt-1 text-fg-muted/70">在 skills 目录下创建 SKILL.md 即可</div>
+                  {t('panelui.skill.empty')}
+                  <div className="mt-1 text-fg-muted/70">{t('panelui.skill.emptyHint')}</div>
                 </div>
               ) : (
                 <SkillListGroups
@@ -378,12 +382,12 @@ const init = useSkillStore((s) => s.init)
               {/* 加载错误列表 */}
               {loadErrors.length > 0 && (
                 <div className="mt-3 border-t border-border-subtle px-2 pt-3">
-                  <div className="mb-2 flex items-center gap-1 text-[10px] uppercase tracking-wider text-red-400">
+                  <div className="mb-2 flex items-center gap-1 text-[10px] uppercase tracking-wider text-danger">
                     <AlertTriangle size={10} />
-                    加载错误（{loadErrors.length}）
+                    {t('panelui.skill.loadErrors', { n: loadErrors.length })}
                   </div>
                   {loadErrors.map((err, idx) => (
-                    <div key={idx} className="mb-1 rounded-btn bg-red-500/5 px-2 py-1.5 text-[10px] text-red-400">
+                    <div key={idx} className="mb-1 rounded-btn bg-danger/5 px-2 py-1.5 text-[10px] text-danger">
                       <div className="truncate font-mono">{err.filePath.split(/[\\/]/).pop()}</div>
                       <div className="mt-0.5 text-fg-muted">{err.error}</div>
                     </div>
@@ -419,17 +423,18 @@ function SkillListGroups({
   onDelete: (name: string, source: string) => void
   onUploadByName: (name: string) => void
 }) {
+  const t = useT()
   const groups = useMemo(() => {
     const userSkills = skills.filter((s) => s.source === 'user')
     const domainSkills = skills.filter((s) => s.source === 'domain')
     const domainMap = new Map<string, SkillMetadata[]>()
     for (const s of domainSkills) {
-      const d = s.domain ?? '其他'
+      const d = s.domain ?? t('panelui.skill.otherDomain')
       if (!domainMap.has(d)) domainMap.set(d, [])
       domainMap.get(d)!.push(s)
     }
     return { userSkills, domainMap }
-  }, [skills])
+  }, [skills, t])
 
   return (
     <>
@@ -437,7 +442,7 @@ function SkillListGroups({
       <div className="mb-3">
         <div className="mb-1.5 flex items-center gap-1 px-1 text-[10px] uppercase tracking-wider text-fg-muted">
           <span className={`rounded-full px-2 py-0.5 ${SOURCE_COLORS.user}`}>
-            {SOURCE_LABELS.user}
+            {t(SOURCE_LABELS.user)}
           </span>
           <span className="text-fg-muted/70">· {groups.userSkills.length}</span>
         </div>
@@ -455,7 +460,7 @@ function SkillListGroups({
             />
           ))
         ) : (
-          <div className="px-3 py-2 text-[10px] text-fg-muted/60">暂无用户级技能</div>
+          <div className="px-3 py-2 text-[10px] text-fg-muted/60">{t('panelui.skill.noUserSkills')}</div>
         )}
       </div>
 
@@ -463,7 +468,7 @@ function SkillListGroups({
       <div className="mb-3">
         <div className="mb-1.5 flex items-center gap-1 px-1 text-[10px] uppercase tracking-wider text-fg-muted">
           <span className={`rounded-full px-2 py-0.5 ${SOURCE_COLORS.domain}`}>
-            {SOURCE_LABELS.domain}
+            {t(SOURCE_LABELS.domain)}
           </span>
           <span className="text-fg-muted/70">· {groups.domainMap.size}</span>
         </div>
@@ -490,7 +495,7 @@ function SkillListGroups({
             </div>
           ))
         ) : (
-          <div className="px-3 py-2 text-[10px] text-fg-muted/60">暂无领域级技能</div>
+          <div className="px-3 py-2 text-[10px] text-fg-muted/60">{t('panelui.skill.noDomainSkills')}</div>
         )}
       </div>
     </>
@@ -515,6 +520,7 @@ function SkillListItem({
   onDelete: () => void
   onUpload: () => void
 }) {
+  const t = useT()
   const enabled = skill.runtime.enabled
   const canDelete = skill.source === 'user' || skill.source === 'domain'
   const canUpload = skill.source === 'user' || skill.source === 'domain'
@@ -537,23 +543,23 @@ function SkillListItem({
           </span>
           {/* 来源标签 */}
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${SOURCE_COLORS[skill.source] ?? SOURCE_COLORS.domain}`}>
-            {SOURCE_LABELS[skill.source] ?? skill.source}
+            {t(SOURCE_LABELS[skill.source] ?? skill.source)}
           </span>
           {/* 自动触发徽章 */}
           {enabled && !skill.disableModelInvocation && (
-            <span className="flex items-center gap-0.5 shrink-0 rounded-full bg-green-500/10 px-1.5 py-0.5 text-[10px] text-green-400" title="AI 可自动触发">
+            <span className="flex items-center gap-0.5 shrink-0 rounded-full bg-success/10 px-1.5 py-0.5 text-[10px] text-success" title={t('panelui.skill.autoTriggerable')}>
               <Zap size={8} />
             </span>
           )}
           {/* 禁用自动触发徽章 */}
           {skill.disableModelInvocation && (
-            <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400" title="禁用 AI 自动触发">
+            <span className="shrink-0 rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning" title={t('panelui.skill.autoTriggerDisabled')}>
               <Power size={8} />
             </span>
           )}
           {/* 隐藏徽章 */}
           {skill.userInvocable === false && (
-            <span className="shrink-0 rounded-full bg-bg-muted px-1.5 py-0.5 text-[10px] text-fg-muted" title="用户菜单不可见">
+            <span className="shrink-0 rounded-full bg-bg-muted px-1.5 py-0.5 text-[10px] text-fg-muted" title={t('panelui.skill.userMenuHidden')}>
               <EyeOff size={8} />
             </span>
           )}
@@ -565,8 +571,8 @@ function SkillListItem({
             <button
               onClick={(e) => { e.stopPropagation(); onDelete() }}
               className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-muted opacity-0 transition-opacity hover:bg-danger-soft hover:text-danger group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-              title="删除技能"
-              aria-label="删除技能"
+              title={t('panelui.skill.deleteSkill')}
+              aria-label={t('panelui.skill.deleteSkill')}
             >
               <Trash2 size={11} />
             </button>
@@ -577,8 +583,8 @@ function SkillListItem({
               onClick={(e) => { e.stopPropagation(); onUpload() }}
               disabled={uploadBusy}
               className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-muted opacity-0 transition-opacity hover:bg-accent-soft hover:text-accent disabled:opacity-50 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-              title={uploadBusy ? '上传中…' : '一键上传到技能市场'}
-              aria-label="上传到技能市场"
+              title={uploadBusy ? t('panelui.skill.uploading') : t('panelui.skill.uploadToMarket')}
+              aria-label={t('panelui.skill.uploadToMarketAria')}
             >
               {uploadBusy ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
             </button>
@@ -596,7 +602,7 @@ function SkillListItem({
           className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${
             enabled ? 'bg-accent' : 'bg-bg-muted border border-border-subtle'
           }`}
-          title={enabled ? '点击禁用' : '点击启用'}
+          title={enabled ? t('panelui.skill.clickDisable') : t('panelui.skill.clickEnable')}
         >
           <span
             className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
@@ -621,7 +627,7 @@ function SkillListItem({
             {status.lastUsedAt && (
               <span className="flex items-center gap-0.5">
                 <Clock size={8} />
-                {formatRelativeTime(status.lastUsedAt)}
+                {formatRelativeTime(status.lastUsedAt, t)}
               </span>
             )}
           </div>

@@ -36,8 +36,8 @@ interface ProgressView {
 const STATUS_BADGE: Record<RelayStatus, { key: string; cls: string }> = {
   uploading: { key: 'relay.status.uploading', cls: 'bg-accent/15 text-accent' },
   uploaded: { key: 'relay.status.uploaded', cls: 'bg-bg-muted text-fg-secondary' },
-  notified: { key: 'relay.status.notified', cls: 'bg-amber-500/15 text-amber-500' },
-  downloaded: { key: 'relay.status.downloaded', cls: 'bg-emerald-500/15 text-emerald-500' },
+  notified: { key: 'relay.status.notified', cls: 'bg-warning/15 text-warning' },
+  downloaded: { key: 'relay.status.downloaded', cls: 'bg-success/15 text-success' },
   expired: { key: 'relay.status.expired', cls: 'text-fg-muted/70' }
 }
 
@@ -309,7 +309,7 @@ function RelayRow({
   return (
     <div className="group mb-1 rounded-btn border border-border-subtle bg-bg-elevated/60 px-2.5 py-2">
       <div className="flex items-center gap-2">
-        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded ${item.kind === 'dir' ? 'bg-amber-500/10 text-amber-500' : 'bg-accent/10 text-accent'}`}>
+        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded ${item.kind === 'dir' ? 'bg-warning/10 text-warning' : 'bg-accent/10 text-accent'}`}>
           <KindIcon size={13} />
         </div>
         <div className="min-w-0 flex-1">
@@ -358,7 +358,7 @@ function RelayRow({
         <div className="mt-1.5">
           <div className="h-1 w-full overflow-hidden rounded-full bg-bg-muted">
             <div
-              className={`h-full rounded-full transition-all duration-300 ${progress.phase === 'download' ? 'bg-emerald-400' : 'bg-accent'}`}
+              className={`h-full rounded-full transition-all duration-300 ${progress.phase === 'download' ? 'bg-success' : 'bg-accent'}`}
               style={{ width: `${pct}%` }}
             />
           </div>

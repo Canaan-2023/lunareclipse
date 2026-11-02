@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Plus, Trash2, RefreshCw, Download, RotateCw, X, Store, AlertTriangle, CheckCircle2, Upload } from 'lucide-react'
 import { useSkillStore } from '../../stores/skillStore'
 import { useAppStore } from '../../stores/appStore'
+import { useT } from '../../i18n/useT'
 
 /**
  * SKILL 市场 tab：
@@ -38,7 +39,7 @@ interface MarketItem {
 }
 
 /** 方法论/用户级分组展示名（没有领域目录的技能归此） */
-const USER_LEVEL_GROUP = '方法论 · 用户级'
+const USER_LEVEL_GROUP = 'panelui.skill.market.userLevelGroup'
 
 interface Source {
   id: string
@@ -56,7 +57,7 @@ interface Source {
  * 让用户明白这是随安装包自带的仓库，可整体搬迁、他人可改造；
  * 留存理由——标识判断是分发的关键语义，删除后 UI 会退回显示机器相关字样或标识本体。
  */
-const BUILTIN_SOURCE_DISPLAY = '内置市场（随包分发，可改造）'
+const BUILTIN_SOURCE_DISPLAY = 'panelui.skill.market.builtinSource'
 
 /**
  * 源展示文本：内置源给可读文案，其余（用户添加的清单 URL/本地目录）显示原 url。
@@ -97,6 +98,7 @@ function renderMarketGroups(items: MarketItem[]): Array<{ label: string; items: 
 }
 
 export function MarketTab() {
+  const t = useT()
   const [items, setItems] = useState<MarketItem[]>([])
   const [sources, setSources] = useState<Source[]>([])
   const [loading, setLoading] = useState(false)
@@ -129,7 +131,7 @@ export function MarketTab() {
         window.lunareclipse.skill.marketSources()
       ])
       if (listRes.ok && listRes.items) setItems(listRes.items)
-      else setError(listRes.error ?? '加载市场失败')
+      else setError(listRes.error ?? t('panelui.skill.market.loadFailed'))
       if (srcRes.ok && srcRes.sources) setSources(srcRes.sources)
     } finally {
       setLoading(false)
@@ -143,9 +145,9 @@ export function MarketTab() {
 
   const addSource = async () => {
     setError('')
-    if (!sourceUrl.trim()) { setError('URL 不能为空'); return }
-    const res = await window.lunareclipse.skill.marketAddSource(sourceName.trim() || '自定义源', sourceUrl.trim())
-    if (!res.ok) { setError(res.error ?? '添加失败'); return }
+    if (!sourceUrl.trim()) { setError(t('panelui.skill.market.urlEmpty')); return }
+    const res = await window.lunareclipse.skill.marketAddSource(sourceName.trim() || t('panelui.skill.market.customSource'), sourceUrl.trim())
+    if (!res.ok) { setError(res.error ?? t('panelui.skill.market.addFailed')); return }
     setSourceName('')
     setSourceUrl('')
     setShowSource(false)
@@ -156,7 +158,7 @@ export function MarketTab() {
     // 移除市场源会从本地源清单删除条目，依赖该源的 skill 不再随同步更新，属不可逆配置变更。
     // 作用：给"移除源"加确认，防止误删后需重新填写 URL。
     // 不删的理由：与卸载 skill/删除定时任务等删除操作保持同一确认标准。
-    if (!confirm('移除该市场源？依赖它的 skill 将不再随同步更新。')) return
+    if (!confirm(t('panelui.skill.market.removeSourceConfirm'))) return
     await window.lunareclipse.skill.marketRemoveSource(id)
     void load()
   }
@@ -167,8 +169,8 @@ export function MarketTab() {
     setBusyName(item.name)
     try {
       const res = await window.lunareclipse.skill.marketInstall(item.name)
-      if (!res.ok) { setError(res.error ?? `安装 ${item.name} 失败`); return }
-      setNotice(`✅ ${item.name} 安装完成${res.lint && res.lint.errors > 0 ? '（有 lint 错误）' : ''}${res.config?.length ? '（含配置声明）' : ''}`)
+      if (!res.ok) { setError(res.error ?? t('panelui.skill.market.installFailed', { name: item.name })); return }
+      setNotice(t('panelui.skill.market.installDone', { name: item.name, lint: res.lint && res.lint.errors > 0 ? t('panelui.skill.lintWarn') : '', config: res.config?.length ? t('panelui.skill.market.hasConfig') : '' }))
       void load()
       // 重拉已装列表：市场安装/更新/卸载会写磁盘，已装 Tab 数据必须与主进程重新对齐
       void useSkillStore.getState().refresh()
@@ -181,8 +183,8 @@ export function MarketTab() {
     setBusyName(name)
     try {
       const res = await window.lunareclipse.skill.marketUpdate(name)
-      if (!res.ok) { setError(res.error ?? `更新 ${name} 失败`); return }
-      setNotice(`✅ ${name} 已更新`)
+      if (!res.ok) { setError(res.error ?? t('panelui.skill.market.updateFailed', { name })); return }
+      setNotice(t('panelui.skill.market.updated', { name }))
       void load()
       // 重拉已装列表：与安装/卸载保持一致，避免更新后已装 Tab 版本信息滞后
       void useSkillStore.getState().refresh()
@@ -195,12 +197,12 @@ export function MarketTab() {
     // 卸载 skill 会删除磁盘上的已安装文件，属不可逆操作，先确认再执行。
     // 作用：防止误点"卸载"丢失本地 skill 文件。
     // 不删的理由：与 Cron/日历/执行器等其他删除操作保持同一确认标准。
-    if (!confirm(`卸载 skill「${name}」？将从本地移除已安装的文件。`)) return
+    if (!confirm(t('panelui.skill.market.removeConfirm', { name }))) return
     setBusyName(name)
     try {
       const res = await window.lunareclipse.skill.marketRemove(name)
-      if (!res.ok) { setError(res.error ?? `卸载 ${name} 失败`); return }
-      setNotice(`🗑 ${name} 已卸载`)
+      if (!res.ok) { setError(res.error ?? t('panelui.skill.market.removeFailed', { name })); return }
+      setNotice(t('panelui.skill.market.removed', { name }))
       void load()
       // 重拉已装列表：卸载后已装 Tab 不能仍显示已被移除的技能
       void useSkillStore.getState().refresh()
@@ -218,9 +220,9 @@ export function MarketTab() {
     setError('')
     try {
       const res = await window.lunareclipse.skill.marketSync()
-      if (res.updated?.length) setNotice(`✅ 同步完成：更新 ${res.updated.length} 个`)
-      else if (res.errors?.length) setError(`同步部分失败：${res.errors.join('; ')}`)
-      else setNotice('✅ 全部已是最新')
+      if (res.updated?.length) setNotice(t('panelui.skill.market.syncDone', { n: res.updated.length }))
+      else if (res.errors?.length) setError(t('panelui.skill.market.syncPartial', { errors: res.errors.join('; ') }))
+      else setNotice(t('panelui.skill.market.syncAllFresh'))
     } finally {
       setSyncing(false)
       void load()
@@ -239,10 +241,10 @@ export function MarketTab() {
       const res = await window.lunareclipse.skill.marketUpload()
       if (!res.ok) {
         // 用户主动取消目录选择不是错误，不打扰；其余失败如实提示
-        if (res.error !== '已取消选择目录') setError(res.error ?? '上传失败')
+        if (res.error !== '已取消选择目录') setError(res.error ?? t('panelui.skill.uploadFailed'))
         return
       }
-      setNotice(`✅ ${res.name} 已上传到市场${res.lint && res.lint.errors > 0 ? '（有 lint 错误）' : ''}`)
+      setNotice(t('panelui.skill.market.uploadDone', { name: res.name ?? '', lint: res.lint && res.lint.errors > 0 ? t('panelui.skill.lintWarn') : '' }))
       // 上传会写入市场源/条目，列表与已装面板都应与主进程重新对齐
       void load()
       void useSkillStore.getState().refresh()
@@ -256,12 +258,12 @@ export function MarketTab() {
     // 删除是市场级不可逆操作（全网不再显示、需重新上传才能恢复），先确认再执行。
     // 作用：防止误点"删除"移除他人可用的市场技能；与卸载/删源保持同一确认标准。
     if (!item.canDelete) return
-    if (!confirm(`从市场删除 skill「${item.name}」？将从市场移除，其他终端同步生效。`)) return
+    if (!confirm(t('panelui.skill.market.unpublishConfirm', { name: item.name }))) return
     setBusyName(item.name)
     try {
       const res = await window.lunareclipse.skill.marketUnpublish(item.name)
-      if (!res.ok) { setError(res.error ?? `删除 ${item.name} 失败`); return }
-      setNotice(`🗑 ${item.name} 已从市场删除`)
+      if (!res.ok) { setError(res.error ?? t('panelui.skill.market.unpublishFailed', { name: item.name })); return }
+      setNotice(t('panelui.skill.market.unpublished', { name: item.name }))
       void load()
     } finally {
       setBusyName('')
@@ -274,54 +276,54 @@ export function MarketTab() {
       <div className="border-b border-border-subtle px-3 py-2">
         <div className="flex items-center gap-1.5">
           <Store size={13} className="text-accent shrink-0" />
-          <span className="text-caption font-medium text-fg-primary">市场</span>
+          <span className="text-caption font-medium text-fg-primary">{t('panelui.skill.market.title')}</span>
           <div className="flex-1" />
           <button
             onClick={() => void syncAll()}
             disabled={syncing}
             className="flex items-center gap-1 rounded-btn bg-bg-muted px-2 py-1 text-[11px] text-fg-secondary hover:bg-bg-muted/70 disabled:opacity-40 disabled:cursor-not-allowed"
-            title="同步所有已安装 skill（跳过本地修改的）"
+            title={t('panelui.skill.market.syncAllTitle')}
           >
             <RefreshCw size={11} className={syncing ? 'animate-spin' : ''} />
-            同步全部
+            {t('panelui.skill.market.syncAll')}
           </button>
           <button
             onClick={() => void load()}
             className="flex h-6 w-6 items-center justify-center rounded text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-            title="刷新"
-            aria-label="刷新市场"
+            title={t('panelui.skill.market.refresh')}
+            aria-label={t('panelui.skill.market.refreshAria')}
           >
             <RotateCw size={11} className={loading ? 'animate-spin' : ''} />
           </button>
           <button
             onClick={() => setShowSource(!showAddSource)}
             className="flex items-center gap-1 rounded-btn bg-accent/15 px-2 py-1 text-[11px] text-accent hover:bg-accent/25"
-            title="添加市场源"
+            title={t('panelui.skill.market.addSource')}
           >
             <Plus size={11} />
-            加源
+            {t('panelui.skill.market.addSourceShort')}
           </button>
           <button
             onClick={() => void upload()}
             disabled={uploading}
             className="flex items-center gap-1 rounded-btn bg-accent px-2 py-1 text-[11px] font-medium text-accent-fg hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="上传本机 SKILL 目录到市场（目录内须有 SKILL.md，上传后经局域网同步到在线对端）"
+            title={t('panelui.skill.market.uploadTitle')}
           >
             <Upload size={11} />
-            {uploading ? '上传中…' : '上传'}
+            {uploading ? t('panelui.skill.uploading') : t('panelui.skill.upload')}
           </button>
         </div>
         {/* 源列表 */}
         {sources.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
             {sources.map((s) => (
-              <span key={s.id} className="flex items-center gap-1 rounded bg-bg-muted px-1.5 py-0.5 text-[10px] text-fg-secondary" title={sourceDisplay(s.url)}>
+              <span key={s.id} className="flex items-center gap-1 rounded bg-bg-muted px-1.5 py-0.5 text-[10px] text-fg-secondary" title={t(sourceDisplay(s.url))}>
                 {s.name}
                 <button
                   onClick={() => void removeSource(s.id)}
                   className="text-fg-muted hover:text-danger"
-                  title="移除源"
-                  aria-label={`移除市场源 ${s.name}`}
+                  title={t('panelui.skill.market.removeSource')}
+                  aria-label={t('panelui.skill.market.removeSourceAria', { name: s.name })}
                 >
                   <X size={9} />
                 </button>
@@ -335,20 +337,20 @@ export function MarketTab() {
             <input
               value={sourceName}
               onChange={(e) => setSourceName(e.target.value)}
-              placeholder="源名称（如 community-skills）"
+              placeholder={t('panelui.skill.market.sourceNamePlaceholder')}
               className="w-full rounded-btn border border-border-subtle bg-bg-base px-2 py-1 text-caption text-fg-primary outline-none focus:border-accent"
             />
             <input
               value={sourceUrl}
               onChange={(e) => setSourceUrl(e.target.value)}
-              placeholder="清单 JSON URL / 本地目录"
+              placeholder={t('panelui.skill.market.sourceUrlPlaceholder')}
               className="w-full rounded-btn border border-border-subtle bg-bg-base px-2 py-1 text-caption text-fg-primary outline-none focus:border-accent"
             />
             <button
               onClick={() => void addSource()}
               className="w-full rounded-btn bg-accent py-1 text-caption font-medium text-accent-fg hover:bg-accent/90"
             >
-              添加
+              {t('panelui.skill.market.add')}
             </button>
           </div>
         )}
@@ -362,7 +364,7 @@ export function MarketTab() {
         </div>
       )}
       {error && (
-        <div className="flex items-center gap-1.5 border-b border-red-500/20 bg-red-500/10 px-3 py-1.5 text-[11px] text-red-400">
+        <div className="flex items-center gap-1.5 border-b border-danger/20 bg-danger/10 px-3 py-1.5 text-[11px] text-danger">
           <AlertTriangle size={11} />
           <span className="flex-1">{error}</span>
         </div>
@@ -372,11 +374,11 @@ export function MarketTab() {
       <div className="flex-1 overflow-y-auto p-2">
         {items.length === 0 ? (
           <div className="px-3 py-8 text-center text-caption text-fg-muted">
-            {loading ? '加载中…' : '暂无市场 skill'}
+            {loading ? t('panelui.skill.market.loading') : t('panelui.skill.market.empty')}
             <div className="mt-2 text-[11px] leading-relaxed">
-              点「加源」添加清单 URL 或本地目录
+              {t('panelui.skill.market.emptyHint1')}
               <br />
-              （本地目录需含 skills/ 目录或根 SKILL.md）
+              {t('panelui.skill.market.emptyHint2')}
             </div>
           </div>
         ) : (
@@ -384,7 +386,7 @@ export function MarketTab() {
             <div key={group.label} className="mb-3">
               <div className="mb-1 flex items-center gap-1.5 px-0.5">
                 <span className="text-[10px] font-medium uppercase tracking-wide text-fg-muted">
-                  {group.label}
+                  {t(group.label)}
                 </span>
                 <span className="text-[10px] text-fg-muted/50">({group.items.length})</span>
               </div>
@@ -394,18 +396,18 @@ export function MarketTab() {
                 <div className="flex min-w-0 items-center gap-1.5">
                   <span className="truncate text-caption font-medium text-fg-primary">{item.name}</span>
                   {item.domain && (
-                    <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[9px] text-accent" title={`领域（文件夹）：${item.domain}`}>
+                    <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[9px] text-accent" title={t('panelui.skill.market.domainFolder', { domain: item.domain })}>
                       {item.domain}
                     </span>
                   )}
                   {item.installed && (
-                    <span className="shrink-0 rounded-full bg-success/15 px-1.5 py-0.5 text-[9px] text-success">已装</span>
+                    <span className="shrink-0 rounded-full bg-success/15 px-1.5 py-0.5 text-[9px] text-success">{t('panelui.skill.market.installed')}</span>
                   )}
                   {item.hasUpdate && (
-                    <span className="shrink-0 rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] text-accent">有更新</span>
+                    <span className="shrink-0 rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] text-accent">{t('panelui.skill.market.hasUpdate')}</span>
                   )}
                   {item.userModified && (
-                    <span className="shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[9px] text-warning" title="已手动修改本 skill，更新会被跳过">本地修改</span>
+                    <span className="shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[9px] text-warning" title={t('panelui.skill.market.userModifiedTitle')}>{t('panelui.skill.market.userModified')}</span>
                   )}
                   {item.version && <span className="shrink-0 text-[10px] text-fg-muted/70">v{item.version}</span>}
                 </div>
@@ -418,11 +420,11 @@ export function MarketTab() {
                           // 本地修改过的 skill：主进程 update() 会拒绝（「已被本地修改，更新跳过」），
                           // 按钮必须禁用并解释，否则用户以为点了没反应是 bug
                           disabled={busyName !== '' || item.userModified}
-                          title={item.userModified ? '已手动修改，更新被跳过；如需更新请先重置本地修改' : undefined}
+                          title={item.userModified ? t('panelui.skill.market.userModifiedUpdateTitle') : undefined}
                           className="flex items-center gap-1 rounded-btn bg-accent/15 px-2 py-1 text-[10px] text-accent hover:bg-accent/25 disabled:opacity-40"
                         >
                           <RotateCw size={10} />
-                          {item.userModified ? '已修改' : busyName === item.name ? '更新中…' : '更新'}
+                          {item.userModified ? t('panelui.skill.market.modified') : busyName === item.name ? t('panelui.skill.market.updating') : t('panelui.skill.market.update')}
                         </button>
                       )}
                       <button
@@ -431,7 +433,7 @@ export function MarketTab() {
                         className="flex items-center gap-1 rounded-btn bg-danger/10 px-2 py-1 text-[10px] text-danger hover:bg-danger/20 disabled:opacity-40"
                       >
                         <Trash2 size={10} />
-                        {busyName === item.name ? '处理中…' : '卸载'}
+                        {busyName === item.name ? t('panelui.skill.market.processing') : t('panelui.skill.market.uninstall')}
                       </button>
                     </>
                   ) : (
@@ -441,7 +443,7 @@ export function MarketTab() {
                       className="flex items-center gap-1 rounded-btn bg-accent/15 px-2 py-1 text-[10px] text-accent hover:bg-accent/25 disabled:opacity-40"
                     >
                       <Download size={10} />
-                      {busyName === item.name ? '安装中…' : '安装'}
+                      {busyName === item.name ? t('panelui.skill.market.installing') : t('panelui.skill.market.install')}
                     </button>
                   )}
                   {/* 市场条目的删除入口：canDelete 由主进程按角色+条目归属判定
@@ -451,19 +453,19 @@ export function MarketTab() {
                       onClick={() => void unpublish(item)}
                       disabled={busyName !== ''}
                       className="flex items-center gap-1 rounded-btn bg-danger/10 px-2 py-1 text-[10px] text-danger hover:bg-danger/20 disabled:opacity-40"
-                      title="从市场删除（其他终端同步移除，需重新上传才能恢复）"
+                      title={t('panelui.skill.market.unpublishTitle')}
                     >
                       <X size={10} />
-                      {busyName === item.name ? '处理中…' : '删除'}
+                      {busyName === item.name ? t('panelui.skill.market.processing') : t('panelui.skill.market.delete')}
                     </button>
                   )}
                 </div>
               </div>
               <div className="mt-1 text-[11px] leading-relaxed text-fg-muted">
-                {item.description || '（无描述）'}
+                {item.description || t('panelui.skill.market.noDescription')}
               </div>
               <div className="mt-1 truncate text-[10px] text-fg-muted/50">
-                {item.subdir ? `${sourceDisplay(item.repo)}/${item.subdir}` : sourceDisplay(item.repo)}
+                {item.subdir ? `${t(sourceDisplay(item.repo))}/${item.subdir}` : t(sourceDisplay(item.repo))}
               </div>
                 </div>
               ))}

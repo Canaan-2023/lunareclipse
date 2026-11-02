@@ -17,12 +17,13 @@ import { MarkdownRenderer } from './MarkdownRenderer'
 import { RowRenderer } from './RowRenderer'
 import { ToolCallCard } from './ToolCallCard'
 import { TodoListCard, type TodoItem } from './TodoListCard'
-import { openFilePreview } from '../Workshop/FileWorkshopPanel'
+import { openFilePreview } from '../Workshop/filePreviewOpener'
 import { useAppStore } from '../../stores/appStore'
 import { formatDateTime } from '../../utils/time'
 import { copyText } from '../../utils/clipboard'
 import { useTransientTimer } from '../../hooks/useTransientTimer'
 import { parseSkillInvocation } from '../../utils/skillInvocation'
+import { useT } from '../../i18n/useT'
 
 /** 从 TodoWrite 工具调用的 result.data 中安全提取 todos */
 function extractTodos(data: unknown): TodoItem[] | null {
@@ -38,6 +39,7 @@ interface Props {
 
 export const MessageBubble = memo(
   function MessageBubble({ message }: Props) {
+    const t = useT()
 // 代码审查的触发消息（phaseMsg，内容前缀【代码审查】…）是驱动审查轮的内部指令，
     // 不该出现在对话流——审查发言本身已作为独立消息（渲染在用户侧）呈现。
     // 判定用 id 前缀而非内容前缀：phaseMsg 的 id 为 `${nextPhase}_${nextRound}_${Date.now()}`（后端 2441 行），
@@ -208,8 +210,8 @@ const recallMessage = useAppStore((s) => s.recallMessage)
         >
           {isUser ? (
             <>
-              <span className="rounded-full bg-accent/10 px-1.5 py-px text-[9px]">你</span>
-              <span>用户</span>
+              <span className="rounded-full bg-accent/10 px-1.5 py-px text-[9px]">{t('chatui.you')}</span>
+              <span>{t('chatui.user')}</span>
             </>
           ) : (
             <>
@@ -224,7 +226,7 @@ const recallMessage = useAppStore((s) => s.recallMessage)
           }`}
         >
           <Undo2 size={11} className="shrink-0 opacity-60" />
-          <span>{isUser ? '你撤回了一条消息' : 'AI 回复已撤回'}</span>
+          <span>{isUser ? t('chatui.youRecalled') : t('chatui.aiRecalled')}</span>
           {message.recalledAt && (
             <span className="opacity-50">
               {formatDateTime(message.recalledAt)}
@@ -266,22 +268,22 @@ const recallMessage = useAppStore((s) => s.recallMessage)
           isSystemInjected ? (
             <>
               <span className="rounded-full border border-dashed border-fg-muted/40 bg-bg-muted/60 px-1.5 py-px text-[9px]">
-                ⚙️ 系统
+                {t('chatui.systemBadge')}
               </span>
-              <span>系统注入</span>
+              <span>{t('chatui.systemInjected')}</span>
             </>
           ) : isReviewer ? (
             <>
-              <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-px text-[9px] text-amber-400">
-                ⚖️ 审查
+              <span className="rounded-full border border-warning/40 bg-warning/10 px-1.5 py-px text-[9px] text-warning">
+                {t('chatui.reviewBadge')}
               </span>
-              <span>代码审查</span>
-              <span className="text-fg-muted/60">· AI 独立轮次</span>
+              <span>{t('chatui.codeReview')}</span>
+              <span className="text-fg-muted/60">{t('chatui.aiIndependentRound')}</span>
             </>
           ) : (
             <>
-              <span className="rounded-full bg-accent/10 px-1.5 py-px text-[9px]">你</span>
-              <span>用户</span>
+              <span className="rounded-full bg-accent/10 px-1.5 py-px text-[9px]">{t('chatui.you')}</span>
+              <span>{t('chatui.user')}</span>
             </>
           )
         ) : (
@@ -311,8 +313,8 @@ const recallMessage = useAppStore((s) => s.recallMessage)
           <button
             onClick={jumpToSelf}
             className="mt-5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-fg-muted/40 transition-all duration-150 hover:bg-bg-muted hover:text-accent active:scale-90"
-            title="定位到这条消息"
-            aria-label="定位到这条消息"
+            title={t('chatui.locateMsgShort')}
+            aria-label={t('chatui.locateMsgShort')}
           >
             <span className="h-1.5 w-1.5 rounded-full bg-current" />
           </button>
@@ -380,11 +382,11 @@ const recallMessage = useAppStore((s) => s.recallMessage)
               <StreamingSkeleton />
             ) : null}
             {message.aborted && (
-              <span className="ml-1 text-caption text-fg-muted">[已终止]</span>
+              <span className="ml-1 text-caption text-fg-muted">{t('chatui.abortedTag')}</span>
             )}
             {message.error && (
-              <span className="ml-1 text-caption text-red-400">
-                [错误: {message.error}]
+              <span className="ml-1 text-caption text-danger">
+                {t('chatui.errorTag', { error: message.error })}
               </span>
             )}
           </div>
@@ -474,8 +476,8 @@ onPreviewFile={(path) => {
               <button
                 onClick={handleCopy}
                 className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-accent active:scale-90"
-                title="复制"
-                aria-label="复制"
+                title={t('chatui.copy')}
+                aria-label={t('chatui.copy')}
               >
                 {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
               </button>
@@ -485,16 +487,16 @@ onPreviewFile={(path) => {
                   <button
                     onClick={handleEdit}
                     className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-accent active:scale-90"
-                    title="编辑并重发"
-                    aria-label="编辑并重发"
+                    title={t('mode.indicator')}
+                    aria-label={t('mode.indicator')}
                   >
                     <Pencil size={12} />
                   </button>
                   <button
                     onClick={() => void recallMessage(message.id)}
                     className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-accent active:scale-90"
-                    title="撤回"
-                    aria-label="撤回"
+                    title={t('chatui.recall')}
+                    aria-label={t('chatui.recall')}
                   >
                     <Undo2 size={12} />
                   </button>
@@ -506,20 +508,20 @@ onPreviewFile={(path) => {
                   <button
                     onClick={() => void regenerateResponse(message.id)}
                     className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-accent active:scale-90"
-                    title="重新生成"
-                    aria-label="重新生成"
+                    title={t('chatui.regenerate')}
+                    aria-label={t('chatui.regenerate')}
                   >
                     <RefreshCw size={12} />
                   </button>
                   <button
                     onClick={() => {
                       // 删除消息会连配对消息一并落盘移除（含内部会话同步），无回收站，误触代价高，先确认再删
-                      if (!window.confirm('删除该消息将同时删除其配对的回复，且无法恢复。确定删除？')) return
+                      if (!window.confirm(t('chatui.deleteMsgConfirm'))) return
                       void deleteMessage(message.id)
                     }}
-                    className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-red-400 active:scale-90"
-                    title="删除"
-                    aria-label="删除"
+                    className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-danger active:scale-90"
+                    title={t('chatui.delete')}
+                    aria-label={t('chatui.delete')}
                   >
                     <Trash2 size={12} />
                   </button>
@@ -530,12 +532,12 @@ onPreviewFile={(path) => {
               {!isSystemInjected && (
                 <button
                   onClick={() => {
-                    if (!window.confirm('回退将删除该消息之后的所有消息（含 AI 内部会话），且无法恢复。确定回退至此？')) return
+                    if (!window.confirm(t('chatui.rewindConfirm'))) return
                     void rewindToMessage(message.id)
                   }}
                   className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-accent active:scale-90"
-                  title="回退至此"
-                  aria-label="回退至此"
+                  title={t('chatui.rewindHere')}
+                  aria-label={t('chatui.rewindHere')}
                 >
                   <History size={12} />
                 </button>
@@ -573,6 +575,7 @@ a.recalled === b.recalled &&
  * - 有 reasoning 时：reasoning 块自身有思考光标，这里只显示极简 shimmer 条
  */
 function StreamingSkeleton() {
+  const t = useT()
   return (
     <div className="flex flex-col gap-2 py-1">
       <div className="flex items-center gap-2 text-caption text-fg-muted">
@@ -580,7 +583,7 @@ function StreamingSkeleton() {
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent/40" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-accent/70" />
         </span>
-        <span>正在组织回复</span>
+        <span>{t('chatui.organizingReply')}</span>
       </div>
       <div className="space-y-1.5">
         <div className="h-2 w-48 animate-pulse rounded-full bg-bg-muted" />
@@ -609,6 +612,7 @@ function ReasoningBlock({
   hideWhenDone: boolean
 }) {
   // hooks 必须先声明（条件 return 后不能调用 useState）
+  const t = useT()
   const [expanded, setExpanded] = useState(false)
   // chat 模式：思考结束即消失
   if (hideWhenDone && !isThinking) return null
@@ -620,7 +624,7 @@ function ReasoningBlock({
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fg-muted/50" />
           <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-fg-muted/70" />
         </span>
-        <span className="text-[11px] text-fg-muted italic">思考中…</span>
+        <span className="text-[11px] text-fg-muted italic">{t('chatui.thinkingInProgress')}</span>
       </div>
     )
   }
@@ -630,11 +634,11 @@ function ReasoningBlock({
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-1.5 px-0.5 text-left hover:opacity-80 transition-opacity"
-        title={expanded ? '收起思考过程' : '展开思考过程'}
+        title={expanded ? t('chatui.collapseThinking') : t('chatui.expandThinking')}
       >
         <Brain size={10} className="shrink-0 text-fg-muted" />
         <span className="text-[10px] text-fg-muted">
-          思考 · {reasoning.length} 字
+          {t('chatui.thinkingChars', { n: reasoning.length })}
         </span>
         <ChevronDown
           size={10}

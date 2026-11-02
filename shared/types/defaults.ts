@@ -67,7 +67,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   llmActiveProfile: '',
   workflowLlmProfiles: {},
   workflowLlmActiveProfile: '',
-  theme: 'parchment',
+  // 默认主题「月蚀」：README / 产品视觉以月蚀为主；打包后的新装用户直接进入该主题
+  theme: 'eclipse',
   webSearchEnabled: true,
   rawMaxChars: 10000,
   bochaApiKey: '',

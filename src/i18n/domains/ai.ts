@@ -206,6 +206,9 @@ const dict = {
   'settings.toolResultDistillOn': { zh: '已开启', en: 'On' },
   'settings.toolResultDistillOff': { zh: '已关闭', en: 'Off' },
 
+  // ===== 提示词文件读取 =====
+  'ai.readFileFail': { zh: '读取文件失败', en: 'Failed to read file' },
+
 } satisfies Record<string, DictEntry>
 
 export default dict

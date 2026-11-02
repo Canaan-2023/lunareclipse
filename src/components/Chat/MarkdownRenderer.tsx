@@ -4,9 +4,10 @@
  * 作用：渲染轻量 Markdown——标题/列表/代码块/表格/链接/行内样式与流式生成光标。
  */
 import { memo, useMemo, useState, type ReactNode } from 'react'
-import { openFilePreview } from '../Workshop/FileWorkshopPanel'
+import { openFilePreview } from '../Workshop/filePreviewOpener'
 import { copyText } from '../../utils/clipboard'
 import { useTransientTimer } from '../../hooks/useTransientTimer'
+import { useT, type TFunc } from '../../i18n/useT'
 
 /**
  * 轻量 Markdown 渲染器（纯手写正则方案，无外部依赖）
@@ -116,9 +117,9 @@ function highlightCode(code: string, lang?: string): ReactNode[] {
     } else if (c0 === '`' || c0 === '"' || c0 === "'") {
       cls = 'text-success'
     } else if (c0 >= '0' && c0 <= '9') {
-      cls = 'text-amber-600'
+      cls = 'text-warning'
     } else if (LITERALS.includes(tok)) {
-      cls = 'text-amber-600'
+      cls = 'text-warning'
     } else if (keywords.includes(tok)) {
       cls = 'text-purple-500'
     } else {
@@ -188,7 +189,7 @@ function splitCodeBlocks(content: string): Part[] {
 // ==================== 行内 markdown ====================
 
 // 渲染行内 markdown（图片、链接、行内代码、粗体、斜体、删除线）
-function renderInline(text: string, keyPrefix: string): ReactNode[] {
+function renderInline(text: string, keyPrefix: string, t: TFunc): ReactNode[] {
   const nodes: ReactNode[] = []
   const regex =
     /(!\[[^\]]*\]\((?:data:|file:\/\/\/|https?:\/\/)[^)]+\)|\[[^\]]+\]\(file:\/\/\/[^)]+\)|\[[^\]]+\]\(https?:\/\/[^)]+\)|`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\*[^*]+\*)/g
@@ -203,7 +204,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
     if (token.startsWith('![')) {
       const imgMatch = token.match(/^!\[([^\]]*)\]\(((?:data:|file:\/\/\/|https?:\/\/)[^)]+)\)$/)
       if (imgMatch) {
-        const alt = imgMatch[1] || '图片'
+        const alt = imgMatch[1] || t('chatui.imageAlt')
         const url = imgMatch[2]
         if (url.startsWith('data:')) {
           // data: URL 被 CSP img-src 允许，直接内联渲染
@@ -227,7 +228,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
                 openFilePreview(url)
               }}
               className="cursor-pointer text-accent underline decoration-dotted underline-offset-2 hover:text-accent-hover"
-              title={`打开图片 ${url}`}
+              title={t('chatui.openImage', { url })}
             >
               🖼️ {alt}
             </a>
@@ -259,7 +260,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
               openFilePreview(linkMatch[2])
             }}
             className="cursor-pointer text-accent underline decoration-dotted underline-offset-2 hover:text-accent-hover"
-            title={`打开 ${linkMatch[2]}`}
+            title={t('chatui.openLink', { url: linkMatch[2] })}
           >
             {linkMatch[1]}
           </a>
@@ -340,16 +341,16 @@ function buildListTree(items: RawItem[]): ListNode[] {
   return root
 }
 
-function renderListTree(nodes: ListNode[], keyPrefix: string, ordered: boolean): ReactNode {
+function renderListTree(nodes: ListNode[], keyPrefix: string, ordered: boolean, t: TFunc): ReactNode {
   const Tag = ordered ? 'ol' : 'ul'
   const cls = ordered ? 'list-decimal' : 'list-disc'
   return (
     <Tag key={keyPrefix} className={`my-3 ml-5 ${cls} space-y-1.5`}>
       {nodes.map((node, i) => (
         <li key={i} className="text-body leading-relaxed">
-          {renderInline(node.content, `${keyPrefix}-i${i}`)}
+          {renderInline(node.content, `${keyPrefix}-i${i}`, t)}
           {node.children.length > 0 &&
-            renderListTree(node.children, `${keyPrefix}-c${i}`, node.children[0].ordered)}
+            renderListTree(node.children, `${keyPrefix}-c${i}`, node.children[0].ordered, t)}
         </li>
       ))}
     </Tag>
@@ -398,6 +399,7 @@ function renderTable(
   rows: string[][],
   alignments: Align[],
   keyPrefix: string,
+  t: TFunc,
 ): ReactNode {
   return (
     <div key={`${keyPrefix}-wrap`} className="my-3 overflow-x-auto">
@@ -411,7 +413,7 @@ function renderTable(
                   alignments[i],
                 )}`}
               >
-                {renderInline(cell, `${keyPrefix}-th${i}`)}
+                {renderInline(cell, `${keyPrefix}-th${i}`, t)}
               </th>
             ))}
           </tr>
@@ -424,7 +426,7 @@ function renderTable(
                   key={ci}
                   className={`border border-border-subtle px-3 py-1.5 ${alignClass(alignments[ci])}`}
                 >
-                  {renderInline(cell, `${keyPrefix}-td${ri}-${ci}`)}
+                  {renderInline(cell, `${keyPrefix}-td${ri}-${ci}`, t)}
                 </td>
               ))}
             </tr>
@@ -447,7 +449,7 @@ const headingClasses: Record<number, string> = {
 }
 
 // 渲染文本块（标题 H1-H6、列表、引用、表格、水平线、段落）
-function renderTextBlock(text: string, keyPrefix: string): ReactNode[] {
+function renderTextBlock(text: string, keyPrefix: string, t: TFunc): ReactNode[] {
   const lines = text.split('\n')
   const blocks: ReactNode[] = []
   let key = 0
@@ -470,7 +472,7 @@ function renderTextBlock(text: string, keyPrefix: string): ReactNode[] {
     if (currentGroup.length > 0) groups.push(currentGroup)
     for (const group of groups) {
       const tree = buildListTree(group)
-      blocks.push(renderListTree(tree, `${keyPrefix}-lst${key++}`, group[0].ordered))
+      blocks.push(renderListTree(tree, `${keyPrefix}-lst${key++}`, group[0].ordered, t))
     }
     listBuffer = []
   }
@@ -495,7 +497,7 @@ function renderTextBlock(text: string, keyPrefix: string): ReactNode[] {
       const cls = headingClasses[level] || headingClasses[6]
       blocks.push(
         <div key={`${keyPrefix}-h${key++}`} className={`my-3 ${cls}`}>
-          {renderInline(hMatch[2], `${keyPrefix}-h${key}`)}
+          {renderInline(hMatch[2], `${keyPrefix}-h${key}`, t)}
         </div>,
       )
       i++
@@ -526,7 +528,7 @@ function renderTextBlock(text: string, keyPrefix: string): ReactNode[] {
           key={`${keyPrefix}-bq${key++}`}
           className="my-3 border-l-[3px] border-border-subtle pl-3 py-1 text-fg-secondary"
         >
-          {renderTextBlock(quoteContent, `${keyPrefix}-bq${key}`)}
+          {renderTextBlock(quoteContent, `${keyPrefix}-bq${key}`, t)}
         </blockquote>,
       )
       continue
@@ -543,7 +545,7 @@ function renderTextBlock(text: string, keyPrefix: string): ReactNode[] {
         dataRows.push(parseTableRow(lines[i].trim()))
         i++
       }
-      blocks.push(renderTable(headerCells, dataRows, alignments, `${keyPrefix}-tbl${key++}`))
+      blocks.push(renderTable(headerCells, dataRows, alignments, `${keyPrefix}-tbl${key++}`, t))
       continue
     }
 
@@ -575,7 +577,7 @@ function renderTextBlock(text: string, keyPrefix: string): ReactNode[] {
     flushList()
     blocks.push(
       <p key={`${keyPrefix}-p${key++}`} className="my-3 text-body leading-relaxed">
-        {renderInline(trimmed, `${keyPrefix}-p${key}`)}
+        {renderInline(trimmed, `${keyPrefix}-p${key}`, t)}
       </p>,
     )
     i++
@@ -588,6 +590,7 @@ function renderTextBlock(text: string, keyPrefix: string): ReactNode[] {
 
 // 代码块组件：memo 化，code/lang 不变时不重渲染（内部 copied/collapsed 状态变化仍正常）
 const CodeBlock = memo(function CodeBlock({ code, lang, streaming }: { code: string; lang?: string; streaming?: boolean }) {
+  const t = useT()
   const [copied, setCopied] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   // 「已复制」提示「1.5 秒后自动消失」的计时器句柄（卸载清理 + 重复调度先取消）
@@ -617,13 +620,13 @@ const CodeBlock = memo(function CodeBlock({ code, lang, streaming }: { code: str
             onClick={() => setCollapsed((c) => !c)}
             className="text-xs text-fg-muted hover:text-fg-primary"
           >
-            {collapsed ? '展开' : '折叠'}
+            {collapsed ? t('chatui.expand') : t('chatui.collapse')}
           </button>
           <button
             onClick={onCopy}
             className="text-xs text-fg-muted hover:text-fg-primary"
           >
-            {copied ? '已复制' : '复制'}
+            {copied ? t('chatui.copied') : t('chatui.copy')}
           </button>
         </div>
       </div>
@@ -638,7 +641,8 @@ const CodeBlock = memo(function CodeBlock({ code, lang, streaming }: { code: str
 
 // 文本块组件：memo + useMemo，content 不变时不重新解析（避免流式输出 O(n²) 重解析）
 const TextBlock = memo(function TextBlock({ content, index }: { content: string; index: number }) {
-  const nodes = useMemo(() => renderTextBlock(content, `t${index}`), [content, index])
+  const t = useT()
+  const nodes = useMemo(() => renderTextBlock(content, `t${index}`, t), [content, index, t])
   return <div>{nodes}</div>
 })
 

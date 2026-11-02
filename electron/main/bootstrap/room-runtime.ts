@@ -349,7 +349,7 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
     const scope = { uid, aiId }
     const existing = getRoomRuntime(scope)
     if (existing) return existing
-    // ===== 房间轮 → 内部会话两写（0.54.0）=====
+    // ===== 房间轮 → 内部会话两写（0.54.2）=====
     // 为什么需要：房间轮此前只写展示层会话，路由每轮建/承接的内部会话**永远收不到消息**，
     // 摘要与超限继承也就永不推进（用户问「自主模式为什么无法落盘内部会话」即此）。
     // 两半来自不同回调：user 在规划前（`onUserMessage`）、assistant 在解析出 reply 后；
@@ -361,7 +361,7 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
     let roundInternalId: string | null = null
     const rt = createRoomRuntime({
       /**
-       * 采集（0.54.0 用户裁决）：**采集器不再决定「这一轮跑不跑」**。
+       * 采集（0.54.1 用户裁决）：**采集器不再决定「这一轮跑不跑」**。
        * 以前采集没数据且没有用户消息 → loop 直接判 `no-input` 结束，不调模型；于是循环实际
        * 由采集器/感知器驱动，规划与主AI的交替停在「有没有新视觉」上。
        * 现在没有采集输入时补一段**如实说明**（`synthetic`，不进上一轮对比），让本轮照常走
@@ -401,7 +401,7 @@ export function initRoomRuntime(state: AppState, deps: BootstrapDeps, opts: Room
           // 落盘失败不该打崩自主循环，但必须留痕（用户裁决：报错比兜底好）
           console.error('[room] 承载会话落盘失败:', (err as Error).message)
         }
-        // ===== 内部会话层两写（0.54.0）=====
+        // ===== 内部会话层两写（0.54.2）=====
         // 上一段只写**展示层**（用户在会话列表里看到的）；AI 的内部会话层（摘要/逆生树）
         // 此前一条都没有——路由每轮建/承接节点，但没有任何写入口，摘要与超限继承永不推进。
         // 这里补上：user 先缓存（规划前到达，此时还没有内部会话 id），assistant 到达时

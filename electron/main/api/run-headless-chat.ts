@@ -102,7 +102,7 @@ export interface HeadlessChatDeps {
    * 契约：`sessionContext` 为 null = 未启用 / 无路由（合法，调用方走线性管线）；
    * **抛错** = 真故障 → 调用方**不得吞掉**（让它上浮，别把故障静默降级成简陋上下文）。
    *
-   * `internalId`（0.54.0）：本轮路由/装载**落定**的内部会话 id（null = 未启用 / 线性管线）。
+   * `internalId`（0.54.2）：本轮路由/装载**落定**的内部会话 id（null = 未启用 / 线性管线）。
    * 为什么一并回传：房间轮要把人类可读的 user/reply 两写进 AI 的内部会话（与普通轮次同一队列），
    * 而 id 只在这里算得出来；此前只回传 sessionContext，id 被丢弃 → 内部会话建了却永远没人写。
    */
@@ -367,7 +367,7 @@ export function createHeadlessChatRunner(deps: HeadlessChatDeps): HeadlessChatRu
         // - `room`（房间规划轮）：**轮次本身不落会话历史**（规划提示词与 JSON 计划不是聊天内容，
         //   写进去会混进用户正常聊天）；用户的发言与 AI 的 reply 由 `room/runtime.ts` 的
         //   `appendHostTurn` 单独写回承载会话（0.54），其中**展示层会话**与**内部会话层两写**
-        //   都在那里发生（0.54.0：内部会话 id 经本轮 `onInternalSessionResolved` 钩子带出）。
+        //   都在那里发生（0.54.2：内部会话 id 经本轮 `onInternalSessionResolved` 钩子带出）。
         //   RAW 照常写（2026-10-31 用户裁决）。
         // - 其余：会话历史与 RAW 都写（普通轮次，行为不变）。
         if (purpose === 'room-preplan') {

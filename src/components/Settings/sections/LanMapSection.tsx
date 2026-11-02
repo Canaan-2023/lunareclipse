@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Network, RefreshCw, Power } from 'lucide-react'
 import { useT } from '../../../i18n/useT'
+import { useTransientTimer } from '../../../hooks/useTransientTimer'
 
 interface NodeView {
   uid: number
@@ -39,6 +40,8 @@ export function LanMapSection() {
   const [links, setLinks] = useState<Array<{ from: number; to: number }>>([])
   const [traces, setTraces] = useState<TraceView[]>([])
   const [busy, setBusy] = useState(false)
+  // 启停后的延迟回读计时器：卸载时取消，避免对已卸载组件 setState
+  const { schedule: scheduleRefresh } = useTransientTimer()
 
   const refresh = useCallback(async () => {
     const api = window.lunareclipse
@@ -63,8 +66,8 @@ export function LanMapSection() {
     if (!api?.lanSetEnabled) return
     setBusy(true)
     await api.lanSetEnabled(!status.enabled)
-    // 起停由主进程配置订阅异步落地，稍后回读
-    setTimeout(() => {
+    // 起停由主进程配置订阅异步落地，稍后回读（计时器随组件卸载取消）
+    scheduleRefresh(() => {
       void refresh()
       setBusy(false)
     }, 500)
@@ -78,7 +81,7 @@ export function LanMapSection() {
   }
 
   const badge = (n: NodeView) =>
-    n.online ? (n.forwardWilling ? 'text-emerald-400' : 'text-amber-400') : 'text-fg-muted'
+    n.online ? (n.forwardWilling ? 'text-success' : 'text-warning') : 'text-fg-muted'
 
   return (
     <div className="space-y-5">
@@ -193,13 +196,13 @@ export function LanMapSection() {
                 </div>
                 <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-fg-muted">
                   {tr.perHopStatus.map((h) => (
-                    <span key={h.uid} className={h.state === 'rejected' || h.state === 'failed' ? 'text-red-400' : ''}>
+                    <span key={h.uid} className={h.state === 'rejected' || h.state === 'failed' ? 'text-danger' : ''}>
                       {h.uid}:{h.state}
                     </span>
                   ))}
                 </div>
                 {tr.failureReason && (
-                  <div className="mt-1 text-[11px] text-red-400">
+                  <div className="mt-1 text-[11px] text-danger">
                     {tr.rejectedBy != null ? `${t('lan.rejectedBy')} ${tr.rejectedBy}：` : ''}
                     {tr.failureReason}
                   </div>

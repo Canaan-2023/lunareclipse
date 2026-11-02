@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { PublishBoardService, type PublishBoardServiceDeps } from '../electron/main/multi-instance/publish-board/publish-board-service'
+import { PublishCommentStore, PUBLISH_COMMENT_MAX } from '../electron/main/multi-instance/publish-board/publish-comment-store'
 import type { PublishEvent, PublishPayload, PublishTombstonePayload } from '../electron/main/multi-instance/publish-board/publish-board-types'
 import type { LanEnvelope, LanPeer } from '../electron/main/multi-instance/lan/lan-types'
 
@@ -165,18 +166,29 @@ describe('PublishBoardService 内部发布板（L3）', () => {
     expect(deps.events.some((e) => e.type === 'comment')).toBe(true)
   })
 
-  it('评论上限 500：超限裁剪旧评论', () => {
-    const { svc } = makeService(newRoot(), 1, '主')
-    const board = svc.createBoard('公告').board!
-    const art = svc.publish(board.boardId, '标题', '', '正文').article!
-    for (let i = 0; i < 505; i++) {
-      svc.postComment(art.articleId, `评论${i}`)
+  it('评论上限：默认 500，超限裁剪旧评论（用小上限验证裁剪语义）', () => {
+    // 500 是产品硬上限；裁剪算法本身用 maxComments=5 验证。
+    // 不逐条写 505 次整文件落盘：那样单测会变成重 I/O 用例，耗时取决于磁盘与杀软，
+    // 既拖慢全量套件又容易撞全局超时；小上限覆盖的是同一条裁剪分支。
+    expect(PUBLISH_COMMENT_MAX).toBe(500)
+    const store = new PublishCommentStore(newRoot(), 5)
+    const articleId = 'art-cap'
+    for (let i = 0; i < 6; i++) {
+      store.append(articleId, {
+        commentId: `cap-${i}`,
+        articleId,
+        replyTo: '',
+        from: 1,
+        fromName: '主',
+        text: `评论${i}`,
+        ts: i
+      })
     }
-    const list = svc.listComments(art.articleId, 500)
-    expect(list).toHaveLength(500)
-    // 最早的 5 条被裁剪，最新的是 评论504
-    expect(list[0].text).toBe('评论5')
-    expect(list[list.length - 1].text).toBe('评论504')
+    const list = store.load(articleId)
+    expect(list).toHaveLength(5)
+    // 最早的 1 条被裁剪，剩下 评论1..评论5
+    expect(list[0].text).toBe('评论1')
+    expect(list[list.length - 1].text).toBe('评论5')
   })
 
   it('置顶与删除：仅作者可操作；列表置顶优先排序', () => {

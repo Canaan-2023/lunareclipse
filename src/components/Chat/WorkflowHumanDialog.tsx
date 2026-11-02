@@ -8,6 +8,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { MessageSquare, Send, X, Check } from 'lucide-react'
 import { useWorkflowStore } from '../../stores/workflowStore'
+import { useT } from '../../i18n/useT'
 
 /**
  * 工作流引擎：人工节点 & ask_user 输入弹窗
@@ -22,6 +23,7 @@ import { useWorkflowStore } from '../../stores/workflowStore'
  * 样式参考：PermissionDialog 的全局模态范式
  */
 export function WorkflowHumanDialog() {
+  const t = useT()
   const pendingHuman = useWorkflowStore((s) => s.pendingHumanInput)
   const pendingAsk = useWorkflowStore((s) => s.pendingAskUser)
   const respondHumanInput = useWorkflowStore((s) => s.respondHumanInput)
@@ -145,7 +147,7 @@ export function WorkflowHumanDialog() {
             ref={dialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label={pending.kind === 'human' ? '工作流请求输入' : 'AI 询问'}
+            aria-label={pending.kind === 'human' ? t('chatui.wfRequestInput') : t('chatui.aiAsk')}
             initial={{ scale: 0.96, y: 8 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.96, y: 8 }}
@@ -159,10 +161,10 @@ export function WorkflowHumanDialog() {
             <div className="flex items-center gap-2 border-b border-border-base px-5 py-3">
               <MessageSquare size={14} className="text-accent" />
               <span className="text-body font-medium text-fg-primary">
-                {pending.kind === 'human' ? '工作流请求输入' : 'AI 询问'}
+                {pending.kind === 'human' ? t('chatui.wfRequestInput') : t('chatui.aiAsk')}
               </span>
               <span className="ml-auto rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-                {pending.inputType === 'confirm' ? '确认' : pending.inputType === 'text' ? '文本' : '选择'}
+                {pending.inputType === 'confirm' ? t('chatui.inputTypeConfirm') : pending.inputType === 'text' ? t('chatui.inputTypeText') : t('chatui.inputTypeChoice')}
               </span>
             </div>
 
@@ -180,7 +182,7 @@ export function WorkflowHumanDialog() {
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={handleKey}
                   rows={3}
-                  placeholder="请输入..."
+                  placeholder={t('chatui.pleaseInput')}
                   className="mt-3 w-full resize-none rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-body text-fg-primary placeholder:text-fg-muted focus:border-accent focus:outline-none"
                 />
               )}
@@ -219,7 +221,7 @@ export function WorkflowHumanDialog() {
               {/* confirm 不需要额外输入 */}
               {pending.inputType === 'confirm' && (
                 <div className="mt-3 text-caption text-fg-muted">
-                  确认后将向工作流返回 "yes"。
+                  {t('chatui.confirmYesNote')}
                 </div>
               )}
             </div>
@@ -228,12 +230,12 @@ export function WorkflowHumanDialog() {
             <div className="flex items-center justify-between gap-2 border-t border-border-base px-5 py-3">
               <span className="text-[10px] text-fg-muted">
                 {pending.inputType === 'text'
-                  ? 'Ctrl+Enter 提交 · Esc 取消'
+                  ? t('chatui.hintCtrlEnter')
                   : pending.inputType === 'confirm'
-                  ? 'Enter 确认 · Esc 取消'
+                  ? t('chatui.hintEnterConfirm')
                   : pending.options && pending.options.length > 0
-                  ? `数字键 1-${Math.min(pending.options.length, 9)} 选择 · Esc 取消`
-                  : 'Esc 取消'}
+                  ? t('chatui.hintDigitChoice', { n: Math.min(pending.options.length, 9) })
+                  : t('chatui.hintEscCancel')}
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -241,7 +243,7 @@ export function WorkflowHumanDialog() {
                   className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-caption text-fg-secondary transition-colors hover:bg-bg-muted"
                 >
                   <X size={12} aria-hidden="true" />
-                  取消
+                  {t('chatui.cancel')}
                 </button>
                 <button
                   onClick={handleSubmit}
@@ -252,7 +254,7 @@ export function WorkflowHumanDialog() {
                   className="flex items-center gap-1 rounded-lg bg-accent px-4 py-1.5 text-caption text-accent-fg transition-colors hover:bg-accent-hover disabled:opacity-50"
                 >
                   <Send size={12} />
-                  提交
+                  {t('chatui.submit')}
                 </button>
               </div>
             </div>

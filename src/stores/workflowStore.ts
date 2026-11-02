@@ -18,6 +18,15 @@ import type {
   WorkflowRunParams,
   WorkflowModifyParams
 } from '@shared/workflow/types'
+import { getDictEntry } from '../i18n/locales'
+import { useAppStore } from './appStore'
+
+/** 错误提示翻译：非组件环境取 store 当前语言，先经 `getDictEntry` 查词 */
+const t = (key: string, vars?: Record<string, string | number>): string => {
+  const lang = useAppStore.getState().lang ?? 'zh'
+  const text = getDictEntry(key)?.[lang] ?? key
+  return vars ? text.replace(/\{([^{}]+)\}/g, (whole, name: string) => (Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : whole)) : text
+}
 
 /**
  * 工作流引擎：前端 store
@@ -167,7 +176,7 @@ const workflowStore = create<WorkflowState>((set, get) => ({
       const templates = await window.lunareclipse.workflowListTemplates(params)
       set({ templates, templatesLoaded: true })
     } catch (err) {
-      set({ error: `加载模板列表失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.loadTemplatesFailed', { error: (err as Error).message }) })
     }
   },
 
@@ -176,7 +185,7 @@ const workflowStore = create<WorkflowState>((set, get) => ({
       const instances = await window.lunareclipse.workflowListActiveInstances()
       set({ activeInstances: instances })
     } catch (err) {
-      set({ error: `加载活跃实例失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.loadActiveInstancesFailed', { error: (err as Error).message }) })
     }
   },
 
@@ -185,7 +194,7 @@ const workflowStore = create<WorkflowState>((set, get) => ({
       const instance = await window.lunareclipse.workflowGetInstance(instanceId)
       set({ currentInstance: instance })
     } catch (err) {
-      set({ error: `加载实例失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.loadInstanceFailed', { error: (err as Error).message }) })
     }
   },
 
@@ -194,7 +203,7 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowRunInstance(params)
       if (!result.ok) {
-        set({ error: result.error ?? '启动工作流失败' })
+        set({ error: result.error ?? t('storemsg.workflow.startFailed') })
         return null
       }
       // 初始化流式缓存
@@ -209,7 +218,7 @@ const workflowStore = create<WorkflowState>((set, get) => ({
       await get().refreshActiveInstances()
       return result.data ?? null
     } catch (err) {
-      set({ error: `启动工作流失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.startFailedWithError', { error: (err as Error).message }) })
       return null
     } finally {
       set({ loading: false })
@@ -220,13 +229,13 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowModifyInstance(params)
       if (!result.ok) {
-        set({ error: result.error ?? '修改实例失败' })
+        set({ error: result.error ?? t('storemsg.workflow.modifyFailed') })
         return null
       }
       await get().refreshActiveInstances()
       return result.data ?? null
     } catch (err) {
-      set({ error: `修改实例失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.modifyFailedWithError', { error: (err as Error).message }) })
       return null
     }
   },
@@ -237,13 +246,13 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowRespondHumanInput(pending.instanceId, response)
       if (!result.ok) {
-        set({ error: result.error ?? '响应 human 节点失败' })
+        set({ error: result.error ?? t('storemsg.workflow.respondHumanFailed') })
         return false
       }
       set({ pendingHumanInput: null })
       return true
     } catch (err) {
-      set({ error: `响应 human 节点失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.respondHumanFailedWithError', { error: (err as Error).message }) })
       return false
     }
   },
@@ -254,13 +263,13 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowCancelHumanInput(pending.instanceId)
       if (!result.ok) {
-        set({ error: result.error ?? '取消 human 节点失败' })
+        set({ error: result.error ?? t('storemsg.workflow.cancelHumanFailed') })
         return false
       }
       set({ pendingHumanInput: null })
       return true
     } catch (err) {
-      set({ error: `取消 human 节点失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.cancelHumanFailedWithError', { error: (err as Error).message }) })
       return false
     }
   },
@@ -271,13 +280,13 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowRespondAskUser(pending.requestId, response)
       if (!result.ok) {
-        set({ error: result.error ?? '响应 ask_user 失败' })
+        set({ error: result.error ?? t('storemsg.workflow.respondAskUserFailed') })
         return false
       }
       set({ pendingAskUser: null })
       return true
     } catch (err) {
-      set({ error: `响应 ask_user 失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.respondAskUserFailedWithError', { error: (err as Error).message }) })
       return false
     }
   },
@@ -288,13 +297,13 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowCancelAskUser(pending.requestId)
       if (!result.ok) {
-        set({ error: result.error ?? '取消 ask_user 失败' })
+        set({ error: result.error ?? t('storemsg.workflow.cancelAskUserFailed') })
         return false
       }
       set({ pendingAskUser: null })
       return true
     } catch (err) {
-      set({ error: `取消 ask_user 失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.cancelAskUserFailedWithError', { error: (err as Error).message }) })
       return false
     }
   },
@@ -303,13 +312,13 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowContinueChatflow(instanceId, userMessage)
       if (!result.ok) {
-        set({ error: result.error ?? '继续 Chatflow 失败' })
+        set({ error: result.error ?? t('storemsg.workflow.continueChatflowFailed') })
         return null
       }
       await get().refreshActiveInstances()
       return result.data ?? null
     } catch (err) {
-      set({ error: `继续 Chatflow 失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.continueChatflowFailedWithError', { error: (err as Error).message }) })
       return null
     }
   },
@@ -318,13 +327,13 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowSaveTemplate(params)
       if (!result.ok) {
-        set({ error: result.error ?? '保存模板失败' })
+        set({ error: result.error ?? t('storemsg.workflow.saveTemplateFailed') })
         return null
       }
       await get().refreshTemplates()
       return result.data ?? null
     } catch (err) {
-      set({ error: `保存模板失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.saveTemplateFailedWithError', { error: (err as Error).message }) })
       return null
     }
   },
@@ -333,13 +342,13 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowDefineTemplate(params)
       if (!result.ok) {
-        set({ error: result.error ?? '定义模板失败' })
+        set({ error: result.error ?? t('storemsg.workflow.defineTemplateFailed') })
         return null
       }
       await get().refreshTemplates()
       return result.data ?? null
     } catch (err) {
-      set({ error: `定义模板失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.defineTemplateFailedWithError', { error: (err as Error).message }) })
       return null
     }
   },
@@ -348,13 +357,13 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowEditTemplate(params)
       if (!result.ok) {
-        set({ error: result.error ?? '编辑模板失败' })
+        set({ error: result.error ?? t('storemsg.workflow.editTemplateFailed') })
         return null
       }
       await get().refreshTemplates()
       return result.data ?? null
     } catch (err) {
-      set({ error: `编辑模板失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.editTemplateFailedWithError', { error: (err as Error).message }) })
       return null
     }
   },
@@ -363,13 +372,13 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowDeleteTemplate(id)
       if (!result.ok) {
-        set({ error: result.error ?? '删除模板失败' })
+        set({ error: result.error ?? t('storemsg.workflow.deleteTemplateFailed') })
         return false
       }
       await get().refreshTemplates()
       return true
     } catch (err) {
-      set({ error: `删除模板失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.deleteTemplateFailedWithError', { error: (err as Error).message }) })
       return false
     }
   },
@@ -378,12 +387,12 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowExportTemplate(id)
       if (!result.ok) {
-        set({ error: result.error ?? '导出模板失败' })
+        set({ error: result.error ?? t('storemsg.workflow.exportTemplateFailed') })
         return null
       }
       return result.data ?? null
     } catch (err) {
-      set({ error: `导出模板失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.exportTemplateFailedWithError', { error: (err as Error).message }) })
       return null
     }
   },
@@ -392,13 +401,13 @@ const workflowStore = create<WorkflowState>((set, get) => ({
     try {
       const result = await window.lunareclipse.workflowImportTemplate(jsonStr, newName)
       if (!result.ok) {
-        set({ error: result.error ?? '导入模板失败' })
+        set({ error: result.error ?? t('storemsg.workflow.importTemplateFailed') })
         return null
       }
       await get().refreshTemplates()
       return result.data ?? null
     } catch (err) {
-      set({ error: `导入模板失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.workflow.importTemplateFailedWithError', { error: (err as Error).message }) })
       return null
     }
   },
@@ -577,7 +586,7 @@ const workflowStore = create<WorkflowState>((set, get) => ({
         get().refreshActiveInstances()
         // 如果有错误，显示
         if (event.type === 'wf:failed') {
-          set({ error: `工作流失败: ${event.error}` })
+          set({ error: t('storemsg.workflow.failed', { error: event.error }) })
         }
         break
 

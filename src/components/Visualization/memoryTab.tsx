@@ -8,9 +8,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { FolderTree, Folder, FolderOpen, FileText, ChevronRight, ListTree, Network } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { aiAvatarFallback } from '../Ai/AiManagerPanel'
-import { openFilePreview } from '../Workshop/FileWorkshopPanel'
+import { openFilePreview } from '../Workshop/filePreviewOpener'
 import type { MemoryDirectoryNode } from '@shared/types'
 import { SectionTitle } from './common'
+import { useT } from '../../i18n/useT'
 
 /** 记忆文件列表项（对应后端 viz:memoryTab 的 memories 字段，类型同 visualization-data.listMemories） */
 interface MemoryListItem {
@@ -45,6 +46,7 @@ export function MemoryTab() {
   const aiName = useAppStore((s) => s.config.aiName) || '月蚀'
   const ais = useAppStore((s) => s.ais)
   const currentAiId = useAppStore((s) => s.currentAiId)
+  const t = useT()
 
   // 可切换 AI：全部启用 AI（停用不展示）；全停用/空时回退月蚀。排序：系统 AI 在前，其余按 id
   const switchable = useMemo(() => {
@@ -87,12 +89,12 @@ export function MemoryTab() {
     return () => { alive = false }
   }, [aiId])
 
-  if (!tree) return <div className="text-caption text-fg-muted">加载记忆数据中…</div>
+  if (!tree) return <div className="text-caption text-fg-muted">{t('vizui.memory.loadingData')}</div>
 
   return (
     <div className="space-y-5">
       <section>
-        <SectionTitle icon={FolderTree} title="记忆库结构（点开加载）" />
+        <SectionTitle icon={FolderTree} title={t('vizui.memory.structureTitle')} />
         {/* AI 切换器（多 AI：按 AIID 动态渲染，各看各的） */}
         <div className="mb-2 flex items-center gap-1 rounded-btn border border-border-subtle bg-bg-muted/30 p-1">
           {switchable.map((a) => (
@@ -104,12 +106,12 @@ export function MemoryTab() {
               }`}
             >
               <span className="mr-1">{a.avatar ?? aiAvatarFallback(a.id)}</span>
-              {a.name}（AI {a.id}）
+              {t('vizui.memory.aiSuffix', { name: a.name, id: a.id })}
             </button>
           ))}
         </div>
         <p className="mb-2 text-caption text-fg-secondary">
-          六个记忆分类文件夹，点开文件夹才扫描该层内容（普通记忆/元认知/高阶按 年/月/日 组织，RAW 按日期，NNG 按分类）。
+          {t('vizui.memory.structureDesc')}
         </p>
         <div className="max-h-[calc(100vh-300px)] space-y-0.5 overflow-y-auto rounded-btn border border-border-subtle bg-bg-muted/30 p-2">
           {tree.map((node, i) => (
@@ -120,12 +122,12 @@ export function MemoryTab() {
 
       {/* 记忆文件列表：后端 viz:memoryTab.memories 已递归扫好 normal/meta/high 三类文件，直接展示 */}
       <section>
-        <SectionTitle icon={ListTree} title="记忆文件列表（普通 / 元认知 / 高阶）" />
+        <SectionTitle icon={ListTree} title={t('vizui.memory.filesTitle')} />
         <div className="max-h-[260px] space-y-0.5 overflow-y-auto rounded-btn border border-border-subtle bg-bg-muted/30 p-2">
           {memories === null ? (
-            <div className="text-[10px] text-fg-muted">加载中…</div>
+            <div className="text-[10px] text-fg-muted">{t('vizui.memory.loading')}</div>
           ) : memories.length === 0 ? (
-            <div className="text-[10px] text-fg-muted">（暂无记忆文件）</div>
+            <div className="text-[10px] text-fg-muted">{t('vizui.memory.noFiles')}</div>
           ) : (
             memories.map((m, i) => <MemoryFileRow key={`${aiId}_${m.path}_${i}`} item={m} />)
           )}
@@ -134,12 +136,12 @@ export function MemoryTab() {
 
       {/* NNG 树：后端 viz:memoryTab.nngTree 已展开最多 3 层，节点即 _nng.json 文件，点击右侧按钮打开 JSON */}
       <section>
-        <SectionTitle icon={Network} title="NNG 图树（standard / meta / high）" />
+        <SectionTitle icon={Network} title={t('vizui.memory.nngTitle')} />
         <div className="max-h-[300px] space-y-0.5 overflow-y-auto rounded-btn border border-border-subtle bg-bg-muted/30 p-2">
           {nngTree === null ? (
-            <div className="text-[10px] text-fg-muted">加载中…</div>
+            <div className="text-[10px] text-fg-muted">{t('vizui.memory.loading')}</div>
           ) : nngTree.length === 0 ? (
-            <div className="text-[10px] text-fg-muted">（暂无 NNG 节点）</div>
+            <div className="text-[10px] text-fg-muted">{t('vizui.memory.noNng')}</div>
           ) : (
             nngTree.map((node, i) => <NngTreeNodeRow key={`${aiId}_${i}`} node={node} depth={0} />)
           )}
@@ -151,6 +153,7 @@ export function MemoryTab() {
 
 /** 文件夹树节点（可折叠，懒加载：目录展开时才拉取子层 viz:directoryChildren） */
 function DirTreeNode({ node, depth }: { node: MemoryDirectoryNode; depth: number }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const [children, setChildren] = useState<MemoryDirectoryNode[]>(node.children ?? [])
   const [loaded, setLoaded] = useState(node.loaded === true)
@@ -164,7 +167,7 @@ function DirTreeNode({ node, depth }: { node: MemoryDirectoryNode; depth: number
       <div style={pad} className="flex w-full items-center gap-1.5">
         <button
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-0.5 text-left text-[11px] text-fg-primary hover:bg-bg-muted/60 transition-colors"
-          title={`点击打开：${node.path}`}
+          title={t('vizui.common.openPath', { path: node.path })}
           onClick={() => openFilePreview(node.path)}
         >
           <FileText size={11} className="shrink-0 text-fg-muted" />
@@ -175,8 +178,8 @@ function DirTreeNode({ node, depth }: { node: MemoryDirectoryNode; depth: number
         </button>
         <button
           className="shrink-0 rounded p-0.5 text-fg-muted hover:bg-bg-muted hover:text-accent"
-          title={`在文件夹中显示：${node.path}`}
-          aria-label={`在文件夹中显示：${node.path}`}
+          title={t('vizui.common.revealInFolder', { path: node.path })}
+          aria-label={t('vizui.common.revealInFolder', { path: node.path })}
           onClick={() => void window.lunareclipse.showItemInFolder(node.path)}
         >
           <FolderOpen size={10} />
@@ -213,13 +216,13 @@ function DirTreeNode({ node, depth }: { node: MemoryDirectoryNode; depth: number
         (loaded ? (
           <div>
             {children.length === 0 ? (
-              <div style={pad} className="text-[10px] text-fg-muted">（空目录）</div>
+              <div style={pad} className="text-[10px] text-fg-muted">{t('vizui.memory.emptyDir')}</div>
             ) : (
               children.map((child, i) => <DirTreeNode key={i} node={child} depth={depth + 1} />)
             )}
           </div>
         ) : (
-          <div style={pad} className="text-[10px] text-fg-muted">加载中…</div>
+          <div style={pad} className="text-[10px] text-fg-muted">{t('vizui.memory.loading')}</div>
         ))}
     </div>
   )
@@ -227,17 +230,18 @@ function DirTreeNode({ node, depth }: { node: MemoryDirectoryNode; depth: number
 
 /** 记忆文件行（普通/元认知/高阶）：类型徽标 + 名称 + 大小 + 日期，点击在文件工坊打开只读预览 */
 function MemoryFileRow({ item }: { item: MemoryListItem }) {
-  const typeLabel = item.type === 'normal' ? '普通' : item.type === 'meta' ? '元认知' : '高阶'
+  const t = useT()
+  const typeLabel = item.type === 'normal' ? t('vizui.memory.type.normal') : item.type === 'meta' ? t('vizui.memory.type.meta') : t('vizui.memory.type.high')
   const typeCls =
     item.type === 'normal'
       ? 'bg-sky-500/10 text-sky-400'
       : item.type === 'meta'
         ? 'bg-violet-500/10 text-violet-400'
-        : 'bg-amber-500/10 text-amber-400'
+        : 'bg-warning/10 text-warning'
   return (
     <button
       className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-[11px] text-fg-primary hover:bg-bg-muted/60 transition-colors"
-      title={`点击打开：${item.path}`}
+      title={t('vizui.common.openPath', { path: item.path })}
       onClick={() => openFilePreview(item.path)}
     >
       <FileText size={11} className="shrink-0 text-fg-muted" />
@@ -253,22 +257,23 @@ function MemoryFileRow({ item }: { item: MemoryListItem }) {
  * 主按钮展开/收起子节点（无子节点时直接打开文件），右侧独立按钮打开该节点 JSON。
  * 与目录树同一交互模式：外层 div 挂两个兄弟 button，各自焦点可达。 */
 function NngTreeNodeRow({ node, depth }: { node: NngTreeNode; depth: number }) {
+  const t = useT()
   const [open, setOpen] = useState(false)
   const pad = { paddingLeft: `${depth * 14 + 4}px` }
   const hasChildren = node.children.length > 0
-  const typeLabel = node.type === 'standard' ? 'standard' : node.type === 'meta' ? 'meta' : 'high'
+  const typeLabel = node.type === 'standard' ? t('vizui.memory.type.normal') : node.type === 'meta' ? t('vizui.memory.type.meta') : t('vizui.memory.type.high')
   const typeCls =
     node.type === 'standard'
-      ? 'bg-emerald-500/10 text-emerald-400'
+      ? 'bg-success/10 text-success'
       : node.type === 'meta'
         ? 'bg-violet-500/10 text-violet-400'
-        : 'bg-amber-500/10 text-amber-400'
+        : 'bg-warning/10 text-warning'
   return (
     <div>
       <div style={pad} className="flex w-full items-center gap-1.5">
         <button
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-0.5 text-left text-[11px] text-fg-primary hover:bg-bg-muted/60 transition-colors"
-          title={hasChildren ? `展开/收起：${node.name}` : `点击打开：${node.path}`}
+          title={hasChildren ? t('vizui.memory.toggleNode', { name: node.name }) : t('vizui.common.openPath', { path: node.path })}
           onClick={() => {
             if (hasChildren) {
               setOpen(!open)
@@ -288,8 +293,8 @@ function NngTreeNodeRow({ node, depth }: { node: NngTreeNode; depth: number }) {
         </button>
         <button
           className="shrink-0 rounded p-0.5 text-fg-muted hover:bg-bg-muted hover:text-accent"
-          title={`打开 JSON：${node.path}`}
-          aria-label={`打开 JSON：${node.path}`}
+          title={t('vizui.memory.openJson', { path: node.path })}
+          aria-label={t('vizui.memory.openJson', { path: node.path })}
           onClick={() => openFilePreview(node.path)}
         >
           <FolderOpen size={10} />

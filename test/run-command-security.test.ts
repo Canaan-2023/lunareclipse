@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { RunCommandTool } from '../electron/main/tools/run-command'
 import type { ToolContext, PermissionResponse } from '../electron/main/tools/base-tool'
+import { createFakeSpawn } from './helpers/fake-spawn'
 
 /**
  * T6E：detect_dangerous_command 接入 run_command 的行为测试。
@@ -22,7 +23,7 @@ function makeCtx(allow: boolean, scope: 'once' | 'session' = 'session'): ToolCon
 }
 
 describe('run_command 危险命令检测接入（T6E）', () => {
-  const tool = new RunCommandTool()
+  const tool = new RunCommandTool(createFakeSpawn())
 
   it('critical（hardline）直接拒绝，不询问用户', async () => {
     const ctx = makeCtx(true)

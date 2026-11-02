@@ -7,12 +7,21 @@
  */
 import { useSyncExternalStore } from 'react'
 import { DEFAULT_AI_ID } from '@shared/types'
+import { getDictEntry } from '../../i18n/locales'
+import { useAppStore } from '../../stores/appStore'
 import {
   DEFAULT_ROOM_APPEARANCE,
   isRoomImageSrc,
   parseRoomAppearance,
   type RoomAppearance
 } from '@shared/room/appearance'
+
+/** 错误提示翻译：非组件环境取 store 当前语言，先经 `getDictEntry` 查词 */
+const t = (key: string, vars?: Record<string, string | number>): string => {
+  const lang = useAppStore.getState().lang ?? 'zh'
+  const text = getDictEntry(key)?.[lang] ?? key
+  return vars ? text.replace(/\{([^{}]+)\}/g, (whole, name: string) => (Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : whole)) : text
+}
 
 export interface Live2DAssets {
   modelUrl: string
@@ -83,7 +92,7 @@ export function reloadAppearance(aiId: number = DEFAULT_AI_ID): Promise<void> {
     try {
       const r = await window.lunareclipse?.roomAppearanceGet?.(aiId)
       if (!r?.ok) {
-        states.set(aiId, { ...EMPTY, loaded: true, error: '读取外观配置失败：主进程未就绪或该通道不可用' })
+        states.set(aiId, { ...EMPTY, loaded: true, error: t('storemsg.room.appearanceLoadFailed') })
       } else {
         const parsed = parseRoomAppearance(r.appearance)
         const scenes: Record<string, string> = {}
@@ -120,7 +129,7 @@ export function reloadAppearance(aiId: number = DEFAULT_AI_ID): Promise<void> {
           dir: typeof r.dir === 'string' ? r.dir : null,
           scenesDir: typeof r.scenesDir === 'string' ? r.scenesDir : null,
           error:
-            (parsed.ok ? null : `外观配置无效，已回落默认：${parsed.error}`) ??
+            (parsed.ok ? null : t('storemsg.room.appearanceInvalid', { error: parsed.error })) ??
             (typeof r.error === 'string' && r.error ? r.error : null),
           loaded: true
         })
@@ -129,7 +138,7 @@ export function reloadAppearance(aiId: number = DEFAULT_AI_ID): Promise<void> {
       states.set(aiId, {
         ...EMPTY,
         loaded: true,
-        error: `读取外观配置失败：${err instanceof Error ? err.message : String(err)}`
+        error: t('storemsg.room.appearanceLoadFailedWithError', { error: err instanceof Error ? err.message : String(err) })
       })
     } finally {
       inFlight.delete(aiId)
@@ -147,8 +156,8 @@ export async function saveAppearance(
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const r = await window.lunareclipse?.roomAppearanceSet?.(aiId, raw)
-    if (!r) return { ok: false, error: '外观设置通道不可用' }
-    if (!r.ok) return { ok: false, error: r.error ?? '保存失败' }
+    if (!r) return { ok: false, error: t('storemsg.room.appearanceChannelUnavailable') }
+    if (!r.ok) return { ok: false, error: r.error ?? t('storemsg.room.saveFailed') }
     await reloadAppearance(aiId)
     return { ok: true }
   } catch (err) {

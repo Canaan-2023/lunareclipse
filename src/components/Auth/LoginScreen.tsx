@@ -6,6 +6,7 @@
  */
 import { useState, useEffect } from 'react'
 import { useAppStore } from '../../stores/appStore'
+import { useT } from '../../i18n/useT'
 import { ArrowLeft, Plus, Minus, Square, Copy, X } from 'lucide-react'
 import brandIconUrl from '../../../assets/brand/lunar-eclipse-mark.png'
 import chibiUrl from '../../../assets/brand/lunar-eclipse-chibi.png'
@@ -23,13 +24,14 @@ interface InstanceStatus {
   master: { baseUrl: string; instanceId: string } | null
 }
 
-const ROLE_LABEL: Record<InstanceStatus['role'], string> = {
-  standalone: '单机模式',
-  master: '主系统',
-  satellite: '分系统'
+const ROLE_LABEL_KEY: Record<InstanceStatus['role'], string> = {
+  standalone: 'authui.role.standalone',
+  master: 'authui.role.master',
+  satellite: 'authui.role.satellite'
 }
 
 export function LoginScreen() {
+  const t = useT()
   const [mode, setMode] = useState<Mode>('list')
   const [users, setUsers] = useState<UserItem[]>([])
   const [selectedUser, setSelectedUser] = useState<UserItem | null>(null)
@@ -109,7 +111,7 @@ export function LoginScreen() {
       setProbing(true)
       const url = extractBaseUrl(joinLink)
       if (!url) {
-        setProbe({ ok: false, error: '链接格式不正确，请粘贴主系统分享的完整链接' })
+        setProbe({ ok: false, error: t('authui.error.badLink') })
         setProbing(false)
         return
       }
@@ -118,7 +120,7 @@ export function LoginScreen() {
       setProbing(false)
     }, 600)
     return () => clearTimeout(timer)
-  }, [joinLink, mode])
+  }, [joinLink, mode, t])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -143,7 +145,7 @@ export function LoginScreen() {
         // 先暂存接入链接（解析出 baseUrl + 准入码），再向主系统注册（UID 由主系统发放）
         const pending = await window.lunareclipse.multiSetPendingSatellite(joinLink.trim())
         if (!pending.ok) {
-          setError(pending.error ?? '接入配置失败')
+          setError(pending.error ?? t('authui.error.joinConfigFailed'))
           setBusy(false)
           return
         }
@@ -163,7 +165,11 @@ export function LoginScreen() {
     mode === 'login' ? !!username.trim() && !!password : !!username.trim() && !!password
 
   const submitLabel =
-    mode === 'login' ? '登录' : isJoin ? '接入主系统并注册' : '创建主系统并注册'
+    mode === 'login'
+      ? t('authui.action.login')
+      : isJoin
+        ? t('authui.action.joinAndRegister')
+        : t('authui.action.createMasterAndRegister')
 
   return (
     <div className="relative flex h-screen w-screen items-center justify-center overflow-hidden bg-bg-base paper-texture">
@@ -180,24 +186,24 @@ export function LoginScreen() {
         <button
           onClick={() => window.lunareclipse.windowMinimize()}
           className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted transition-colors hover:bg-bg-muted hover:text-fg-primary"
-          title="最小化"
-          aria-label="最小化"
+          title={t('authui.window.minimize')}
+          aria-label={t('authui.window.minimize')}
         >
           <Minus size={14} />
         </button>
         <button
           onClick={() => window.lunareclipse.windowMaximize()}
           className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted transition-colors hover:bg-bg-muted hover:text-fg-primary"
-          title={maximized ? '恢复窗口' : '最大化'}
-          aria-label={maximized ? '恢复窗口' : '最大化'}
+          title={maximized ? t('authui.window.restore') : t('authui.window.maximize')}
+          aria-label={maximized ? t('authui.window.restore') : t('authui.window.maximize')}
         >
           {maximized ? <Copy size={12} /> : <Square size={12} />}
         </button>
         <button
           onClick={() => window.lunareclipse.windowClose()}
-          className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted transition-colors hover:bg-red-500/80 hover:text-white"
-          title="关闭"
-          aria-label="关闭"
+          className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted transition-colors hover:bg-danger/80 hover:text-white"
+          title={t('authui.window.close')}
+          aria-label={t('authui.window.close')}
         >
           <X size={14} />
         </button>
@@ -213,7 +219,7 @@ export function LoginScreen() {
           <span className="text-[10px] uppercase tracking-[0.3em] text-fg-muted">LunarEclipse</span>
           {instanceStatus && (
             <span className="ml-auto rounded-full border border-border-subtle px-2 py-0.5 text-[10px] text-fg-muted">
-              {ROLE_LABEL[instanceStatus.role]}
+              {t(ROLE_LABEL_KEY[instanceStatus.role])}
               {instanceStatus.role === 'satellite' && instanceStatus.master
                 ? ` · ${instanceStatus.master.baseUrl}`
                 : ''}
@@ -229,13 +235,17 @@ export function LoginScreen() {
           />
           <div>
             <div className="text-heading font-medium text-fg-primary">月蚀</div>
-            <div className="text-[10px] tracking-[0.18em] text-fg-muted">月相 · 记忆 · 自主</div>
+            <div className="text-[10px] tracking-[0.18em] text-fg-muted">{t('authui.brand.tagline')}</div>
           </div>
         </div>
 
         <div className="auth-enter-2 mb-6 overflow-hidden">
           <div className="text-xs text-fg-muted">
-            {mode === 'list' ? '选择账号继续' : mode === 'login' ? (selectedUser ? `欢迎回来，${selectedUser.用户名}` : '登录以继续') : '注册新账号'}
+            {mode === 'list'
+              ? t('authui.mode.chooseAccount')
+              : mode === 'login'
+                ? (selectedUser ? t('authui.mode.welcomeBack', { name: selectedUser.用户名 }) : t('authui.mode.loginToContinue'))
+                : t('authui.mode.registerNew')}
           </div>
           <div className="auth-line mt-3 h-px bg-gradient-to-r from-accent/60 via-border to-transparent" />
         </div>
@@ -244,7 +254,7 @@ export function LoginScreen() {
         {mode === 'list' && (
           <div className="space-y-2">
             {users.length === 0 ? (
-              <div className="py-6 text-center text-xs text-fg-muted">加载中...</div>
+              <div className="py-6 text-center text-xs text-fg-muted">{t('authui.loading')}</div>
             ) : (
               users.map((u) => (
                 <button
@@ -258,7 +268,7 @@ export function LoginScreen() {
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm text-fg-primary">{u.用户名}</div>
                     <div className="truncate text-[10px] text-fg-muted">
-                      创建于 {new Date(u.创建时间).toLocaleDateString('zh-CN')}
+                      {t('authui.createdAt', { date: new Date(u.创建时间).toLocaleDateString('zh-CN') })}
                     </div>
                   </div>
                 </button>
@@ -270,14 +280,14 @@ export function LoginScreen() {
               className="auth-enter-4 mt-3 flex w-full items-center justify-center gap-1.5 rounded-btn border border-dashed border-border-subtle px-3 py-2 text-xs text-fg-muted transition-all duration-200 hover:border-accent/40 hover:text-accent"
             >
               <Plus size={12} />
-              注册新账号
+              {t('authui.mode.registerNew')}
             </button>
 
             <button
               onClick={() => switchMode('login')}
               className="mt-1 w-full text-center text-[11px] text-fg-muted/70 transition-opacity hover:opacity-80"
             >
-              使用其他用户名登录
+              {t('authui.useOtherUser')}
             </button>
           </div>
         )}
@@ -297,13 +307,13 @@ export function LoginScreen() {
                 className="flex items-center gap-1 text-[11px] text-fg-muted transition-opacity hover:opacity-80"
               >
                 <ArrowLeft size={11} />
-                返回账号列表
+                {t('authui.backToList')}
               </button>
             )}
 
             <div className="auth-enter-3">
               <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-fg-muted">
-                用户名
+                {t('authui.username')}
               </label>
               <input
                 type="text"
@@ -313,13 +323,13 @@ export function LoginScreen() {
                 disabled={!!selectedUser && mode === 'login'}
                 autoComplete="username"
                 className="w-full rounded-btn border border-border-subtle bg-bg-base/60 px-3 py-2 text-sm text-fg-primary placeholder:text-fg-muted/60 transition-all duration-200 focus:border-accent focus:bg-bg-base focus:outline-none focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
-                placeholder="输入用户名"
+                placeholder={t('authui.usernamePlaceholder')}
               />
             </div>
 
             <div className="auth-enter-4">
               <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-fg-muted">
-                密码
+                {t('authui.password')}
               </label>
               <input
                 type="password"
@@ -328,7 +338,7 @@ export function LoginScreen() {
                 autoFocus={!!selectedUser}
                 autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 className="w-full rounded-btn border border-border-subtle bg-bg-base/60 px-3 py-2 text-sm text-fg-primary placeholder:text-fg-muted/60 transition-all duration-200 focus:border-accent focus:bg-bg-base focus:outline-none focus:ring-1 focus:ring-accent/30"
-                placeholder="输入密码"
+                placeholder={t('authui.passwordPlaceholder')}
               />
             </div>
 
@@ -337,8 +347,8 @@ export function LoginScreen() {
               <div className="auth-enter-5 space-y-2">
                 <div>
                   <label className="mb-1.5 block text-[10px] uppercase tracking-wider text-fg-muted">
-                    主系统接入链接
-                    <span className="ml-1 normal-case tracking-normal text-fg-muted/60">（选填）</span>
+                    {t('authui.joinLink')}
+                    <span className="ml-1 normal-case tracking-normal text-fg-muted/60">{t('authui.optional')}</span>
                   </label>
                   <input
                     type="text"
@@ -354,61 +364,65 @@ export function LoginScreen() {
                   className={`flex items-start gap-2 rounded-btn border px-3 py-2 transition-all duration-200 ${
                     isJoin
                       ? probe?.ok
-                        ? 'border-emerald-500/25 bg-emerald-500/5'
+                        ? 'border-success/25 bg-success/5'
                         : 'border-accent/30 bg-accent/5'
-                      : 'border-amber-500/25 bg-amber-500/5'
+                      : 'border-warning/25 bg-warning/5'
                   }`}
                 >
                   <span
                     className={`mt-0.5 h-3 w-3 shrink-0 rounded-full ${
                       isJoin
                         ? probe?.ok
-                          ? 'bg-emerald-400'
+                          ? 'bg-success'
                           : probing
                             ? 'animate-pulse bg-accent/60'
                             : 'border border-fg-muted/40'
-                        : 'bg-amber-400'
+                        : 'bg-warning'
                     }`}
                   />
                   <span className="text-[10px] leading-relaxed text-fg-muted">
                     {isJoin ? (
                       <>
-                        <span className="text-fg-primary">将以分系统身份注册</span>
+                        <span className="text-fg-primary">{t('authui.registerAsSatellite')}</span>
                         <br />
-                        账号由主系统统一发放，本地不保存账号与密码哈希。
+                        {t('authui.satelliteDesc')}
                         {probe?.ok && (
                           <>
                             <br />
-                            <span className="text-emerald-400">已连接主系统 {probe.appName ? `（${probe.appName}）` : ''}</span>
+                            <span className="text-success">
+                              {t('authui.connectedMaster', {
+                                name: probe.appName ? t('authui.appNameParen', { name: probe.appName }) : ''
+                              })}
+                            </span>
                           </>
                         )}
                         {probe && !probe.ok && (
                           <>
                             <br />
-                            <span className="text-red-400">{probe.error}</span>
+                            <span className="text-danger">{probe.error}</span>
                           </>
                         )}
                       </>
                     ) : (
                       <>
-                        <span className="text-fg-primary">本机将成为主系统</span>
+                        <span className="text-fg-primary">{t('authui.willBeMaster')}</span>
                         <br />
-                        注册成功后可在设置页获取接入链接，其他机器填入此链接即可接入为分系统。
+                        {t('authui.masterDesc')}
                       </>
                     )}
                   </span>
                 </div>
 
                 {isJoin && probe && !probe.ok && (
-                  <p className="px-1 text-[10px] leading-relaxed text-red-400">
-                    主系统当前不可达，请检查地址与网络；仍可继续注册，链接将随注册请求一并提交。
+                  <p className="px-1 text-[10px] leading-relaxed text-danger">
+                    {t('authui.masterUnreachable')}
                   </p>
                 )}
               </div>
             )}
 
             {error && (
-              <div className="auth-enter-5 rounded-btn border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-400">
+              <div className="auth-enter-5 rounded-btn border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">
                 {error}
               </div>
             )}
@@ -422,7 +436,7 @@ export function LoginScreen() {
                 {busy ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                    处理中
+                    {t('authui.processing')}
                   </span>
                 ) : (
                   submitLabel
@@ -436,17 +450,17 @@ export function LoginScreen() {
         <div className="auth-enter-5 mt-5 text-center text-xs text-fg-muted">
           {mode === 'login' ? (
             <span>
-              没有账号？
+              {t('authui.noAccount')}
               <button
                 onClick={() => switchMode('register')}
                 className="ml-1 text-accent transition-opacity hover:opacity-80"
               >
-                注册
+                {t('authui.register')}
               </button>
             </span>
           ) : mode === 'register' ? (
             <span>
-              已有账号？
+              {t('authui.haveAccount')}
               <button
                 onClick={() => {
                   switchMode('login')
@@ -455,7 +469,7 @@ export function LoginScreen() {
                 }}
                 className="ml-1 text-accent transition-opacity hover:opacity-80"
               >
-                登录
+                {t('authui.login')}
               </button>
             </span>
           ) : null}

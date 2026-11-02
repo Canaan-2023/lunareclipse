@@ -88,7 +88,7 @@ export function WorkspaceConfigSection() {
     // 破坏性操作护栏：删除会把工作区从配置中移除（激活态一并切换），且无撤销入口，
     // 先 confirm 再执行（项目删除类操作统一惯例）。主进程 remove 仅改配置不删磁盘文件。
     const ws = config?.workspaces.find((w) => w.id === id)
-    if (!confirm(`删除工作区「${ws?.name ?? id}」？此操作仅移除列表配置，不会删除磁盘文件。`)) return
+    if (!confirm(t('settings.wsDeleteConfirm', { name: ws?.name ?? id }))) return
     setBusy(true)
     const res = await api.workspace.remove(id)
     setBusy(false)

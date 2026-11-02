@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { groupTemplates, groupKeyOf, WORKFLOW_CATEGORY_ORDER } from '../src/components/Workflow/WorkflowPanel'
+import { getDictEntry } from '../src/i18n/locales'
 import type { WorkflowTemplate, WorkflowMode } from '../shared/workflow/types'
 
 function makeTemplate(id: string, tags: string[], mode: WorkflowMode = 'workflow'): WorkflowTemplate {
@@ -48,8 +49,9 @@ describe('WorkflowPanel · 分组陈列', () => {
       makeTemplate('sec', ['安全'])
     ])
     expect(groups.map((g) => g.key)).toEqual(['记忆', '安全'])
-    expect(groups[0].label).toBe('记忆工作流')
-    expect(groups[1].label).toBe('安全工作流')
+    // label 存 i18n key，渲染层经 t() 取值；按 zh 字典解析，守住界面原标签
+    expect(getDictEntry(groups[0].label)?.zh).toBe('记忆工作流')
+    expect(getDictEntry(groups[1].label)?.zh).toBe('安全工作流')
   })
 
   it('组内保持输入顺序，items 完整归属', () => {

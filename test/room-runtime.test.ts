@@ -436,7 +436,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
     expect(t.size()).toBe(0)
   })
 
-  it('无节拍器（0.54.0）：无动作的一轮结束后立刻接下一轮，不排任何定时器', async () => {
+  it('无节拍器（0.54.1）：无动作的一轮结束后立刻接下一轮，不排任何定时器', async () => {
     let planned = 0
     const rt = makeRuntime({
       collect: async () => ({ ok: true, text: '有输入' }),
@@ -457,7 +457,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
     rt.stop()
   })
 
-  it('采集缺席不中断循环（0.54.0）：synthetic 输入照常进入规划，且不污染上一轮对比', async () => {
+  it('采集缺席不中断循环（0.54.1）：synthetic 输入照常进入规划，且不污染上一轮对比', async () => {
     const prompts: string[] = []
     let round = 0
     const rt = makeRuntime({
@@ -500,7 +500,7 @@ describe('createRoomRuntime：感知器（0.53.1 闭环）', () => {
     await vi.waitFor(() => expect(rt.getState().phase).toBe('idle'))
     rt.onUserMessage('你好')
     expect(turns).toEqual([{ role: 'user', content: '你好' }])
-    // 输出框可见（0.54.0）：用户输入也进事件环，直播输出带不再只剩 AI 的动静
+    // 输出框可见（0.54.1）：用户输入也进事件环，直播输出带不再只剩 AI 的动静
     expect(rt.getState().events.some((e) => e.detail === '你：你好')).toBe(true)
     rt.stop()
   })
@@ -738,7 +738,7 @@ describe('createRoomRuntime：链路装配', () => {
     expect(st.running).toBe(false)
     expect(st.lastPlan?.decisions).toHaveLength(1)
     expect(st.events.length).toBeGreaterThan(0)
-    // 他做的事情逐条进输出框（0.54.0）：loop 只发「N 个动作」，明细由 execute 包装补
+    // 他做的事情逐条进输出框（0.54.2）：loop 只发「N 个动作」，明细由 execute 包装补
     expect(st.events.some((e) => e.detail === '完成：调用工具 read')).toBe(true)
   })
 
@@ -754,7 +754,7 @@ describe('createRoomRuntime：链路装配', () => {
     const r = await rt.tick()
     expect(r.acted).toBe(false)
     expect(rt.getState().lastPlan?.decisions).toHaveLength(0)
-    // 契约破了但它确实说了话：原文当 reply 进输出流 / 字幕（0.54.0 用户反馈）
+    // 契约破了但它确实说了话：原文当 reply 进输出流 / 字幕（0.54.2 用户反馈）
     expect(rt.getState().lastReply).toBe('我不会做')
     expect(rt.getState().events.some((e) => e.detail === '回复：我不会做')).toBe(true)
   })

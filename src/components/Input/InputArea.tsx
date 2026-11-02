@@ -10,14 +10,15 @@ import { useAppStore } from '../../stores/appStore'
 import { useSkillStore } from '../../stores/skillStore'
 import type { SkillMetadata } from '../../../electron/main/skills'
 import type { Attachment } from '@shared/types'
-import { estimateMessagesTokens } from '@shared/utils/token-estimate'
-import { ASRController, TTSController, isASRSupported, isTTSSupported } from '../../services/voice'
+import { ASRController, isASRSupported, isTTSSupported } from '../../services/voice'
 import { ToolConfigPanel } from '../Chat/ToolConfigPanel'
 import { useT } from '../../i18n/useT'
 import { buildSkillInvocationPrefix } from '../../utils/skillInvocation'
 import { nextViewModeForToggle } from './mode-selection'
 import { sendRoomMessage } from './room-send'
 import { ModeMenu } from './ModeMenu'
+import { TokenMeter } from './TokenMeter'
+import { StreamingTts } from './StreamingTts'
 
 // 模式选项 / 「自主」条目 / 整块菜单已抽到 ./ModeMenu —— InputArea 在体量台账内（硬约束：行数不得增加），
 // 故新增的模式菜单一律落在 ModeMenu.tsx，本文件只留一行 <ModeMenu />。
@@ -93,64 +94,12 @@ export function InputArea() {
   const [asrSupported] = useState(isASRSupported())
   const [ttsSupported] = useState(isTTSSupported())
   const asrRef = useRef<ASRController | null>(null)
-  const ttsRef = useRef<TTSController | null>(null)
-  const ttsEnabledRef = useRef(false)
 
-  const streamingMessageId = useAppStore((s) => s.streamingMessageId)
-  const currentMessages = useAppStore((s) => s.currentMessages)
-  // 上下文 token 计数：流式时用 WS 推送值回退本地实时估算；预算取 lastTokenBudget ?? config.tokenBudget，未配置时用软预算兜底
-  const lastTokenCount = useAppStore((s) => s.lastTokenCount)
-  const lastTokenBudget = useAppStore((s) => s.lastTokenBudget)
-  const configTokenBudget = useAppStore((s) => s.config.tokenBudget)
-  const lastUsage = useAppStore((s) => s.lastUsage)
-  const contextWarning = useAppStore((s) => s.contextWarning)
-  const lastSpokenLenRef = useRef(0)
-  // 流式输出时每 500ms 前端实时估算 token（WS token 消息只在请求发起时刷新一次）
-  const messagesRef = useRef(currentMessages)
-  messagesRef.current = currentMessages
-  const [streamingTokenEstimate, setStreamingTokenEstimate] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (!streamingMessageId) {
-      setStreamingTokenEstimate(null)
-      return
-    }
-    setStreamingTokenEstimate(estimateMessagesTokens(messagesRef.current))
-    const timer = setInterval(() => {
-      setStreamingTokenEstimate(estimateMessagesTokens(messagesRef.current))
-    }, 500)
-    return () => clearInterval(timer)
-  }, [streamingMessageId])
-
-  useEffect(() => {
-    if (!ttsSupported) return
-    if (!ttsRef.current) {
-      ttsRef.current = new TTSController()
-    }
-    ttsEnabledRef.current = ttsEnabled
-    if (!ttsEnabled) {
-      ttsRef.current.stop()
-      lastSpokenLenRef.current = 0
-      return
-    }
-    if (!streamingMessageId) {
-      lastSpokenLenRef.current = 0
-      return
-    }
-    const streaming = currentMessages.find((m) => m.id === streamingMessageId)
-    if (!streaming) return
-    const content = streaming.content || ''
-    if (content.length > lastSpokenLenRef.current) {
-      const delta = content.slice(lastSpokenLenRef.current)
-      lastSpokenLenRef.current = content.length
-      ttsRef.current.enqueue(delta)
-    }
-  }, [ttsEnabled, ttsSupported, streamingMessageId, currentMessages])
-
+  // 流式 token 估算与 TTS 都拆到了独立子组件：它们订阅流式消息，但重渲染只发生在
+  // 子组件内部，输入框主体不再随每条 token 重渲染。
   useEffect(() => {
     return () => {
       asrRef.current?.abort()
-      ttsRef.current?.stop()
     }
   }, [])
 
@@ -176,7 +125,7 @@ export function InputArea() {
     const domainSkills = allSkills.filter((s) => s.source === 'domain')
     const domainMap = new Map<string, SkillMetadata[]>()
     for (const s of domainSkills) {
-      const d = s.domain ?? '未分组'
+      const d = s.domain ?? '__ungrouped__'
       if (!domainMap.has(d)) domainMap.set(d, [])
       domainMap.get(d)!.push(s)
     }
@@ -379,27 +328,14 @@ export function InputArea() {
 
   const t = useT()
 
-  // 上下文计数（从 ChatArea 状态条迁入工具条）：流式时优先前端估算，否则回退 WS 推送
-  const displayTokenCount = streamingTokenEstimate ?? lastTokenCount
-  // 有效预算：lastTokenBudget ?? config.tokenBudget ?? 软预算兜底（与后端 SOFT_BUDGET_TOKENS 一致）
-  const SOFT_BUDGET_TOKENS = 16000
-  const effectiveBudget = lastTokenBudget !== null && lastTokenBudget > 0
-    ? lastTokenBudget
-    : configTokenBudget !== null && configTokenBudget > 0
-      ? configTokenBudget
-      : SOFT_BUDGET_TOKENS
-  const showTokenBar = displayTokenCount !== null
-  const tokenPercent = showTokenBar ? Math.min(100, (displayTokenCount! / effectiveBudget) * 100) : 0
-  const tokenWarn = showTokenBar && tokenPercent > 80
-  const tokenMid = showTokenBar && tokenPercent > 60 && !tokenWarn
-
   return (
     <div className="border-t border-border-subtle bg-bg-surface px-6 py-3">
       <div className="mx-auto max-w-3xl">
+        <StreamingTts enabled={ttsEnabled} supported={ttsSupported} />
         {workflowAskPrompt && (
           <div className="mb-2 rounded-card border border-accent/30 bg-accent/5 px-4 py-3">
             <div className="mb-1 text-caption text-accent">
-              记忆工作流-{workflowAskPrompt.workflowId}
+              {t('chatui.memoryWorkflowId', { id: workflowAskPrompt.workflowId })}
             </div>
             <div className="mb-2 text-body text-fg-primary">{workflowAskPrompt.question}</div>
             {workflowAskPrompt.context && (
@@ -470,6 +406,7 @@ export function InputArea() {
                 : 'text-fg-muted hover:bg-bg-muted hover:text-fg-secondary'
             }`}
             title={config.webSearchEnabled ? t('input.webSearch.on') : t('input.webSearch.off')}
+            aria-label={config.webSearchEnabled ? t('input.webSearch.on') : t('input.webSearch.off')}
           >
             <Globe size={13} />
           </button>
@@ -540,65 +477,8 @@ export function InputArea() {
             {chatViewMode === 'tree' ? <MessageSquare size={13} /> : <MessageCircle size={13} />}
           </button>
 
-          {/* 上下文计数 pill：仅占一小块，hover 展开详情 */}
-          {showTokenBar && (
-            <div
-              className={`group relative ml-auto flex h-7 shrink-0 cursor-default items-center gap-1.5 rounded-full px-2.5 transition-all duration-150 ${
-                tokenWarn
-                  ? 'bg-red-500/10 ring-1 ring-red-500/40'
-                  : tokenMid
-                    ? 'bg-amber-500/10 ring-1 ring-amber-500/30'
-                    : 'bg-bg-muted'
-              }`}
-              title={lastTokenBudget !== null && lastTokenBudget > 0 ? 'Token budget' : 'Soft budget estimate'}
-            >
-              <span
-                className={`tabular-nums text-micro font-medium ${
-                  tokenWarn ? 'text-red-400' : tokenMid ? 'text-amber-400' : 'text-fg-muted'
-                }`}
-              >
-                {(displayTokenCount! / 1000).toFixed(1)}k/{(effectiveBudget / 1000).toFixed(0)}k
-                {lastTokenBudget === null && configTokenBudget === null && <span className="ml-0.5 opacity-60">*</span>}
-              </span>
-              {/* hover 展开详情 */}
-              <div className="invisible absolute bottom-full right-0 z-30 mb-1.5 whitespace-nowrap rounded-btn border border-border bg-bg-elevated px-3 py-2 shadow-lg opacity-0 transition-all duration-150 group-hover:visible group-hover:opacity-100">
-                <div className="flex items-center gap-3 text-micro text-fg-muted">
-                  <span className="tabular-nums">
-                    {displayTokenCount} / {effectiveBudget} token
-                  </span>
-                  <span className="tabular-nums">
-                    {tokenPercent.toFixed(0)}%
-                  </span>
-                </div>
-                {lastUsage && (
-                  <div className="mt-1 flex items-center gap-2 text-micro text-fg-muted">
-                    <span
-                      title={`Input ${lastUsage.inputTokens} / Output ${lastUsage.outputTokens}${lastUsage.cacheReadTokens !== undefined ? ` / Cache ${lastUsage.cacheReadTokens}` : ''}`}
-                    >
-                      ↑{lastUsage.inputTokens} ↓{lastUsage.outputTokens}
-                    </span>
-                    {lastUsage.cacheReadTokens !== undefined && (
-                      <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-emerald-400">
-                        {t('token.cache')} {lastUsage.cacheReadTokens}
-                      </span>
-                    )}
-                  </div>
-                )}
-                {contextWarning && (
-                  <div className="mt-1 flex items-center gap-1 text-[10px] text-amber-400">
-                    <span className="max-w-60 truncate">{contextWarning}</span>
-                    <button
-                      onClick={() => useAppStore.setState({ contextWarning: null })}
-                      className="shrink-0 text-amber-400/70 hover:text-amber-400"
-                      title={t('common.close')}
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          {/* 上下文计数 pill：独立组件自己订阅 token 相关字段，输入框不随流式重渲染 */}
+          <TokenMeter />
         </div>
 
         {/* 组合框：输入栏内 chips（附件+技能，按添加顺序可移除）+ 输入框 + 语音 + 发送 —— 宽敞的输入空间 */}
@@ -619,7 +499,7 @@ export function InputArea() {
                   <span className="max-w-32 truncate">{s.label}</span>
                   <button
                     onClick={() => setPendingSkills((prev) => prev.filter((p) => p.label !== s.label))}
-                    className="text-fg-muted hover:text-red-400"
+                    className="text-fg-muted hover:text-danger"
                   >
                     <X size={10} />
                   </button>
@@ -638,7 +518,7 @@ export function InputArea() {
                   <span className="max-w-32 truncate">{a.name}</span>
                   <button
                     onClick={() => removeAttachment(i)}
-                    className="text-fg-muted hover:text-red-400"
+                    className="text-fg-muted hover:text-danger"
                   >
                     <X size={10} />
                   </button>
@@ -699,7 +579,7 @@ export function InputArea() {
                         {t('input.invokeSkill.title')}
                       </span>
                       <span className="shrink-0 text-[10px] text-fg-muted">
-                        {skillGroups.userSkills.length + skillGroups.orderedDomains.reduce((n, [, l]) => n + l.length, 0)} 个
+                        {t('chatui.skillCount', { n: skillGroups.userSkills.length + skillGroups.orderedDomains.reduce((n, [, l]) => n + l.length, 0) })}
                       </span>
                     </div>
                     <div className="max-h-72 overflow-y-auto">
@@ -728,7 +608,7 @@ export function InputArea() {
                       {skillGroups.orderedDomains.map(([domain, list]) => (
                         <div key={domain} className="py-1">
                           <div className="px-3 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-fg-muted">
-                            {t('input.invokeSkill.domain')} · {domain}（{list.length}）
+                            {t('input.invokeSkill.domain')} · {domain === '__ungrouped__' ? t('chatui.ungrouped') : domain}{t('chatui.countInParens', { n: list.length })}
                           </div>
                           <button
                             onClick={() => invokeSkill(list.map((s) => s.name), domain)}
@@ -796,6 +676,7 @@ export function InputArea() {
                   asrActive ? 'bg-accent/20 text-accent' : 'text-fg-muted hover:bg-bg-muted hover:text-fg-secondary'
                 }`}
                 title={asrActive ? t('input.asr.stop') : t('input.asr.start')}
+                aria-label={asrActive ? t('input.asr.stop') : t('input.asr.start')}
               >
                 {asrActive ? <Mic size={14} /> : <MicOff size={14} />}
               </button>
@@ -816,7 +697,7 @@ export function InputArea() {
             <>
               <button
                 onClick={abortStream}
-                className="flex h-8 shrink-0 items-center gap-1.5 rounded-btn bg-red-500/15 px-3 text-caption text-red-400 transition-all duration-150 hover:bg-red-500/25 active:scale-95"
+                className="flex h-8 shrink-0 items-center gap-1.5 rounded-btn bg-danger/15 px-3 text-caption text-danger transition-all duration-150 hover:bg-danger/25 active:scale-95"
                 title={t('input.abort')}
               >
                 <Square size={12} />

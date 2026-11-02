@@ -112,7 +112,7 @@ export function PluginPanel() {
     try {
       const res = await window.lunareclipse.pluginToggle(dirName, enabled)
       if (!res?.ok) {
-        setErr(res?.error ?? '操作失败')
+        setErr(res?.error ?? t('panelui.plugin.opFailed'))
         scheduleErrClear(() => setErr(''), 3000)
       }
     } finally {
@@ -127,7 +127,7 @@ export function PluginPanel() {
     try {
       const res = await window.lunareclipse.featurePluginToggle(id, enabled)
       if (!res?.ok) {
-        setErr(res?.error ?? '操作失败')
+        setErr(res?.error ?? t('panelui.plugin.opFailed'))
         scheduleErrClear(() => setErr(''), 3000)
       }
     } finally {
@@ -141,21 +141,21 @@ export function PluginPanel() {
   }
 
   const handleDelete = async (dirName: string, name: string) => {
-    if (!confirm(`删除插件「${name}」？\n此操作不可撤销，插件目录及其所有文件将被永久删除。`)) return
+    if (!confirm(t('panelui.plugin.deleteConfirm', { name }))) return
     // 防连点：删除已在途时直接返回（按钮同时 disabled）；不防连点会并发删除同一插件
     if (busyDelete) return
     setBusyDelete(dirName)
     try {
       const res = await window.lunareclipse.pluginDelete(dirName)
       if (!res?.ok) {
-        setErr(res?.error ?? '删除失败')
+        setErr(res?.error ?? t('panelui.plugin.deleteFailed'))
         scheduleErrClear(() => setErr(''), 3000)
         return
       }
     } catch (e) {
       // plugin:delete 挂了 requireAuth：未登录时主进程抛 Unauthorized → IPC reject。
       // 不捕获会变成未处理异常，界面无任何反馈，用户看到的就是"删除完全失效"。
-      setErr((e as Error)?.message === 'Unauthorized' ? '请先登录后再删除插件' : `删除插件失败：${(e as Error)?.message ?? '未知错误'}`)
+      setErr((e as Error)?.message === 'Unauthorized' ? t('panelui.plugin.loginRequired') : t('panelui.plugin.deletePluginFailed', { error: (e as Error)?.message ?? t('panelui.plugin.unknownError') }))
       scheduleErrClear(() => setErr(''), 4000)
       return
     } finally {
@@ -175,30 +175,30 @@ export function PluginPanel() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-caption font-medium text-fg-secondary">
             <Puzzle size={13} className="text-accent" />
-            插件
+            {t('panelui.plugin.title')}
           </div>
           <div className="flex items-center gap-1">
             <button
               onClick={() => void load()}
               className="flex h-6 w-6 items-center justify-center rounded text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-              title="刷新"
-              aria-label="刷新"
+              title={t('panelui.plugin.refresh')}
+              aria-label={t('panelui.plugin.refresh')}
             >
               <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
             </button>
             <button
               onClick={() => void openDir()}
               className="flex items-center gap-1 rounded-btn bg-bg-muted px-2 py-1 text-[11px] text-fg-secondary hover:bg-bg-muted/70"
-              title="打开插件目录"
+              title={t('panelui.plugin.openDir')}
             >
               <FolderOpen size={11} />
-              目录
+              {t('panelui.plugin.dir')}
             </button>
             <button
               onClick={() => closeDrawer()}
               className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-              title="关闭"
-              aria-label="关闭"
+              title={t('panelui.plugin.close')}
+              aria-label={t('panelui.plugin.close')}
             >
               <X size={12} />
             </button>
@@ -207,7 +207,7 @@ export function PluginPanel() {
       </div>
 
       {err && (
-        <div className="shrink-0 border-b border-border-subtle px-3 py-1.5 text-[11px] text-red-400">
+        <div className="shrink-0 border-b border-border-subtle px-3 py-1.5 text-[11px] text-danger">
           {err}
         </div>
       )}
@@ -222,7 +222,7 @@ export function PluginPanel() {
               onClick={() => setFeatureOpen((v) => !v)}
               aria-expanded={featureOpen}
               className="flex w-full items-center gap-1.5 px-2.5 py-2 text-left transition-colors hover:bg-bg-muted/60"
-              title={featureOpen ? '收起内核功能插件' : '展开内核功能插件'}
+              title={featureOpen ? t('panelui.plugin.collapseFeatures') : t('panelui.plugin.expandFeatures')}
             >
               <ChevronDown
                 size={11}
@@ -231,12 +231,12 @@ export function PluginPanel() {
                 }`}
               />
               <Boxes size={12} className="shrink-0 text-accent" />
-              <span className="text-caption font-medium text-fg-primary">内核功能插件</span>
+              <span className="text-caption font-medium text-fg-primary">{t('panelui.plugin.features')}</span>
               <span className="text-[10px] font-normal text-fg-muted">
-                （{enabledFeatureCount}/{featurePlugins.length} 启用）
+                {t('panelui.plugin.featureEnabled', { n: enabledFeatureCount, m: featurePlugins.length })}
               </span>
               <span className="ml-auto text-[10px] text-fg-muted/60">
-                {featureOpen ? '收起' : '展开'}
+                {featureOpen ? t('panelui.plugin.collapse') : t('panelui.plugin.expand')}
               </span>
             </button>
             {featureOpen && (
@@ -271,7 +271,7 @@ export function PluginPanel() {
                       className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${
                         f.enabled ? 'bg-accent' : 'bg-bg-muted'
                       } disabled:cursor-not-allowed disabled:opacity-50`}
-                      title={f.enabled ? '点击禁用' : '点击启用'}
+                      title={f.enabled ? t('panelui.plugin.clickDisable') : t('panelui.plugin.clickEnable')}
                     >
                       <span
                         className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${
@@ -289,11 +289,11 @@ export function PluginPanel() {
         {/* 插件列表：面板型 / 工具型分组显示，保证全部插件（含无面板插件）可见 */}
         {plugins.length === 0 ? (
           <div className="px-3 py-8 text-center text-caption text-fg-muted">
-            {loading ? '加载中…' : '暂无插件'}
+            {loading ? t('panelui.plugin.loading') : t('panelui.plugin.empty')}
             <div className="mt-2 text-[11px] leading-relaxed">
-              插件 = {rootDir || 'abyssac_data/plugins/'} 下的子文件夹
+              {t('panelui.plugin.emptyHint', { dir: rootDir || 'abyssac_data/plugins/' })}
               <br />
-              （plugin.json + tools.js），扔进文件夹即加载
+              {t('panelui.plugin.emptyHint2')}
             </div>
           </div>
         ) : (
@@ -365,8 +365,8 @@ export function PluginPanel() {
                             onClick={() => void handleDelete(p.dirName, p.name)}
                             disabled={busyDelete === p.dirName}
                             className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-muted transition-colors hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-40"
-                            title={busyDelete === p.dirName ? '正在删除…' : '删除插件'}
-                            aria-label="删除插件"
+                            title={busyDelete === p.dirName ? t('panelui.plugin.deleting') : t('panelui.plugin.deletePlugin')}
+                            aria-label={t('panelui.plugin.deletePlugin')}
                           >
                             <Trash2 size={11} />
                           </button>
@@ -380,7 +380,7 @@ export function PluginPanel() {
                             className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${
                               p.enabled ? 'bg-accent' : 'bg-bg-muted'
                             } disabled:cursor-not-allowed disabled:opacity-50`}
-                            title={p.enabled ? '点击禁用' : '点击启用'}
+                            title={p.enabled ? t('panelui.plugin.clickDisable') : t('panelui.plugin.clickEnable')}
                           >
                             <span
                               className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${
@@ -393,11 +393,11 @@ export function PluginPanel() {
                       {/* 第二行：描述（单行截断）+ 版本/工具数 */}
                       <div className="mt-0.5 flex items-center gap-1.5">
                         <span className="min-w-0 flex-1 truncate text-[10px] text-fg-muted">
-                          {p.description || '（无描述）'}
+                          {p.description || t('panelui.plugin.noDescription')}
                         </span>
                         <span className="shrink-0 text-[9px] text-fg-muted/60">
                           v{p.version}
-                          {p.toolCount > 0 && ` · ${p.toolCount} 工具`}
+                          {p.toolCount > 0 && t('panelui.plugin.toolCount', { n: p.toolCount })}
                         </span>
                       </div>
                       {/* 工具列表：最多展示 4 个，其余折叠进 title，避免一插件占满整屏 */}
@@ -432,7 +432,7 @@ export function PluginPanel() {
                           ))}
                           {p.errors.length > 2 && (
                             <div className="text-fg-muted/70" title={p.errors.join('\n')}>
-                              … 还有 {p.errors.length - 2} 条
+                              {t('panelui.plugin.moreErrors', { n: p.errors.length - 2 })}
                             </div>
                           )}
                         </div>

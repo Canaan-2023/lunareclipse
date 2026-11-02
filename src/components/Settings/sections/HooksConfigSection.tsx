@@ -257,16 +257,16 @@ export function HooksConfigSection() {
 
       {/* 项目级 Hook 确认条：存在且未确认时提醒（安全护栏，启用需主进程系统确认框二次确认） */}
       {projStatus === 'pending' && (
-        <div className="flex items-start gap-2.5 rounded-btn border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
-          <ShieldAlert size={14} className="mt-0.5 shrink-0 text-amber-400" />
+        <div className="flex items-start gap-2.5 rounded-btn border border-warning/30 bg-warning/10 px-3 py-2.5">
+          <ShieldAlert size={14} className="mt-0.5 shrink-0 text-warning" />
           <div className="min-w-0 flex-1">
-            <div className="text-caption font-medium text-amber-300">{t('settings.hookProjectConfirmBar')}</div>
-            <div className="mt-0.5 text-[11px] leading-relaxed text-amber-300/70">{t('settings.hookProjectConfirmDesc')}</div>
+            <div className="text-caption font-medium text-warning">{t('settings.hookProjectConfirmBar')}</div>
+            <div className="mt-0.5 text-[11px] leading-relaxed text-warning/70">{t('settings.hookProjectConfirmDesc')}</div>
           </div>
           <button
             onClick={() => void confirmProject()}
             disabled={confirming}
-            className="flex shrink-0 items-center gap-1.5 rounded-btn bg-amber-500 px-2.5 py-1.5 text-caption font-medium text-black transition-all duration-150 hover:bg-amber-400 disabled:opacity-50 active:scale-95"
+            className="flex shrink-0 items-center gap-1.5 rounded-btn bg-warning px-2.5 py-1.5 text-caption font-medium text-black transition-all duration-150 hover:bg-warning disabled:opacity-50 active:scale-95"
           >
             {confirming ? <Loader2 size={11} className="animate-spin" /> : <ShieldCheck size={11} />}
             {t('settings.hookConfirmEnable')}
@@ -383,7 +383,7 @@ export function HooksConfigSection() {
               {testOutcome && (
                 <pre
                   className={`mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-btn bg-bg-base px-2.5 py-1.5 font-mono text-[11px] ${
-                    testOutcome.ok ? 'text-fg-secondary' : 'text-red-400'
+                    testOutcome.ok ? 'text-fg-secondary' : 'text-danger'
                   }`}
                 >
                   {testOutcome.text}

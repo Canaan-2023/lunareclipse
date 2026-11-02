@@ -8,15 +8,19 @@ import { join } from 'path'
 import { renameFileWithRetry } from '../../utils/atomic-write'
 import type { ChatRoomMessage } from './chat-room-types'
 
+/** 聊天室单群消息保留上限（产品口径：最近 2000 条）。 */
+export const CHAT_ROOM_MESSAGE_MAX = 2000
+
 /**
  * 聊天室消息存储（abyssac_data/federation/chat-rooms/{gid}/messages.json）。
- * 整文件原子覆写，控制上限防单文件无限膨胀（默认保留最近 2000 条）。
+ * 整文件原子覆写，控制上限防单文件无限膨胀（默认保留最近 CHAT_ROOM_MESSAGE_MAX 条；
+ * 构造参数可覆盖，测试用小上限验证裁剪语义）。
  */
 export class ChatRoomChatStore {
   private readonly dir: string
   private readonly maxMessages: number
 
-  constructor(root: string, maxMessages = 2000) {
+  constructor(root: string, maxMessages = CHAT_ROOM_MESSAGE_MAX) {
     this.dir = join(root, 'federation', 'chat-rooms')
     this.maxMessages = maxMessages
   }

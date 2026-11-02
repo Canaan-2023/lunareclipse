@@ -5,6 +5,7 @@
  */
 import type { ToolPolicy, ToolCategory } from '@shared/types'
 import { getWorkflowTools, CATEGORY_LABELS, CATEGORY_ICONS, isToolEnabled } from '@shared/tools/registry'
+import { useT } from '../../i18n/useT'
 
 export function MemoryWorkflowToolConfig({
   tools: toolList = getWorkflowTools(),
@@ -15,12 +16,13 @@ export function MemoryWorkflowToolConfig({
   policy: Record<string, ToolPolicy>
   onChange: (toolPolicy: Record<string, ToolPolicy>) => void
 }) {
+  const t = useT()
   const byCategory = new Map<ToolCategory, typeof toolList>()
-  for (const t of toolList) {
-    if (t.isMechanism) continue
-    const arr = byCategory.get(t.category) ?? []
-    arr.push(t)
-    byCategory.set(t.category, arr)
+  for (const tl of toolList) {
+    if (tl.isMechanism) continue
+    const arr = byCategory.get(tl.category) ?? []
+    arr.push(tl)
+    byCategory.set(tl.category, arr)
   }
 
   const setTool = (toolId: string, enabled: boolean) => {
@@ -30,7 +32,7 @@ export function MemoryWorkflowToolConfig({
   const setCategory = (cat: ToolCategory, enabled: boolean) => {
     const toolsInCat = byCategory.get(cat) ?? []
     const newPolicy = { ...policy }
-    for (const t of toolsInCat) newPolicy[t.id] = { enabled }
+    for (const tl of toolsInCat) newPolicy[tl.id] = { enabled }
     onChange(newPolicy)
   }
 
@@ -50,7 +52,7 @@ export function MemoryWorkflowToolConfig({
                   allOn ? 'bg-accent/15 text-accent' : 'bg-bg-muted text-fg-muted'
                 }`}
               >
-                {allOn ? '全开' : '全关'}
+                {allOn ? t('settings.toolsAllOn') : t('settings.toolsAllOff')}
               </button>
             </div>
             <div className="space-y-0.5 pl-4">

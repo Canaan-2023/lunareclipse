@@ -8,6 +8,7 @@ import { X, Wrench, RotateCcw, Check, Loader2 } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { getFrontendTools, CATEGORY_LABELS, CATEGORY_ICONS } from '@shared/tools/registry'
 import type { ToolCategory, FrontendToolPolicy, ToolPolicy, AppConfig } from '@shared/types'
+import { useT } from '../../i18n/useT'
 
 interface Props {
   onClose: () => void
@@ -15,6 +16,7 @@ interface Props {
 
 /** 前端 AI 工具配置面板：分类级 + per-tool 启用/禁用（直接注入模式，onDemand 已退役） */
 export function ToolConfigPanel({ onClose }: Props) {
+  const t = useT()
   const config = useAppStore((s) => s.config)
   const saveConfig = useAppStore((s) => s.saveConfig)
 
@@ -115,9 +117,9 @@ export function ToolConfigPanel({ onClose }: Props) {
       <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
         <div className="flex items-center gap-2">
           <Wrench size={14} className="text-accent" />
-          <span className="text-title font-medium text-fg-primary">工具配置</span>
+          <span className="text-title font-medium text-fg-primary">{t('input.toolConfig')}</span>
         </div>
-        <button onClick={onClose} aria-label="关闭工具配置" title="关闭" className="text-fg-muted transition-all duration-150 hover:text-fg-primary active:scale-95">
+        <button onClick={onClose} aria-label={t('chatui.closeToolConfig')} title={t('common.close')} className="text-fg-muted transition-all duration-150 hover:text-fg-primary active:scale-95">
           <X size={16} />
         </button>
       </div>
@@ -126,10 +128,10 @@ export function ToolConfigPanel({ onClose }: Props) {
         {/* 全选/全清 */}
         <div className="mb-3 flex gap-2">
           <button onClick={selectAll} className="rounded-btn bg-bg-muted px-2.5 py-1 text-caption text-fg-secondary transition-all duration-150 hover:bg-bg-muted/70 hover:text-fg-primary active:scale-95">
-            全选
+            {t('chatui.selectAll')}
           </button>
           <button onClick={clearAll} className="rounded-btn bg-bg-muted px-2.5 py-1 text-caption text-fg-secondary transition-all duration-150 hover:bg-bg-muted/70 hover:text-fg-primary active:scale-95">
-            全清
+            {t('chatui.clearAll')}
           </button>
         </div>
 
@@ -151,19 +153,19 @@ export function ToolConfigPanel({ onClose }: Props) {
             </div>
             {/* per-tool toggles */}
             <div className="space-y-1 pl-5">
-              {tools.map((t) => (
-                <div key={t.id} className="flex items-center justify-between rounded-btn px-2 py-1 hover:bg-bg-muted/30">
+              {tools.map((tool) => (
+                <div key={tool.id} className="flex items-center justify-between rounded-btn px-2 py-1 hover:bg-bg-muted/30">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-caption text-fg-primary">{t.name}</span>
-                    <span className="text-[10px] text-fg-muted">{t.id}</span>
-                    {t.riskLevel === 'high' && (
-                      <span className="rounded bg-danger-soft px-1 text-[10px] text-danger">高风险</span>
+                    <span className="text-caption text-fg-primary">{tool.name}</span>
+                    <span className="text-[10px] text-fg-muted">{tool.id}</span>
+                    {tool.riskLevel === 'high' && (
+                      <span className="rounded bg-danger-soft px-1 text-[10px] text-danger">{t('chatui.highRisk')}</span>
                     )}
                   </div>
                   <Toggle
-                    on={isToolOn(t.id, t.defaultEnabled)}
-                    onChange={(v) => setToolEnabled(t.id, v)}
-                    ariaLabel={t.name}
+                    on={isToolOn(tool.id, tool.defaultEnabled)}
+                    onChange={(v) => setToolEnabled(tool.id, v)}
+                    ariaLabel={tool.name}
                   />
                 </div>
               ))}
@@ -174,9 +176,9 @@ export function ToolConfigPanel({ onClose }: Props) {
 
       {/* 保存失败提示条：setConfig 异常时展示错误，避免应用按钮失效无反馈 */}
       {applyError && (
-        <div className="flex items-center gap-2 border-t border-red-500/20 bg-red-500/10 px-4 py-2 text-caption text-red-400">
+        <div className="flex items-center gap-2 border-t border-danger/20 bg-danger/10 px-4 py-2 text-caption text-danger">
           <span className="flex-1">{applyError}</span>
-          <button onClick={() => setApplyError(null)} className="text-red-400/70 hover:text-red-400" title="关闭" aria-label="关闭">
+          <button onClick={() => setApplyError(null)} className="text-danger/70 hover:text-danger" title={t('common.close')} aria-label={t('common.close')}>
             <X size={10} />
           </button>
         </div>
@@ -187,13 +189,13 @@ export function ToolConfigPanel({ onClose }: Props) {
         <button
           onClick={() => {
             // 恢复默认会覆盖草稿中全部开关，误点后继续「应用」会让已保存的自定义配置整体丢失，先确认
-            if (!window.confirm('恢复默认将覆盖当前所有工具开关设置，点击「应用」后生效且无法撤销。确定恢复默认？')) return
+            if (!window.confirm(t('chatui.resetDefaultsConfirm'))) return
             resetDefaults()
           }}
           className="flex items-center gap-1.5 rounded-btn px-2.5 py-1 text-caption text-fg-muted transition-all duration-150 hover:text-fg-secondary active:scale-95"
         >
           <RotateCcw size={12} />
-          重置默认
+          {t('chatui.resetDefaults')}
         </button>
         <button
           onClick={apply}
@@ -201,7 +203,7 @@ export function ToolConfigPanel({ onClose }: Props) {
           className="flex items-center gap-1.5 rounded-btn bg-accent px-4 py-1.5 text-caption text-accent-fg transition-all duration-150 hover:bg-accent/80 active:scale-95 disabled:opacity-50"
         >
           {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-          应用
+          {t('chatui.apply')}
         </button>
       </div>
     </div>

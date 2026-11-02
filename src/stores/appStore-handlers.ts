@@ -12,6 +12,7 @@ import type {
   SubAgentInfo
 } from '@shared/types'
 import { TOOL_MAP } from '@shared/tools/registry'
+import { getDictEntry } from '../i18n/locales'
 import type { AppState } from './appStore-types'
 
 /** 用户中止时间戳（abort 后拦截窗口内到达的 code_review_start；由 store 写入、处理器读取） */
@@ -80,6 +81,11 @@ export function handleWSMessage(
   set: SetState,
   get: () => AppState
 ) {
+  const lang = get().lang ?? 'zh'
+  const t = (key: string, vars?: Record<string, string | number>): string => {
+    const text = getDictEntry(key)?.[lang] ?? key
+    return vars ? text.replace(/\{([^{}]+)\}/g, (whole, name: string) => (Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : whole)) : text
+  }
   // 代码审查讨论：后端 onDone 检测到 codeReview 开启时推送 code_review_start，
   // 审查发言↔执行者交替对话直到 [REVIEW_PASS]。前端只"挂接显示"。
   // 必须在 streamingMessageId 检查前处理（此时上一轮已 done，streamingMessageId 已清空）
@@ -481,9 +487,9 @@ export function handleWSMessage(
         // 接近极限时主动提醒（>80% 警告，>95% 紧急）
         const ratio = msg.tokens / budget
         if (ratio >= CONTEXT_CRITICAL_RATIO) {
-          patch.contextWarning = `上下文已达 ${Math.round(ratio * 100)}%（${msg.tokens}/${budget}），建议开新会话继续`
+          patch.contextWarning = t('storemsg.handler.contextCritical', { percent: Math.round(ratio * 100), tokens: msg.tokens, budget })
         } else if (ratio >= CONTEXT_WARN_RATIO) {
-          patch.contextWarning = `上下文使用 ${Math.round(ratio * 100)}%（${msg.tokens}/${budget}），接近极限`
+          patch.contextWarning = t('storemsg.handler.contextWarning', { percent: Math.round(ratio * 100), tokens: msg.tokens, budget })
         } else {
           patch.contextWarning = null
         }
@@ -492,7 +498,7 @@ export function handleWSMessage(
         patch.contextWarning = null
       }
       if (dropped > 0 && !patch.contextWarning) {
-        patch.contextWarning = `已截断 ${dropped} 条最旧消息以适配预算`
+        patch.contextWarning = t('storemsg.handler.contextTruncated', { dropped })
       }
       set(patch)
     }
@@ -616,6 +622,11 @@ export function handleWorkflowEvent(
   set: SetState,
   get: () => AppState
 ) {
+  const lang = get().lang ?? 'zh'
+  const t = (key: string, vars?: Record<string, string | number>): string => {
+    const text = getDictEntry(key)?.[lang] ?? key
+    return vars ? text.replace(/\{([^{}]+)\}/g, (whole, name: string) => (Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : whole)) : text
+  }
   switch (event.type) {
     case 'activation:trigger':
       // 文档 15.2.1：后端通知前端有激活事件，发起自主激活请求。
@@ -651,7 +662,7 @@ export function handleWorkflowEvent(
       const taskId = event.taskId as string
       const reason = event.reason as string
       set((s) => ({
-        errorMessage: `记忆工作流-${taskId} 崩溃: ${reason}`,
+        errorMessage: t('storemsg.handler.memoryWorkflowCrash', { taskId, reason }),
         workflowLog: [
           ...s.workflowLog.slice(-(WORKFLOW_LOG_MAX - 1)),
           {

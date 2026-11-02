@@ -14,6 +14,15 @@
 import { useSyncExternalStore } from 'react'
 import { DEFAULT_AI_ID } from '@shared/types'
 import { validateMascotSheet, type MascotSheet, type MascotSkip } from '@shared/room/mascot'
+import { getDictEntry } from '../../i18n/locales'
+import { useAppStore } from '../../stores/appStore'
+
+/** 错误提示翻译：非组件环境取 store 当前语言，先经 `getDictEntry` 查词 */
+const t = (key: string, vars?: Record<string, string | number>): string => {
+  const lang = useAppStore.getState().lang ?? 'zh'
+  const text = getDictEntry(key)?.[lang] ?? key
+  return vars ? text.replace(/\{([^{}]+)\}/g, (whole, name: string) => (Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : whole)) : text
+}
 
 export interface MascotState {
   /** 帧名 → `data:image/png;base64,…`（空表 = 用内置像素画） */
@@ -66,7 +75,7 @@ export function reloadMascot(aiId: number = DEFAULT_AI_ID): Promise<void> {
     try {
       const r = await window.lunareclipse?.roomMascotGet?.(aiId)
       if (!r?.ok) {
-        states.set(aiId, { ...EMPTY, loaded: true, error: '读取图片立绘失败：主进程未就绪或该通道不可用' })
+        states.set(aiId, { ...EMPTY, loaded: true, error: t('storemsg.room.mascotLoadFailed') })
       } else {
         // IPC 回来的东西也要过一遍校验（渲染侧永远不信任跨进程数据）
         const v = validateMascotSheet(r.sheet)
@@ -75,14 +84,14 @@ export function reloadMascot(aiId: number = DEFAULT_AI_ID): Promise<void> {
           skipped: Array.isArray(r.skipped) ? r.skipped : [],
           dir: typeof r.dir === 'string' ? r.dir : null,
           loaded: true,
-          error: v.ok ? null : `图片立绘表未通过校验：${v.error}`
+          error: v.ok ? null : t('storemsg.room.mascotSheetInvalid', { error: v.error })
         })
       }
     } catch (err) {
       states.set(aiId, {
         ...EMPTY,
         loaded: true,
-        error: `读取图片立绘失败：${err instanceof Error ? err.message : String(err)}`
+        error: t('storemsg.room.mascotLoadFailedWithError', { error: err instanceof Error ? err.message : String(err) })
       })
     } finally {
       inFlight.delete(aiId)

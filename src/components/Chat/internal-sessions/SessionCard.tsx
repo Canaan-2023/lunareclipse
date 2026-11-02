@@ -123,9 +123,9 @@ export function SessionCard({
     const dotColor = isActive
       ? 'bg-accent'
       : isLatest
-        ? 'bg-emerald-400'
+        ? 'bg-success'
         : isTimeFork
-          ? 'bg-amber-400'
+          ? 'bg-warning'
           : isFrozen
             ? 'bg-fg-muted'
             : 'bg-fg-muted/50'
@@ -177,7 +177,7 @@ export function SessionCard({
             {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
           </button>
         )}
-        <span className={`rounded-full px-1.5 py-0.5 text-caption font-medium ${isRoot ? 'bg-accent/15 text-accent' : isLatest ? 'bg-emerald-500/15 text-emerald-400' : 'bg-bg-muted/80 text-fg-muted'}`}>
+        <span className={`rounded-full px-1.5 py-0.5 text-caption font-medium ${isRoot ? 'bg-accent/15 text-accent' : isLatest ? 'bg-success/15 text-success' : 'bg-bg-muted/80 text-fg-muted'}`}>
           {isRoot
             ? t('internal.genRoot')
             : t('internal.gen', { n: gen })}
@@ -188,7 +188,7 @@ export function SessionCard({
           </span>
         )}
         {isLatest && !isActive && (
-          <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-caption font-medium text-emerald-400">
+          <span className="rounded-full bg-success/15 px-1.5 py-0.5 text-caption font-medium text-success">
             {t('internal.latest')}
           </span>
         )}
@@ -201,7 +201,7 @@ export function SessionCard({
           </span>
         )}
         {isTimeFork && (
-          <span className="flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-caption font-medium text-amber-400">
+          <span className="flex items-center gap-0.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-caption font-medium text-warning">
             <Clock size={10} />
             {t('internal.forkBadge')}
           </span>
@@ -255,12 +255,12 @@ export function SessionCard({
               <Pencil size={12} />
             </button>
             <button
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-btn text-fg-muted/40 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-btn text-fg-muted/40 opacity-0 transition-all hover:bg-danger/10 hover:text-danger group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
               title={t('internal.delete')}
               aria-label={t('internal.delete')}
               onClick={() => {
                 // 内部会话连同其全部消息一并落盘删除且无回收站，误删代价高，先确认再执行
-                if (!window.confirm(`删除内部会话「${summary.title || summary.id}」将永久移除其中全部消息。确定删除？`)) return
+                if (!window.confirm(t('chatui.deleteInternalSessionConfirm', { title: summary.title || summary.id }))) return
                 void deleteInternalSession(sessionId, summary.id)
               }}
             >

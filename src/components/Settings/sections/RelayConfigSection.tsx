@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { HardDrive, Clock, Info } from 'lucide-react'
 import type { AppConfig } from '@shared/types'
 import { FOCUS } from '../../Friends/types'
+import { useT } from '../../../i18n/useT'
 
 interface RelayRuntimeInfo {
   isHub: boolean
@@ -16,6 +17,7 @@ interface RelayRuntimeInfo {
 }
 
 export function RelayConfigSection({ config, onChange }: { config: AppConfig; onChange: (c: AppConfig) => void }) {
+  const t = useT()
   /** 运行时真值（relay:info；配置保存后立即反映，与提示词段同源） */
   const [runtime, setRuntime] = useState<RelayRuntimeInfo | null>(null)
   /** 草稿：下载位置（留空 = 默认 {root}/relay/downloads） */
@@ -47,7 +49,7 @@ export function RelayConfigSection({ config, onChange }: { config: AppConfig; on
     <section>
       <div className="mb-3 flex items-center gap-2 text-caption uppercase tracking-wider text-fg-muted">
         <HardDrive size={12} />
-        <span>中继传输</span>
+        <span>{t('settings.relayTitle')}</span>
       </div>
 
       <div className="space-y-3 rounded-btn border border-border-subtle bg-bg-elevated p-3">
@@ -57,13 +59,13 @@ export function RelayConfigSection({ config, onChange }: { config: AppConfig; on
             <Info size={11} className="mt-0.5 shrink-0 text-accent" />
             <div className="min-w-0 flex-1 space-y-0.5">
               <div className="truncate">
-                生效下载位置：<span className="font-mono text-fg-primary">{runtime.downloadDir}</span>
+                {t('settings.relayEffectiveDir')}<span className="font-mono text-fg-primary">{runtime.downloadDir}</span>
               </div>
               <div className="flex items-center gap-3">
                 <span className="inline-flex items-center gap-1">
-                  <Clock size={9} /> 保留 {runtime.retentionDays} 天
+                  <Clock size={9} /> {t('settings.relayRetention', { n: runtime.retentionDays })}
                 </span>
-                <span>{runtime.isHub ? '本机为主系统中继存储端' : '本机经主系统中继存取（非存储端）'}</span>
+                <span>{runtime.isHub ? t('settings.relayHub') : t('settings.relayViaMaster')}</span>
               </div>
             </div>
           </div>
@@ -72,7 +74,7 @@ export function RelayConfigSection({ config, onChange }: { config: AppConfig; on
         {/* 下载位置 */}
         <label className="block">
           <span className="mb-1 block text-caption text-fg-secondary">
-            接收取件下载位置<span className="text-[10px] text-fg-muted">（留空 = 默认 {`{root}/relay/downloads`}）</span>
+            {t('settings.relayDownloadLabel')}<span className="text-[10px] text-fg-muted">{t('settings.relayDownloadDefaultHint')}</span>
           </span>
           <input
             value={downloadDir}
@@ -80,8 +82,8 @@ export function RelayConfigSection({ config, onChange }: { config: AppConfig; on
               setDownloadDir(e.target.value)
               syncLocal(e.target.value, retentionDays)
             }}
-            placeholder="例如 C:\Users\me\Downloads\relay"
-            aria-label="中继下载位置"
+            placeholder={t('settings.relayDirPlaceholder')}
+            aria-label={t('settings.relayDownloadAria')}
             className={`w-full rounded-btn border border-border-subtle bg-bg-base px-2.5 py-1.5 font-mono text-caption text-fg-primary outline-none focus:border-accent ${FOCUS}`}
           />
         </label>
@@ -89,7 +91,7 @@ export function RelayConfigSection({ config, onChange }: { config: AppConfig; on
         {/* 保留天数 */}
         <label className="block">
           <span className="mb-1 block text-caption text-fg-secondary">
-            无人确认保留天数<span className="text-[10px] text-fg-muted">（发送方可在保留期内撤回，超期自动清理）</span>
+            {t('settings.relayRetentionLabel')}<span className="text-[10px] text-fg-muted">{t('settings.relayRetentionHint')}</span>
           </span>
           <input
             value={retentionDays}
@@ -99,13 +101,13 @@ export function RelayConfigSection({ config, onChange }: { config: AppConfig; on
             }}
             type="number"
             min={1}
-            aria-label="中继保留天数"
+            aria-label={t('settings.relayRetentionAria')}
             className={`w-24 rounded-btn border border-border-subtle bg-bg-base px-2.5 py-1.5 text-caption text-fg-primary outline-none focus:border-accent ${FOCUS}`}
           />
         </label>
 
         <p className="text-[11px] leading-relaxed text-fg-muted">
-          修改随设置面板右下角「保存」一并落盘；保存后（主系统中继场景）立即生效，AI 提示词中的下载位置同步更新。
+          {t('settings.relaySaveHint')}
         </p>
       </div>
     </section>

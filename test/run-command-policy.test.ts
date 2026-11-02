@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { RunCommandTool, resolveCommandPolicy, assessCommandForBackgroundExec } from '../electron/main/tools/run-command'
 import type { ToolContext, PermissionResponse } from '../electron/main/tools/base-tool'
 import type { CommandPolicy } from '@shared/types/command-policy'
+import { createFakeSpawn } from './helpers/fake-spawn'
 
 /**
  * 可配置规则层（CommandPolicy）行为测试。
@@ -70,7 +71,7 @@ describe('resolveCommandPolicy（策略解析）', () => {
 })
 
 describe('run_command 可配置规则层', () => {
-  const tool = new RunCommandTool()
+  const tool = new RunCommandTool(createFakeSpawn())
 
   it('默认策略：白名单命令直行、黑名单拒绝（改造零破坏）', async () => {
     const ctx = makeCtx(false)

@@ -9,30 +9,32 @@ import { useAppStore } from '../../stores/appStore'
 import type { HealthCheckItemStatus, VisualizationData } from '@shared/types'
 import { SectionTitle, EmptyHint } from './common'
 import { formatDateTime } from '../../utils/time'
+import { useT } from '../../i18n/useT'
 
 /** 健康检查 Tab（批次 E-5c 从 VisualizationPanel.tsx 拆出） */
 
-const CHECK_LABELS: Record<string, string> = {
-  typecheck: '类型检查',
-  test: '测试',
-  lint: '代码规范',
-  build: '构建',
-  files: '文件层',
-  'code-review': '代码评审',
-  uiux: 'UI/UX 审计',
-  safety: '自我安全'
+const CHECK_LABEL_KEYS: Record<string, string> = {
+  typecheck: 'vizui.health.check.typecheck',
+  test: 'vizui.health.check.test',
+  lint: 'vizui.health.check.lint',
+  build: 'vizui.health.check.build',
+  files: 'vizui.health.check.files',
+  'code-review': 'vizui.health.check.codeReview',
+  uiux: 'vizui.health.check.uiux',
+  safety: 'vizui.health.check.safety'
 }
 
 /** 工作区代码健康状态：来自主进程 HealthCheck 模块内存态快照（viz:getAll 附带） */
 export function HealthTab({ data }: { data: VisualizationData | null }) {
+  const t = useT()
   const loading = useAppStore((s) => s.visualizationLoading)
   const hc = data?.healthCheck ?? null
 
   if (!hc) {
     return (
       <div className="space-y-5">
-        <SectionTitle icon={ShieldCheck} title="健康检查" />
-        <EmptyHint text="健康检查模块未初始化（主进程模块尚未启动，稍后刷新本页）" />
+        <SectionTitle icon={ShieldCheck} title={t('vizui.health.title')} />
+        <EmptyHint text={t('vizui.health.notInit')} />
       </div>
     )
   }
@@ -40,8 +42,8 @@ export function HealthTab({ data }: { data: VisualizationData | null }) {
   if (!hc.available) {
     return (
       <div className="space-y-5">
-        <SectionTitle icon={ShieldCheck} title="健康检查" />
-        <EmptyHint text="健康检查模块不可用（已关闭或初始化失败）" />
+        <SectionTitle icon={ShieldCheck} title={t('vizui.health.title')} />
+        <EmptyHint text={t('vizui.health.moduleUnavailable')} />
       </div>
     )
   }
@@ -55,28 +57,28 @@ export function HealthTab({ data }: { data: VisualizationData | null }) {
   // 总状态卡片
   const overall =
     !hc.enabled
-      ? { label: '已禁用', dot: 'bg-fg-muted/50', desc: '配置 config.enabled=false，可在 {dataDir}/.health_check/config.json 开启' }
+      ? { label: t('vizui.health.status.disabled'), dot: 'bg-fg-muted/50', desc: t('vizui.health.desc.disabled') }
       : hc.overallOk === null
-        ? { label: '尚未检查', dot: 'bg-fg-muted', desc: '应用启动 20 秒后自动检查，或点击「立即检查」' }
+        ? { label: t('vizui.health.status.unchecked'), dot: 'bg-fg-muted', desc: t('vizui.health.desc.unchecked') }
         : failed > 0
           ? {
-              label: '存在异常',
-              dot: 'bg-red-400',
-              desc: `${failed} 项失败/内部错误${unavailable > 0 ? `，另有 ${unavailable} 项无法执行` : ''}`
+              label: t('vizui.health.status.failed'),
+              dot: 'bg-danger',
+              desc: t('vizui.health.desc.failed', { n: failed }) + (unavailable > 0 ? t('vizui.health.desc.failedExtra', { n: unavailable }) : '')
             }
           : unavailable > 0
             ? {
-                label: '部分检查无法执行',
-                dot: 'bg-amber-400',
-                desc: `${unavailable} 项缺少执行材料（原因见条目）；这不等于通过`
+                label: t('vizui.health.status.partial'),
+                dot: 'bg-warning',
+                desc: t('vizui.health.desc.partial', { n: unavailable })
               }
-            : { label: '全部通过', dot: 'bg-green-400', desc: '工作区代码健康' }
+            : { label: t('vizui.health.status.allPass'), dot: 'bg-success', desc: t('vizui.health.desc.allPass') }
 
   return (
     <div className="space-y-5">
       {/* 总状态 + 立即检查 */}
       <section>
-        <SectionTitle icon={ShieldCheck} title="健康检查" />
+        <SectionTitle icon={ShieldCheck} title={t('vizui.health.title')} />
         <div className="flex items-center gap-3 rounded-btn border border-border-subtle bg-bg-elevated px-3 py-2.5">
           <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${overall.dot} ${hc.running ? 'animate-pulse' : ''}`} />
           <div className="flex-1">
@@ -90,38 +92,37 @@ export function HealthTab({ data }: { data: VisualizationData | null }) {
                   onClick={resetAlerts}
                   disabled={busy}
                   className="flex items-center gap-1 rounded-btn border border-border-subtle px-2.5 py-1 text-caption text-fg-secondary hover:bg-bg-hover disabled:opacity-50"
-                  title="清除告警冷却状态；不删除最近检查结果"
+                  title={t('vizui.health.resetTitle')}
                 >
-                  重置告警
+                  {t('vizui.health.reset')}
                 </button>
               )}
               <button
                 onClick={runCheck}
                 disabled={busy}
                 className="flex items-center gap-1 rounded-btn border border-accent/40 px-2.5 py-1 text-caption text-accent hover:bg-accent/10 disabled:opacity-50"
-                title="立即执行一轮完整检查（按配置全跑，最多数分钟）"
+                title={t('vizui.health.runTitle')}
               >
                 <RefreshCw size={11} className={busy ? 'animate-spin' : ''} />
-                {busy ? '检查中' : '立即检查'}
+                {busy ? t('vizui.health.checking') : t('vizui.health.run')}
               </button>
             </>
           )}
         </div>
         {/* 元信息 */}
         <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 px-1 text-[10px] text-fg-muted">
-          <span>间隔：每 {hc.interval_minutes} 分钟</span>
+          <span>{t('vizui.health.interval', { n: hc.interval_minutes })}</span>
           {hc.lastRunAt ? (
-            <span>上次检查：{new Date(hc.lastRunAt).toLocaleString('zh-CN')}</span>
+            <span>{t('vizui.health.lastRun', { time: new Date(hc.lastRunAt).toLocaleString('zh-CN') })}</span>
           ) : (
-            <span>上次检查：尚未执行</span>
+            <span>{t('vizui.health.lastRunNever')}</span>
           )}
         </div>
         {/* 打包态说明：源码类检查依赖工作区源码与 devDependencies（分发包不含）。
             现在不再自动关闭这些检查项，而是逐项显示「无法执行 + 原因」——避免把缺材料伪装成通过 */}
         {hc.packaged && (
           <div className="mt-1.5 px-1 text-[10px] text-fg-muted">
-            打包环境：源码类检查（类型检查 / 测试 / 代码规范 / 构建 / 代码评审 / UI 审计）在缺少源码或工具入口时
-            显示「无法执行」及具体原因；文件层与运行时事件监控照常生效
+            {t('vizui.health.packaged')}
           </div>
         )}
       </section>
@@ -129,10 +130,10 @@ export function HealthTab({ data }: { data: VisualizationData | null }) {
       {/* 检查项列表 */}
       {hc.enabled && (
         <section>
-          <SectionTitle icon={Activity} title={`检查项（${hc.checks.length}）`} />
+          <SectionTitle icon={Activity} title={t('vizui.health.checksTitle', { n: hc.checks.length })} />
           <div className="space-y-1.5">
             {hc.checks.length === 0 ? (
-              <EmptyHint text="暂无启用的检查项（config.checks 全部关闭）" />
+              <EmptyHint text={t('vizui.health.noChecks')} />
             ) : (
               hc.checks.map((c) => <HealthCheckItem key={c.key} item={c} />)
             )}
@@ -143,19 +144,19 @@ export function HealthTab({ data }: { data: VisualizationData | null }) {
       {/* 修复记录：AI 处理过程时间线（发现异常→修复→恢复全留痕） */}
       {hc.repairLog && hc.repairLog.length > 0 && (
         <section>
-          <SectionTitle icon={History} title={`修复记录（${hc.repairLog.length}）`} />
+          <SectionTitle icon={History} title={t('vizui.health.repairTitle', { n: hc.repairLog.length })} />
           <div className="space-y-1.5">
             {hc.repairLog.slice(0, 20).map((e, i) => {
               const kindCfg = {
-                alert: { label: '发现异常', cls: 'text-red-400 border-red-400/40' },
-                recovered: { label: '已恢复', cls: 'text-green-400 border-green-400/40' },
-                unavailable: { label: '无法执行', cls: 'text-amber-400 border-amber-400/40' }
+                alert: { label: t('vizui.health.kind.alert'), cls: 'text-danger border-danger/40' },
+                recovered: { label: t('vizui.health.kind.recovered'), cls: 'text-success border-success/40' },
+                unavailable: { label: t('vizui.health.kind.unavailable'), cls: 'text-warning border-warning/40' }
               }[e.kind] ?? { label: e.kind, cls: 'text-fg-muted border-border-subtle' }
               return (
                 <div key={`${e.time}-${i}`} className="rounded-btn border border-border-subtle bg-bg-elevated px-3 py-2">
                   <div className="flex items-center gap-2">
                     <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] ${kindCfg.cls}`}>{kindCfg.label}</span>
-                    <span className="flex-1 text-caption text-fg-primary">{CHECK_LABELS[e.key] ?? e.key}</span>
+                    <span className="flex-1 text-caption text-fg-primary">{t(CHECK_LABEL_KEYS[e.key] ?? e.key)}</span>
                     <span className="shrink-0 text-[10px] text-fg-muted">{new Date(e.time).toLocaleString('zh-CN')}</span>
                   </div>
                   {e.detail && (
@@ -165,7 +166,7 @@ export function HealthTab({ data }: { data: VisualizationData | null }) {
               )
             })}
           </div>
-          <div className="mt-1 px-1 text-[10px] text-fg-muted">异常 → AI 修复 → 恢复的全过程都记录在这里（最多保留最近 50 条）</div>
+          <div className="mt-1 px-1 text-[10px] text-fg-muted">{t('vizui.health.repairNote')}</div>
         </section>
       )}
     </div>
@@ -173,22 +174,23 @@ export function HealthTab({ data }: { data: VisualizationData | null }) {
 }
 
 function HealthCheckItem({ item }: { item: HealthCheckItemStatus }) {
+  const t = useT()
   const [expanded, setExpanded] = useState(false)
-  const label = item.label || CHECK_LABELS[item.key] || item.key
+  const label = item.label || t(CHECK_LABEL_KEYS[item.key] ?? item.key)
   const hasDetail = item.output.length > 0 || item.reason.length > 0
   // 四态：null=尚未检查 / pass / fail|error|timeout / unavailable（无法执行不是通过，也不是业务失败）
   const okState =
     item.outcome === 'pass'
-      ? { dot: 'bg-green-400', text: '通过', cls: 'border-border-subtle bg-bg-elevated' }
+      ? { dot: 'bg-success', text: t('vizui.health.outcome.pass'), cls: 'border-border-subtle bg-bg-elevated' }
       : item.outcome === 'unavailable'
-        ? { dot: 'bg-amber-400', text: '无法执行', cls: 'border-amber-400/40 bg-amber-400/5' }
+        ? { dot: 'bg-warning', text: t('vizui.health.outcome.unavailable'), cls: 'border-warning/40 bg-warning/5' }
         : item.outcome === 'error'
-          ? { dot: 'bg-red-400', text: '内部错误', cls: 'border-red-400/40 bg-red-400/5' }
+          ? { dot: 'bg-danger', text: t('vizui.health.outcome.error'), cls: 'border-danger/40 bg-danger/5' }
           : item.outcome === 'timeout'
-            ? { dot: 'bg-red-400', text: '超时', cls: 'border-red-400/40 bg-red-400/5' }
+            ? { dot: 'bg-danger', text: t('vizui.health.outcome.timeout'), cls: 'border-danger/40 bg-danger/5' }
             : item.outcome === 'fail'
-              ? { dot: 'bg-red-400', text: '失败', cls: 'border-red-400/40 bg-red-400/5' }
-              : { dot: 'bg-fg-muted/40', text: '尚未检查', cls: 'border-border-subtle bg-bg-elevated' }
+              ? { dot: 'bg-danger', text: t('vizui.health.outcome.fail'), cls: 'border-danger/40 bg-danger/5' }
+              : { dot: 'bg-fg-muted/40', text: t('vizui.health.outcome.unchecked'), cls: 'border-border-subtle bg-bg-elevated' }
   return (
     <div className={`rounded-btn border px-3 py-2 ${okState.cls}`}>
       <div className="flex items-center gap-2">
@@ -205,12 +207,12 @@ function HealthCheckItem({ item }: { item: HealthCheckItemStatus }) {
         <button onClick={() => setExpanded((v) => !v)} className="mt-1 w-full text-left">
           <div
             className={`whitespace-pre-wrap break-all font-mono text-[10px] ${
-              item.outcome === 'unavailable' ? 'text-amber-400' : 'text-red-400'
+              item.outcome === 'unavailable' ? 'text-warning' : 'text-danger'
             } ${expanded ? '' : 'line-clamp-2'}`}
           >
             {item.reason || item.output}
           </div>
-          <div className="mt-0.5 text-[9px] text-fg-muted">{expanded ? '收起' : '展开完整信息'}</div>
+          <div className="mt-0.5 text-[9px] text-fg-muted">{expanded ? t('vizui.health.collapse') : t('vizui.health.expand')}</div>
         </button>
       )}
     </div>

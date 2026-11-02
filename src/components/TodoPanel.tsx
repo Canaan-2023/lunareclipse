@@ -7,11 +7,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ListTodo, CheckCircle2, Loader2, ChevronDown, ChevronRight, FileText, Files, X } from 'lucide-react'
 import { useAppStore, type PlanTodoItem } from '../stores/appStore'
+import { useT } from '../i18n/useT'
 import { truncateConversation } from '@shared/utils/context-window'
 const PRIORITY_LABELS: Record<PlanTodoItem['priority'], string> = {
-  high: '高',
-  medium: '中',
-  low: '低'
+  high: 'panelui.todo.priority.high',
+  medium: 'panelui.todo.priority.medium',
+  low: 'panelui.todo.priority.low'
 }
 
 const PRIORITY_CLASSES: Record<PlanTodoItem['priority'], string> = {
@@ -50,6 +51,7 @@ function shortName(p: string): string {
  * 用户附件 + AI 工具调用的文件路径，去重计数
  */
 export function TodoPanel() {
+  const t = useT()
   const todos = useAppStore((s) => s.todos)
   const refreshTodos = useAppStore((s) => s.refreshTodos)
   const messages = useAppStore((s) => s.currentMessages)
@@ -67,10 +69,10 @@ export function TodoPanel() {
     // 强制订阅组件重渲染，HMR 期间新旧组件并存时形成 set 风暴 → "Maximum update depth exceeded"
     // 渲染循环 → WS 消息（工具结果/AI 输出）无法处理显示 → 用户感知"工具不响应"。
     // 降为低频兜底（30s），主刷新时机改为 AI 工具调用（tool_end）后由 appStore 主动 refreshTodos。
-    const t = setInterval(() => {
+    const iv = setInterval(() => {
       void refreshTodos()
     }, 30000)
-    return () => clearInterval(t)
+    return () => clearInterval(iv)
   }, [refreshTodos])
 
   // 与 AI 上下文一致：只统计 contextWindow 截断后可见消息里的文件引用
@@ -95,9 +97,9 @@ export function TodoPanel() {
   if (!open) return null
 
   const total = todos.length
-  const completed = todos.filter((t) => t.status === 'completed').length
-  const inProgress = todos.filter((t) => t.status === 'in_progress')
-  const pending = todos.filter((t) => t.status === 'pending')
+  const completed = todos.filter((td) => td.status === 'completed').length
+  const inProgress = todos.filter((td) => td.status === 'in_progress')
+  const pending = todos.filter((td) => td.status === 'pending')
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0
   const allDone = total > 0 && completed === total
   const hasTask = total > 0
@@ -116,7 +118,7 @@ export function TodoPanel() {
             <ChevronDown size={14} className="shrink-0 text-fg-muted" />
           )}
           <ListTodo size={14} className={`shrink-0 ${hasTask ? (allDone ? 'text-success' : inProgress.length > 0 ? 'text-accent' : 'text-warning') : 'text-fg-muted'}`} />
-          <span className="shrink-0 text-caption font-medium text-fg-primary">计划</span>
+          <span className="shrink-0 text-caption font-medium text-fg-primary">{t('panelui.todo.title')}</span>
           {hasTask && (
             <span className={`ml-auto shrink-0 font-mono text-caption ${allDone ? 'text-success' : 'text-fg-muted'}`}>
               {completed}/{total}
@@ -126,8 +128,8 @@ export function TodoPanel() {
         <button
           onClick={() => closeDrawer()}
           className="ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-btn text-fg-muted transition-colors hover:bg-bg-muted hover:text-fg-primary"
-          title="关闭计划面板"
-          aria-label="关闭计划面板"
+          title={t('panelui.todo.closeAria')}
+          aria-label={t('panelui.todo.closeAria')}
         >
           <X size={12} />
         </button>
@@ -152,25 +154,25 @@ export function TodoPanel() {
             <div className="flex flex-col items-center gap-1.5 px-3 py-6 text-center">
               <ListTodo size={16} className="text-fg-muted/60" />
               <span className="text-[11px] leading-relaxed text-fg-muted">
-                暂无计划任务
+                {t('panelui.todo.empty')}
                 <br />
-                AI 规划时自动显示
+                {t('panelui.todo.emptyHint')}
               </span>
             </div>
           )}
           {hasTask && (
             <div className="flex flex-col gap-0.5">
               {/* 进行中优先展示 */}
-              {inProgress.map((t) => (
-                <TodoRow key={t.id} todo={t} active />
+              {inProgress.map((td) => (
+                <TodoRow key={td.id} todo={td} active />
               ))}
-              {pending.map((t) => (
-                <TodoRow key={t.id} todo={t} />
+              {pending.map((td) => (
+                <TodoRow key={td.id} todo={td} />
               ))}
               {todos
-                .filter((t) => t.status === 'completed')
-                .map((t) => (
-                  <TodoRow key={t.id} todo={t} done />
+                .filter((td) => td.status === 'completed')
+                .map((td) => (
+                  <TodoRow key={td.id} todo={td} done />
                 ))}
             </div>
           )}
@@ -189,7 +191,7 @@ export function TodoPanel() {
             <ChevronDown size={14} className="shrink-0 text-fg-muted" />
           )}
           <Files size={14} className={`shrink-0 ${fileRefs.length > 0 ? 'text-accent' : 'text-fg-muted'}`} />
-          <span className="shrink-0 text-caption font-medium text-fg-primary">文件引用</span>
+          <span className="shrink-0 text-caption font-medium text-fg-primary">{t('panelui.todo.fileRefs')}</span>
           <span className={`ml-auto shrink-0 font-mono text-caption ${fileRefs.length > 0 ? 'text-fg-muted' : 'text-fg-muted/50'}`}>
             {fileRefs.length}
           </span>
@@ -200,9 +202,9 @@ export function TodoPanel() {
               <div className="flex flex-col items-center gap-1.5 px-3 py-4 text-center">
                 <FileText size={14} className="text-fg-muted/50" />
                 <span className="text-[11px] leading-relaxed text-fg-muted">
-                  当前上下文窗口
+                  {t('panelui.todo.fileRefsEmptyPrefix')}
                   <br />
-                  暂无文件引用
+                  {t('panelui.todo.fileRefsEmpty')}
                 </span>
               </div>
             ) : (
@@ -229,6 +231,7 @@ export function TodoPanel() {
 }
 
 function TodoRow({ todo, done, active }: { todo: PlanTodoItem; done?: boolean; active?: boolean }) {
+  const t = useT()
   return (
     <div
       className={`group flex items-start gap-1.5 rounded-card px-2 py-1.5 transition-colors ${
@@ -255,7 +258,7 @@ function TodoRow({ todo, done, active }: { todo: PlanTodoItem; done?: boolean; a
           <span
             className={`shrink-0 rounded-full px-1.5 py-px text-[9px] font-medium ${PRIORITY_CLASSES[todo.priority]}`}
           >
-            {PRIORITY_LABELS[todo.priority]}
+            {t(PRIORITY_LABELS[todo.priority])}
           </span>
           {done && <CheckCircle2 size={9} className="text-success" />}
         </div>

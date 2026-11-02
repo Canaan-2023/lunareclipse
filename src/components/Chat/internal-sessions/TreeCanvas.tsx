@@ -332,14 +332,14 @@ export function TreeCanvas({
               <svg width="26" height="8" viewBox="0 0 26 8" className="text-fg-muted" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <line x1="0" y1="4" x2="26" y2="4" />
               </svg>
-              {t('internal.inheritEdge')}（延续）
+              {t('internal.inheritEdge')}{t('chatui.inheritSuffix')}
             </span>
             <span className="flex items-center gap-1.5 text-accent">
               <svg width="26" height="8" viewBox="0 0 26 8" className="text-accent" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <line x1="0" y1="4" x2="20" y2="4" />
                 <polyline points="14,1 20,4 14,7" fill="none" />
               </svg>
-              {t('internal.timeFork')}（延续）
+              {t('internal.timeFork')}{t('chatui.inheritSuffix')}
             </span>
             <span className="flex items-center gap-1.5 text-fg-muted">
               <svg width="26" height="8" viewBox="0 0 26 8" className="text-fg-muted" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="5 4">

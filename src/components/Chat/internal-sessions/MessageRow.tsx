@@ -43,8 +43,8 @@ export function MessageRow({
   const roleLabel = t(`internal.role.${msg.role}` as const)
   const roleColor =
     msg.role === 'user' ? 'bg-accent/15 text-accent'
-    : msg.role === 'assistant' ? 'bg-emerald-500/15 text-emerald-400'
-    : 'bg-amber-500/15 text-amber-400'
+    : msg.role === 'assistant' ? 'bg-success/15 text-success'
+    : 'bg-warning/15 text-warning'
 
   return (
     <div className="group rounded-card border border-border-subtle bg-bg-surface/30 p-3">
@@ -65,12 +65,12 @@ export function MessageRow({
             <Pencil size={13} />
           </button>
           <button
-            className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted/40 transition-all hover:bg-red-500/10 hover:text-red-400"
+            className="flex h-7 w-7 items-center justify-center rounded-btn text-fg-muted/40 transition-all hover:bg-danger/10 hover:text-danger"
             title={t('internal.delete')}
             aria-label={t('internal.delete')}
             onClick={() => {
               // 删除内部消息即时覆盖落盘，无撤销路径，先确认再删
-              if (!window.confirm('删除该内部消息将永久移除且无法恢复。确定删除？')) return
+              if (!window.confirm(t('chatui.deleteInternalMsgConfirm'))) return
               onDelete()
             }}
           >

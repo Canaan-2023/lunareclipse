@@ -145,10 +145,10 @@ export function InternalSessionsView({ sessionId }: { sessionId: string }) {
 
       {/* 详情加载失败提示条：可手动关闭，不影响列表继续操作 */}
       {error && (
-        <div className="shrink-0 border-b border-red-500/20 bg-red-500/10">
-          <div className="flex w-full items-center gap-2 px-5 py-2 text-caption text-red-400">
+        <div className="shrink-0 border-b border-danger/20 bg-danger/10">
+          <div className="flex w-full items-center gap-2 px-5 py-2 text-caption text-danger">
             <span className="flex-1">{error}</span>
-            <button onClick={() => setError(null)} className="shrink-0 text-red-400/70 hover:text-red-400" title={t('common.close')} aria-label={t('common.close')}>
+            <button onClick={() => setError(null)} className="shrink-0 text-danger/70 hover:text-danger" title={t('common.close')} aria-label={t('common.close')}>
               <X size={14} />
             </button>
           </div>

@@ -178,7 +178,7 @@ export async function startApiServer(
   // 登记 flush 提供者：退出链在 closeApiServer 之前经 ./service-refs 读取并调用它，
   // 把 500ms 合并窗口内的维护待办立即派发（释放链置空本容器，故须早于 closeApiServer）。
   serviceRefs.internalSessionFlushRef = internalSessionLayer.flushPendingInternalSessionJobs
-  // 两写入口登记（0.54.0）：房间轮在 `bootstrap/` 里，拿不到本闭包的 layer 实例；
+  // 两写入口登记（0.54.2）：房间轮在 `bootstrap/` 里，拿不到本闭包的 layer 实例；
   // 与 flush 同走容器。登记的是**同一个函数**，所以房间轮与 WS 主链路共享
   // 同一 500ms 合并窗口与同一串行链（不是第二套队列）。
   serviceRefs.internalSessionEnqueueRef = internalSessionLayer.enqueueInternalSessionJob
@@ -414,7 +414,7 @@ const resolveSessionAiId = (sessionId?: string): number => resolveSessionAiIdWit
         messages,
         activeInternalContext: null
       })
-      // 一并回传**本轮落定的内部会话 id**（0.54.0）：房间轮拿它把 user/reply 两写进内部会话。
+      // 一并回传**本轮落定的内部会话 id**（0.54.2）：房间轮拿它把 user/reply 两写进内部会话。
       // 此前只回 sessionContext，id 在这里被丢掉——路由每轮新建/承接的节点永远收不到任何消息。
       return { sessionContext: r.sessionContext, internalId: r.activeInternalContext?.internalId ?? null }
     }

@@ -152,7 +152,7 @@ export function ChatArea() {
           <div className="eclipse-moon-phase mb-4" />
           <div className="mt-3 flex flex-col items-center gap-1.5 text-center">
             <div className="text-heading font-light tracking-[0.4em] text-fg-primary">
-              月蚀
+              {t('chatui.brandName')}
             </div>
             <div className="text-micro uppercase tracking-[0.3em] text-fg-muted">
               {t('empty.brand')}
@@ -176,11 +176,11 @@ export function ChatArea() {
   return (
     <main className="relative flex flex-1 flex-col bg-bg-base">
       {contextWarning && (
-        <div className="flex shrink-0 items-center gap-1.5 border-b border-border-subtle px-6 py-1 text-caption text-amber-400">
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-border-subtle px-6 py-1 text-caption text-warning">
           <span className="min-w-0 truncate">{contextWarning}</span>
           <button
             onClick={() => useAppStore.setState({ contextWarning: null })}
-            className="shrink-0 text-amber-400/70 hover:text-amber-400"
+            className="shrink-0 text-warning/70 hover:text-warning"
             title={t('common.close')}
             aria-label={t('common.close')}
           >
@@ -259,7 +259,7 @@ export function ChatArea() {
                     </div>
                   )}
                   {status === 'error' && errorMessage && (
-                    <div className="rounded-card border border-red-500/30 bg-red-500/10 px-4 py-3 text-caption text-red-400">
+                    <div className="rounded-card border border-danger/30 bg-danger/10 px-4 py-3 text-caption text-danger">
                       {errorMessage}
                     </div>
                   )}

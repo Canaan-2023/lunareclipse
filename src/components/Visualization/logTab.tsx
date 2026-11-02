@@ -5,11 +5,13 @@
  */
 import { EmptyHint } from './common'
 import { formatDateTime } from '../../utils/time'
+import { useT } from '../../i18n/useT'
 
 /** 运行日志 Tab（批次 E-5c 从 VisualizationPanel.tsx 拆出） */
 export function LogTab({ workflowLog }: { workflowLog: Array<{ workflowId: string; text: string; ts: number }> }) {
+  const t = useT()
   if (workflowLog.length === 0) {
-    return <EmptyHint text="暂无记忆工作流运行日志（记忆工作流运行时输出会实时显示在这里）" />
+    return <EmptyHint text={t('vizui.log.empty')} />
   }
   return (
     <div className="space-y-1 font-mono">

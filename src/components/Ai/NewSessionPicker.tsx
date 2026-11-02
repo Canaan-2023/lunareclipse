@@ -11,6 +11,7 @@ import { useEffect } from 'react'
 import { Sparkles, X } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useT } from '../../i18n/useT'
+import { Modal } from '../Modal'
 import { AiAvatar, aiAvatarFallback } from './AiAvatar'
 
 export function NewSessionPicker() {
@@ -25,16 +26,6 @@ export function NewSessionPicker() {
   useEffect(() => {
     if (open) void useAppStore.getState().loadAis()
   }, [open])
-
-  // Esc 关闭
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setAiPickerOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, setAiPickerOpen])
 
   if (!open) return null
 
@@ -56,18 +47,13 @@ export function NewSessionPicker() {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) setAiPickerOpen(false)
-      }}
+    <Modal
+      open
+      onClose={() => setAiPickerOpen(false)}
+      label={t('ai.pickTitle')}
+      backdropClassName="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
+      cardClassName="w-[360px] max-w-[90vw] overflow-hidden rounded-card border border-border bg-bg-elevated shadow-2xl"
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('ai.pickTitle')}
-        className="w-[360px] max-w-[90vw] overflow-hidden rounded-card border border-border bg-bg-elevated shadow-2xl"
-      >
         {/* 标题栏 */}
         <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
           <Sparkles size={14} className="shrink-0 text-accent" />
@@ -123,7 +109,6 @@ export function NewSessionPicker() {
             ))
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

@@ -144,7 +144,7 @@ export function ProfilePanel() {
       // 字段模式以 builtMd（字段→markdown 序列化）为准；raw 模式原样保存
       const out = rawMode ? mdText : builtMd
       if (out.length > USER_MD_MAX) {
-        showError(`USER.md 内容过长（≤${USER_MD_MAX} 字符）`)
+        showError(t('panelui.profile.tooLong', { n: USER_MD_MAX }))
         return
       }
       const r = await window.lunareclipse.profileWriteUserMd(out)
@@ -180,17 +180,17 @@ export function ProfilePanel() {
       </div>
 
       {notice && (
-        <div className="flex items-center gap-2 border-b border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-caption text-emerald-400">
+        <div className="flex items-center gap-2 border-b border-success/20 bg-success/10 px-3 py-2 text-caption text-success">
           <span className="flex-1">{notice}</span>
-          <button onClick={() => setNotice(null)} className="text-emerald-400/70 hover:text-emerald-400" title={t('common.close')} aria-label={t('common.close')}>
+          <button onClick={() => setNotice(null)} className="text-success/70 hover:text-success" title={t('common.close')} aria-label={t('common.close')}>
             <X size={10} />
           </button>
         </div>
       )}
       {error && (
-        <div className="flex items-center gap-2 border-b border-red-500/20 bg-red-500/10 px-3 py-2 text-caption text-red-400">
+        <div className="flex items-center gap-2 border-b border-danger/20 bg-danger/10 px-3 py-2 text-caption text-danger">
           <span className="flex-1">{error}</span>
-          <button onClick={() => setError(null)} className="text-red-400/70 hover:text-red-400" title={t('common.close')} aria-label={t('common.close')}>
+          <button onClick={() => setError(null)} className="text-danger/70 hover:text-danger" title={t('common.close')} aria-label={t('common.close')}>
             <X size={10} />
           </button>
         </div>
@@ -204,7 +204,7 @@ export function ProfilePanel() {
             <AiAvatar avatar={头像 || currentUser.头像} fallback={displayName.charAt(0).toUpperCase()} className="h-12 w-12 text-xl" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-body font-medium text-fg-primary">{displayName}</div>
-              <div className="truncate text-caption text-fg-muted">{t('profile.username')}：{currentUser.用户名} · #{currentUser.UID}</div>
+              <div className="truncate text-caption text-fg-muted">{t('panelui.profile.usernameLine', { username: currentUser.用户名, uid: currentUser.UID })}</div>
             </div>
           </div>
 
@@ -281,7 +281,7 @@ export function ProfilePanel() {
                 value={mdText}
                 onChange={(e) => setMdText(e.target.value)}
                 maxLength={USER_MD_MAX}
-                placeholder="| 字段 | 内容 |"
+                placeholder={t('panelui.profile.rawPlaceholder')}
                 rows={12}
                 className="w-full resize-y rounded-btn border border-border-subtle bg-bg-muted/40 px-2.5 py-2 text-body leading-relaxed text-fg-primary outline-none transition-colors placeholder:text-fg-muted focus:border-accent/50"
               />
@@ -322,7 +322,7 @@ export function ProfilePanel() {
           )}
 
           <div className="mt-3 flex items-center justify-between gap-2">
-            <span className={`text-micro ${(rawMode ? mdText : builtMd).length > USER_MD_MAX * 0.9 ? 'text-amber-400' : 'text-fg-muted'}`}>
+            <span className={`text-micro ${(rawMode ? mdText : builtMd).length > USER_MD_MAX * 0.9 ? 'text-warning' : 'text-fg-muted'}`}>
               {(rawMode ? mdText : builtMd).length}/{USER_MD_MAX}
             </span>
             <button

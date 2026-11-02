@@ -175,7 +175,7 @@ export function AvatarPicker({
           <button
             type="button"
             onClick={() => onChange('')}
-            className="flex h-7 w-7 items-center justify-center rounded-btn border border-border-subtle text-fg-muted transition-colors hover:bg-bg-muted hover:text-red-400"
+            className="flex h-7 w-7 items-center justify-center rounded-btn border border-border-subtle text-fg-muted transition-colors hover:bg-bg-muted hover:text-danger"
             title={t('ai.avatarClear')}
             aria-label={t('ai.avatarClear')}
           >
@@ -206,7 +206,7 @@ export function AvatarPicker({
           </button>
         ))}
       </div>
-      {err && <div className="mt-1 text-caption text-red-400">{err}</div>}
+      {err && <div className="mt-1 text-caption text-danger">{err}</div>}
     </div>
   )
 }

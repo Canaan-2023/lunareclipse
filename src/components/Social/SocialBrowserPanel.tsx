@@ -119,8 +119,8 @@ export function SocialBrowserPanel() {
             <button
               onClick={() => setSearchQuery('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted hover:text-fg-primary"
-              title="清除搜索"
-              aria-label="清除搜索"
+              title={t('panelui.social.clearSearch')}
+              aria-label={t('panelui.social.clearSearch')}
             >
               <X size={10} />
             </button>

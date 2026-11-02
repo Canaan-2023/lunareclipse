@@ -5,6 +5,7 @@
  * 允许（一次/本次会话）/拒绝操作，超时自动拒绝。
  */
 import { useEffect, useState } from 'react'
+import { useT } from '../i18n/useT'
 
 interface PermissionRequest {
   id: string
@@ -15,6 +16,7 @@ interface PermissionRequest {
 }
 
 export function PermissionDialog() {
+  const t = useT()
   const [request, setRequest] = useState<PermissionRequest | null>(null)
   const [countdown, setCountdown] = useState(30)
 
@@ -64,36 +66,36 @@ export function PermissionDialog() {
   if (!request) return null
 
   const riskConfig = {
-    low: { color: 'text-green-400', label: '低风险', border: 'border-green-500/30' },
-    medium: { color: 'text-yellow-400', label: '中风险', border: 'border-yellow-500/30' },
-    high: { color: 'text-red-400', label: '高风险', border: 'border-red-500/50' }
+    low: { color: 'text-success', labelKey: 'chatui.riskLow', border: 'border-success/30' },
+    medium: { color: 'text-warning', labelKey: 'chatui.riskMedium', border: 'border-warning/30' },
+    high: { color: 'text-danger', labelKey: 'chatui.riskHigh', border: 'border-danger/50' }
   }[request.risk]
 
-  const typeLabel = {
-    command: '执行系统命令',
-    setting: '系统设置',
-    clipboard_read: '读取剪贴板',
-    device: '控制设备'
-  }[request.type]
+  const typeLabel = t({
+    command: 'chatui.typeCommand',
+    setting: 'chatui.typeSetting',
+    clipboard_read: 'chatui.typeClipboardRead',
+    device: 'chatui.typeDevice'
+  }[request.type])
 
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label={`AI 权限请求 · ${typeLabel}`}
+      aria-label={t('chatui.permissionRequestAria', { type: typeLabel })}
     >
       <div className={`w-[480px] overflow-hidden rounded-xl border ${riskConfig.border} bg-bg-elevated shadow-2xl`}>
         {/* 头部 */}
         <div className="border-b border-border-base px-5 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-base font-medium text-fg-primary">AI 权限请求</span>
+              <span className="text-base font-medium text-fg-primary">{t('chatui.permissionRequest')}</span>
               <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${riskConfig.color} bg-current/10`}>
-                {riskConfig.label}
+                {t(riskConfig.labelKey)}
               </span>
             </div>
-            <span className="text-xs text-fg-muted">{countdown}s 后自动拒绝</span>
+            <span className="text-xs text-fg-muted">{t('chatui.autoRejectAfter', { n: countdown })}</span>
           </div>
           <div className="mt-1 text-xs text-fg-muted">{typeLabel}</div>
         </div>
@@ -103,15 +105,15 @@ export function PermissionDialog() {
           <div className="mb-3 text-sm text-fg-primary">{request.description}</div>
           {request.content && (
             <div className="mt-3">
-              <div className="mb-1 text-xs text-fg-muted">操作内容：</div>
+              <div className="mb-1 text-xs text-fg-muted">{t('chatui.operationContent')}</div>
               <pre className="max-h-[200px] overflow-auto rounded-lg bg-bg-base p-3 text-xs text-fg-secondary">
                 {request.content}
               </pre>
             </div>
           )}
           {request.risk === 'high' && (
-            <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              ⚠ 高风险操作：请仔细确认命令内容，可能导致系统损坏或数据丢失
+            <div className="mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+              {t('chatui.highRiskWarning')}
             </div>
           )}
         </div>
@@ -122,19 +124,19 @@ export function PermissionDialog() {
             onClick={() => respond(false, undefined)}
             className="rounded-lg px-4 py-1.5 text-sm text-fg-secondary transition-colors hover:bg-bg-hover"
           >
-            拒绝
+            {t('chatui.reject')}
           </button>
           <button
             onClick={() => respond(true, 'session')}
             className="rounded-lg px-4 py-1.5 text-sm text-fg-primary transition-colors hover:bg-bg-hover"
           >
-            本次会话允许
+            {t('chatui.allowSession')}
           </button>
           <button
             onClick={() => respond(true, 'once')}
             className="rounded-lg bg-accent px-4 py-1.5 text-sm text-accent-fg transition-colors hover:bg-accent-hover"
           >
-            单次允许
+            {t('chatui.allowOnce')}
           </button>
         </div>
       </div>

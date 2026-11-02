@@ -101,13 +101,13 @@ export function AccountBoardPanel() {
       window.lunareclipse.multiAdminAnomalies(),
       window.lunareclipse.multiAdminSatellites()
     ])
-    if (!a.ok) setError(a.error ?? '读取失败')
+    if (!a.ok) setError(a.error ?? t('panelui.admin.loadFailed'))
     else setAccounts(a.accounts ?? [])
     if (an.ok) setAnomalies(an.anomalies ?? [])
     // 分系统状态读取失败只影响该节，独立提示，不打断账号台账
     if (s.ok) { setSatellites(s.satellite ?? []); setSatError(null) }
-    else { setSatellites(null); setSatError(s.error ?? '分系统状态读取失败') }
-  }, [])
+    else { setSatellites(null); setSatError(s.error ?? t('panelui.admin.satLoadFailed')) }
+  }, [t])
 
   useEffect(() => {
     if (open) void load()
@@ -124,7 +124,7 @@ export function AccountBoardPanel() {
     setBusy(`acc-${acc.uid}`)
     const r = await window.lunareclipse.multiAdminSetAccountDisabled(acc.uid, !acc.禁用)
     setBusy(null)
-    if (!r.ok) setError(r.error ?? '操作失败')
+    if (!r.ok) setError(r.error ?? t('panelui.admin.opFailed'))
     await load()
   }
 
@@ -140,7 +140,7 @@ export function AccountBoardPanel() {
     setBusy(`rev-${acc.uid}`)
     const r = await window.lunareclipse.multiAdminRevoke(acc.instanceId)
     setBusy(null)
-    if (!r.ok) setError(r.error ?? '撤销失败')
+    if (!r.ok) setError(r.error ?? t('panelui.admin.revokeFailed'))
     await load()
   }
 
@@ -159,7 +159,7 @@ export function AccountBoardPanel() {
     setBusy(`sat-${sat.instanceId}`)
     const r = await window.lunareclipse.multiAdminSetStatus(sat.instanceId, status)
     setBusy(null)
-    if (!r.ok) setError(r.error ?? '操作失败')
+    if (!r.ok) setError(r.error ?? t('panelui.admin.opFailed'))
     await load()
   }
 
@@ -168,7 +168,7 @@ export function AccountBoardPanel() {
     setBusy(`mem-${acc.uid}`)
     const r = await window.lunareclipse.multiAdminOpenMemory(acc.uid)
     setBusy(null)
-    if (!r.ok) setError(r.error ?? '打开失败')
+    if (!r.ok) setError(r.error ?? t('panelui.admin.openFailed'))
   }
 
   /**
@@ -210,12 +210,12 @@ export function AccountBoardPanel() {
       setSearchDone(true)
       if (!r.ok) {
         setSearchResults(null)
-        setSearchError(r.error ?? '检索失败')
+        setSearchError(r.error ?? t('panelui.admin.searchFailed'))
         return
       }
       setSearchResults(r.users ?? [])
     },
-    []
+    [t]
   )
 
   /** 查看某 UID 的 USER.md 资料（已成功加载的直接用缓存，失败的允许重试） */
@@ -369,7 +369,7 @@ export function AccountBoardPanel() {
                         <span className="mt-0.5 block pl-4 font-mono text-[9px] text-fg-muted">
                           UID {u.UID}
                           {u.用户名 && <span className="ml-1 not-italic">· {u.用户名}</span>}
-                          {u.姓名 && u.姓名 !== u.用户名 && <span className="ml-1 not-italic">· 姓名 {u.姓名}</span>}
+                          {u.姓名 && u.姓名 !== u.用户名 && <span className="ml-1 not-italic">{t('panelui.admin.nameLabel', { name: u.姓名 })}</span>}
                         </span>
                       </span>
                       <span className="flex shrink-0 items-center gap-1">
@@ -489,7 +489,7 @@ export function AccountBoardPanel() {
                         disabled={busy === `acc-${acc.uid}`}
                         className={`flex h-6 items-center gap-1 rounded-btn border px-1.5 text-[10px] transition-colors disabled:opacity-50 ${
                           acc.禁用
-                            ? 'border-border-subtle text-fg-muted hover:border-emerald-500/40 hover:text-emerald-400'
+                            ? 'border-border-subtle text-fg-muted hover:border-success/40 hover:text-success'
                             : disableConfirm === acc.uid
                               ? 'border-danger-soft bg-danger-soft/20 text-danger'
                               : 'border-border-subtle text-fg-muted hover:border-danger-soft/60 hover:text-danger'
@@ -554,12 +554,12 @@ export function AccountBoardPanel() {
                       <div className="flex items-center gap-1.5">
                         <Satellite
                           size={10}
-                          className={sat.status === 'active' ? 'shrink-0 text-emerald-400' : 'shrink-0 text-fg-muted'}
+                          className={sat.status === 'active' ? 'shrink-0 text-success' : 'shrink-0 text-fg-muted'}
                         />
                         <span className="truncate text-body text-fg-primary">{sat.用户名}</span>
                         <span
                           className={`shrink-0 rounded-full px-1.5 py-[1px] text-[9px] ${
-                            sat.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-danger-soft text-danger'
+                            sat.status === 'active' ? 'bg-success/15 text-success' : 'bg-danger-soft text-danger'
                           }`}
                         >
                           {sat.status === 'active' ? t('admin.satelliteActive') : t('admin.satelliteDisabled')}
@@ -582,7 +582,7 @@ export function AccountBoardPanel() {
                           ? (satConfirm === sat.instanceId
                               ? 'border-danger-soft bg-danger-soft/20 text-danger'
                               : 'border-border-subtle text-fg-muted hover:border-danger-soft/60 hover:text-danger')
-                          : 'border-border-subtle text-fg-muted hover:border-emerald-500/40 hover:text-emerald-400'
+                          : 'border-border-subtle text-fg-muted hover:border-success/40 hover:text-success'
                       }`}
                       title={sat.status === 'active' ? t('admin.satelliteSetDisabled') : t('admin.satelliteSetActive')}
                     >

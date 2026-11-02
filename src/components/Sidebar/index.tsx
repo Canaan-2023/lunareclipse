@@ -25,6 +25,7 @@ import {
   Network
 } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
+import { IconButton } from '../IconButton'
 import {
   DEFAULT_AI_ID,
   type Session
@@ -155,13 +156,14 @@ const [editingId, setEditingId] = useState<string | null>(null)
         </button>
 
 {/* 新建会话 */}
-        <button
+        <IconButton
           onClick={requestNewSession}
           className="mt-2 flex h-8 w-8 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-accent active:scale-95"
           title={t('sidebar.newSession')}
+          aria-label={t('sidebar.newSession')}
         >
           <Plus size={16} />
-        </button>
+        </IconButton>
 
 {/* 会话图标列表：选中会话右下角小绿点指示 */}
         <div className="mt-2 flex flex-1 flex-col items-center gap-1 overflow-y-auto px-1">
@@ -179,7 +181,7 @@ const [editingId, setEditingId] = useState<string | null>(null)
                 title={s.title}
               >
                 <MessageSquare size={14} />
-                {isSelected && <span className="absolute bottom-0 right-0 h-1.5 w-1.5 rounded-full bg-green-400 shadow-[0_0_4px_rgba(74,222,128,0.8)]" />}
+                {isSelected && <span className="absolute bottom-0 right-0 h-1.5 w-1.5 rounded-full bg-success shadow-[0_0_4px_rgba(74,222,128,0.8)]" />}
               </button>
             )
           })}
@@ -276,13 +278,14 @@ className="titlebar-seamless flex shrink-0 flex-col overflow-hidden border-r bor
           >
             <Wand2 size={14} />
           </button>
-          <button
+          <IconButton
             onClick={requestNewSession}
             className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-accent active:scale-95"
             title={t('sidebar.newSession')}
+            aria-label={t('sidebar.newSession')}
           >
             <Plus size={14} />
-          </button>
+          </IconButton>
           <button
             onClick={() => setSidebarCollapsed(true)}
             className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted transition-all duration-150 hover:bg-bg-muted hover:text-accent active:scale-95"
@@ -387,7 +390,7 @@ className="titlebar-seamless flex shrink-0 flex-col overflow-hidden border-r bor
                           setEditingId(null)
                           setEditValue('')
                         }}
-                        className="text-fg-muted hover:text-red-400"
+                        className="text-fg-muted hover:text-danger"
                       >
                         <X size={12} />
                       </button>
@@ -398,7 +401,7 @@ className="titlebar-seamless flex shrink-0 flex-col overflow-hidden border-r bor
                       <div className="flex items-center justify-between gap-2">
                         <span className="flex min-w-0 items-center gap-1.5">
                           {isSelected && (
-                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-green-400 shadow-[0_0_5px_rgba(74,222,128,0.8)]" />
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success shadow-[0_0_5px_rgba(74,222,128,0.8)]" />
                           )}
                           <span className="truncate text-body">
                             {s.title}
@@ -447,7 +450,7 @@ className="titlebar-seamless flex shrink-0 flex-col overflow-hidden border-r bor
                           // 删除会话为不可逆操作：弹月蚀风格确认框，防 hover 展开后误触（评审 MAJOR-1/NIT-2）
                           setPendingDelete(s)
                         }}
-                        className="text-fg-muted hover:text-red-400"
+                        className="text-fg-muted hover:text-danger"
                         title={t('common.delete')}
                         aria-label={t('common.delete')}
                       >

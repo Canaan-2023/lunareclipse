@@ -5,16 +5,15 @@
  * 注：各面板自身的关闭按钮与 Esc 关闭由面板内部实现（如 SkillPanel/AiManagerPanel），这里只做容器分发，
  * 不重复实现 Esc 监听，避免与子面板的 Esc 处理冲突。
  */
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, lazy, Suspense } from 'react'
+import { Loader2 } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
+import { useT } from '../i18n/useT'
 import { TodoPanel } from './TodoPanel'
 import { CalendarPanel } from './CalendarPanel'
-import { SkillPanel } from './Skill/SkillPanel'
 import { HookPanel } from './Hook/HookPanel'
 import { PluginPanel } from './Plugin/PluginPanel'
 import { CronPanel } from './Cron/CronPanel'
-import { WorkflowPanel } from './Workflow/WorkflowPanel'
-import { FileWorkshopPanel } from './Workshop/FileWorkshopPanel'
 import { AccountBoardPanel } from './Admin/AccountBoardPanel'
 import { BackupCenterPanel } from './BackupCenter/BackupCenterPanel'
 import { FriendsPanel } from './Friends/FriendsPanel'
@@ -22,6 +21,11 @@ import { ChatRoomsPanel } from './ChatRooms/ChatRoomsPanel'
 import { PublishBoardPanel } from './PublishBoard/PublishBoardPanel'
 import { AiManagerPanel } from './Ai/AiManagerPanel'
 import { ProfilePanel } from './Profile/ProfilePanel'
+
+/** 重型抽屉面板按需加载：DrawerPanel 本就只渲染当前 activeDrawer，首次打开时才下载模块 */
+const SkillPanel = lazy(async () => ({ default: (await import('./Skill/SkillPanel')).SkillPanel }))
+const WorkflowPanel = lazy(async () => ({ default: (await import('./Workflow/WorkflowPanel')).WorkflowPanel }))
+const FileWorkshopPanel = lazy(async () => ({ default: (await import('./Workshop/FileWorkshopPanel')).FileWorkshopPanel }))
 
 /**
  * 右侧抽屉面板：内联 flex 布局，打开时会话区域自然收缩。
@@ -34,6 +38,7 @@ export function DrawerPanel() {
   const workshopWidth = useAppStore((s) => s.workshopWidth)
   const workshopFullscreen = useAppStore((s) => s.workshopFullscreen)
   const setWorkshopWidth = useAppStore((s) => s.setWorkshopWidth)
+  const t = useT()
   const draggingRef = useRef(false)
 
   const handleDragStart = useCallback((e: React.MouseEvent) => {
@@ -86,28 +91,36 @@ export function DrawerPanel() {
         <div
           onMouseDown={handleDragStart}
           className="absolute left-0 top-0 z-10 flex h-full w-1 cursor-col-resize hover:bg-accent/30 transition-colors"
-          title="拖拽调整宽度"
+          title={t('panelui.drawer.dragWidth')}
         >
           <div className="w-full h-full bg-border-subtle hover:bg-accent/50 transition-colors" />
         </div>
       )}
       {/* 面板内容 */}
       <div className="flex-1 overflow-hidden">
-        {activeDrawer === 'todo' && <TodoPanel />}
-        {activeDrawer === 'calendar' && <CalendarPanel />}
-        {activeDrawer === 'skill' && <SkillPanel />}
-        {activeDrawer === 'hook' && <HookPanel />}
-        {activeDrawer === 'plugin' && <PluginPanel />}
-        {activeDrawer === 'cron' && <CronPanel />}
-        {activeDrawer === 'workflow' && <WorkflowPanel />}
-        {activeDrawer === 'workshop' && <FileWorkshopPanel />}
-        {activeDrawer === 'admin' && <AccountBoardPanel />}
-        {activeDrawer === 'backup' && <BackupCenterPanel />}
-        {activeDrawer === 'friend' && <FriendsPanel />}
-        {activeDrawer === 'chatRoom' && <ChatRoomsPanel />}
-        {activeDrawer === 'publishBoard' && <PublishBoardPanel />}
-        {activeDrawer === 'ai' && <AiManagerPanel />}
-        {activeDrawer === 'profile' && <ProfilePanel />}
+        <Suspense
+          fallback={
+            <div className="flex h-full w-full items-center justify-center text-fg-muted">
+              <Loader2 size={16} className="animate-spin" />
+            </div>
+          }
+        >
+          {activeDrawer === 'todo' && <TodoPanel />}
+          {activeDrawer === 'calendar' && <CalendarPanel />}
+          {activeDrawer === 'skill' && <SkillPanel />}
+          {activeDrawer === 'hook' && <HookPanel />}
+          {activeDrawer === 'plugin' && <PluginPanel />}
+          {activeDrawer === 'cron' && <CronPanel />}
+          {activeDrawer === 'workflow' && <WorkflowPanel />}
+          {activeDrawer === 'workshop' && <FileWorkshopPanel />}
+          {activeDrawer === 'admin' && <AccountBoardPanel />}
+          {activeDrawer === 'backup' && <BackupCenterPanel />}
+          {activeDrawer === 'friend' && <FriendsPanel />}
+          {activeDrawer === 'chatRoom' && <ChatRoomsPanel />}
+          {activeDrawer === 'publishBoard' && <PublishBoardPanel />}
+          {activeDrawer === 'ai' && <AiManagerPanel />}
+          {activeDrawer === 'profile' && <ProfilePanel />}
+        </Suspense>
       </div>
     </div>
   )

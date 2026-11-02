@@ -43,7 +43,7 @@ export function MemoryCapsule() {
             <span
               key={item.label}
               className={`h-1.5 w-1.5 rounded-full ${item.on ? 'bg-accent' : 'bg-fg-muted/30'}`}
-              title={`${item.label}: ${item.on ? '开' : '关'}`}
+              title={`${item.label}: ${item.on ? t('panelui.memoryCapsule.on') : t('panelui.memoryCapsule.off')}`}
             />
           ))}
         </div>

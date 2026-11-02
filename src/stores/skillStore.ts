@@ -7,6 +7,15 @@
 import { create } from 'zustand'
 import { useSyncExternalStore } from 'react'
 import type { SkillMetadata, Skill, SkillRuntimeStatus } from '../../electron/main/skills'
+import { getDictEntry } from '../i18n/locales'
+import { useAppStore } from './appStore'
+
+/** 错误提示翻译：非组件环境取 store 当前语言，先经 `getDictEntry` 查词 */
+const t = (key: string, vars?: Record<string, string | number>): string => {
+  const lang = useAppStore.getState().lang ?? 'zh'
+  const text = getDictEntry(key)?.[lang] ?? key
+  return vars ? text.replace(/\{([^{}]+)\}/g, (whole, name: string) => (Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : whole)) : text
+}
 
 /**
  * SKILL 前端 store（对齐 MCP 系统架构）
@@ -84,7 +93,7 @@ const skillStore = create<SkillState>((set, get) => ({
     set({ loading: true, error: null })
     try {
       if (!window.lunareclipse?.skill?.list) {
-        set({ error: 'SKILL API 未就绪' })
+        set({ error: t('storemsg.skill.apiNotReady') })
         return
       }
       const skills = await window.lunareclipse.skill.list()
@@ -92,7 +101,7 @@ const skillStore = create<SkillState>((set, get) => ({
       void get().loadStatuses()
       void get().fetchErrors()
     } catch (err) {
-      set({ error: `加载 SKILL 列表失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.skill.listFailed', { error: (err as Error).message }) })
     } finally {
       set({ loading: false })
     }
@@ -109,12 +118,12 @@ const skillStore = create<SkillState>((set, get) => ({
     try {
       const skill = await window.lunareclipse.skill.get(name)
       if (!skill) {
-        set({ error: `未找到 SKILL: ${name}` })
+        set({ error: t('storemsg.skill.notFound', { name }) })
         return
       }
       set({ currentSkill: skill })
     } catch (err) {
-      set({ error: `加载 SKILL 正文失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.skill.loadDetailFailed', { error: (err as Error).message }) })
     } finally {
       set({ loading: false })
     }
@@ -128,7 +137,7 @@ const skillStore = create<SkillState>((set, get) => ({
     try {
       const result = await window.lunareclipse.skill.toggle(name, enabled)
       if (!result.ok) {
-        set({ error: `切换 SKILL 状态失败: ${result.error ?? '未知错误'}` })
+        set({ error: t('storemsg.skill.toggleFailed', { error: result.error ?? t('storemsg.skill.unknownError') }) })
         return
       }
       // 更新本地状态
@@ -142,7 +151,7 @@ const skillStore = create<SkillState>((set, get) => ({
       // 刷新状态
       void get().loadStatuses()
     } catch (err) {
-      set({ error: `切换 SKILL 状态失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.skill.toggleFailed', { error: (err as Error).message }) })
     }
   },
 
@@ -150,7 +159,7 @@ const skillStore = create<SkillState>((set, get) => ({
     try {
       const result = await window.lunareclipse.skill.delete(name)
       if (!result.ok) {
-        set({ error: `删除 SKILL 失败: ${result.error ?? '未知错误'}` })
+        set({ error: t('storemsg.skill.deleteFailed', { error: result.error ?? t('storemsg.skill.unknownError') }) })
         return false
       }
       // 从列表中移除
@@ -161,7 +170,7 @@ const skillStore = create<SkillState>((set, get) => ({
       void get().loadStatuses()
       return true
     } catch (err) {
-      set({ error: `删除 SKILL 失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.skill.deleteFailed', { error: (err as Error).message }) })
       return false
     }
   },
@@ -171,13 +180,13 @@ const skillStore = create<SkillState>((set, get) => ({
     try {
       const result = await window.lunareclipse.skill.reload()
       if (!result.ok) {
-        set({ error: `重载失败: ${result.error ?? '未知错误'}` })
+        set({ error: t('storemsg.skill.reloadFailed', { error: result.error ?? t('storemsg.skill.unknownError') }) })
         return
       }
       // 重新加载列表
       await get().refresh()
     } catch (err) {
-      set({ error: `重载 SKILL 失败: ${(err as Error).message}` })
+      set({ error: t('storemsg.skill.reloadSkillFailed', { error: (err as Error).message }) })
     } finally {
       set({ loading: false })
     }

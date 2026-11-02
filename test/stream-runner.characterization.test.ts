@@ -123,7 +123,7 @@ function makeHarness(over?: { maxStreamRetries?: number }): Harness {
     maxStreamRetries: over?.maxStreamRetries ?? Number.POSITIVE_INFINITY,
     continuationTimerRef: { current: null },
     retryTimerRef: { current: null },
-    // getEffective 与真实 ConfigStore 同形（0.54.0：预算链路改读生效配置）；
+    // getEffective 与真实 ConfigStore 同形（0.54.1：预算链路改读生效配置）；
     // 本夹具无覆盖层，getEffective 与 get 返回同一份，保持表征基线等价。
     configStore: { get: () => cfg, getEffective: () => cfg } as unknown as ConfigStore,
     streamSession: new StreamSession(),

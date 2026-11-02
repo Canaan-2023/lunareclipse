@@ -56,6 +56,9 @@ export type SystemSlice = Pick<AppState,
   | 'aiPickerOpen' | 'setAiPickerOpen' | 'requestNewSession'
 >
 
+/** 错误提示翻译：store 无法调用 React hook，显式传入当前语言后经 `getDictEntry` 查词 */
+const tr = (lang: 'zh' | 'en' | undefined, key: string): string => getDictEntry(key)?.[lang ?? 'zh'] ?? key
+
 export function createSystemSlice(set: SliceSet, get: SliceGet): SystemSlice {
   return {
     // ===== 系统/装配状态 =====
@@ -308,7 +311,7 @@ export function createSystemSlice(set: SliceSet, get: SliceGet): SystemSlice {
     login: async (username, password) => {
       const res = await window.lunareclipse.authLogin(username, password)
       if (!res.ok || !res.user) {
-        throw new Error(res.error ?? '登录失败')
+        throw new Error(res.error ?? tr(get().lang, 'storemsg.auth.loginFailed'))
       }
       // SKILL 数据按 {uid}/{aiId} 分层，先清空上一账号残留再加载本账号数据
       useSkillStore.getState().reset()
@@ -321,7 +324,7 @@ export function createSystemSlice(set: SliceSet, get: SliceGet): SystemSlice {
     register: async (username, password, intent?: 'local' | 'createMaster' | 'joinSatellite') => {
       const res = await window.lunareclipse.authRegister(username, password, intent)
       if (!res.ok || !res.user) {
-        throw new Error(res.error ?? '注册失败')
+        throw new Error(res.error ?? tr(get().lang, 'storemsg.auth.registerFailed'))
       }
       useSkillStore.getState().reset()
       set({ currentUser: res.user })
@@ -342,14 +345,13 @@ export function createSystemSlice(set: SliceSet, get: SliceGet): SystemSlice {
     // 或误删；清理仅作用于当前账号的工作域（purgeUserWorkspace(uid)），不动账号记录
     // 与全局共享数据（plugins/master_seq/AI 注册表等）。
     confirmLogout: async () => {
-      const lang = get().lang ?? 'zh'
-      const t = (key: string): string => getDictEntry(key)?.[lang] ?? key
-      if (!window.confirm(t('auth.confirmLogoutTitle'))) return
-      const purge = window.confirm(t('auth.confirmLogoutPurge'))
+      const lang = get().lang
+      if (!window.confirm(tr(lang, 'auth.confirmLogoutTitle'))) return
+      const purge = window.confirm(tr(lang, 'auth.confirmLogoutPurge'))
       if (purge) {
         const res = await window.lunareclipse.authPurgeWorkspace()
         if (!res.ok) {
-          window.alert(res.error ?? t('auth.confirmLogoutPurgeFail'))
+          window.alert(res.error ?? tr(lang, 'auth.confirmLogoutPurgeFail'))
           return
         }
       }
@@ -363,7 +365,7 @@ export function createSystemSlice(set: SliceSet, get: SliceGet): SystemSlice {
       if (!currentUser) return
       const res = await window.lunareclipse.authDeleteAccount(currentUser.UID)
       if (!res.ok) {
-        throw new Error(res.error || '注销账号失败')
+        throw new Error(res.error || tr(get().lang, 'storemsg.auth.deleteAccountFailed'))
       }
       // 账号已删除，回到登录界面
       useSkillStore.getState().reset()
@@ -419,7 +421,7 @@ export function createSystemSlice(set: SliceSet, get: SliceGet): SystemSlice {
       // （SettingsPanel）展示，不关闭面板。
       const res: { ok: boolean; error?: string } = await window.lunareclipse.setConfig(config)
       if (!res?.ok) {
-        throw new Error(res?.error || '保存配置失败')
+        throw new Error(res?.error || tr(get().lang, 'storemsg.auth.saveConfigFailed'))
       }
       set({ config })
     },

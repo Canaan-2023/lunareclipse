@@ -4,12 +4,13 @@
  * 编排节点与连线（增删节点/连线、重命名），并支持列表排序（本地顺序，不影响主进程真源）。
  * 作用：右侧抽屉承载，340px 轻量面板，与 Skill/Plugin/Cron 同级。
  */
-import { useEffect, useState, useMemo } from 'react'
+import { memo, useEffect, useState, useMemo, useCallback } from 'react'
 import {
   Workflow, Plus, Trash2, X, ChevronUp, ChevronDown, ArrowLeft, Folder, Check, Copy, Brain, Split, CornerDownLeft, Flag, Wrench, Sparkles, MessageSquare
 } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useWorkflowStore } from '../../stores/workflowStore'
+import { useT } from '../../i18n/useT'
 import type { WorkflowTemplate, NodeType, WorkflowNode, WorkflowEdge, WorkflowMode } from '@shared/workflow/types'
 
 /** 节点类型 → 图标（与 WorkflowStatusBar 视觉语言一致） */
@@ -26,12 +27,12 @@ const NODE_TYPE_ICONS: Record<NodeType, typeof Brain> = {
 /** 节点类型 → 中文标签 */
 const NODE_TYPE_LABELS: Record<NodeType, string> = {
   llm: 'LLM',
-  tool: '工具',
+  tool: 'panelui.workflow.type.tool',
   skill: 'SKILL',
-  condition: '条件',
-  human: '人工',
-  answer: '回复',
-  end: '结束'
+  condition: 'panelui.workflow.type.condition',
+  human: 'panelui.workflow.type.human',
+  answer: 'panelui.workflow.type.answer',
+  end: 'panelui.workflow.type.end'
 }
 
 /** 新建节点时的最小配置（按类型） */
@@ -97,7 +98,7 @@ export function groupTemplates(templates: WorkflowTemplate[]): WorkflowGroup[] {
   const groups: WorkflowGroup[] = []
   for (const key of WORKFLOW_CATEGORY_ORDER) {
     const items = byKey.get(key)
-    if (items && items.length > 0) groups.push({ key, label: `${key}工作流`, items })
+    if (items && items.length > 0) groups.push({ key, label: key === '记忆' ? 'panelui.workflow.group.memory' : key === '日记' ? 'panelui.workflow.group.diary' : key === '安全' ? 'panelui.workflow.group.security' : 'panelui.workflow.group.other', items })
   }
   return groups
 }
@@ -117,8 +118,96 @@ function isStartNode(tpl: WorkflowTemplate, nodeId: string): boolean {
     && !tpl.edges.some((e) => e.to === nodeId)
 }
 
+/** 模板行：列表里单行只依赖自身数据与稳定回调，memo 后父组件的表单/错误态变化不再重渲染整列 */
+const TemplateRow = memo(function TemplateRow({
+  template: tpl,
+  canUp,
+  canDown,
+  onMove,
+  onOpen,
+  onExport,
+  onDelete
+}: {
+  template: WorkflowTemplate
+  canUp: boolean
+  canDown: boolean
+  onMove: (id: string, dir: -1 | 1) => void
+  onOpen: (t: WorkflowTemplate) => void
+  onExport: (t: WorkflowTemplate) => void
+  onDelete: (t: WorkflowTemplate) => void
+}) {
+  const t = useT()
+  return (
+    <div className="group flex items-start gap-1 border-b border-border-subtle px-3 py-2 transition-colors hover:bg-bg-muted/40">
+      {/* 排序手柄（组内移动） */}
+      <div className="flex w-5 shrink-0 flex-col items-center pt-1">
+        <button
+          onClick={() => onMove(tpl.id, -1)}
+          disabled={!canUp}
+          className="flex h-3.5 w-5 items-center justify-center rounded text-fg-muted/60 hover:text-accent disabled:opacity-20 disabled:hover:text-fg-muted/60"
+          title={t('panelui.workflow.moveUp')}
+          aria-label={t('panelui.workflow.moveUpAria', { name: tpl.name })}
+        >
+          <ChevronUp size={11} />
+        </button>
+        <button
+          onClick={() => onMove(tpl.id, 1)}
+          disabled={!canDown}
+          className="flex h-3.5 w-5 items-center justify-center rounded text-fg-muted/60 hover:text-accent disabled:opacity-20 disabled:hover:text-fg-muted/60"
+          title={t('panelui.workflow.moveDown')}
+          aria-label={t('panelui.workflow.moveDownAria', { name: tpl.name })}
+        >
+          <ChevronDown size={11} />
+        </button>
+      </div>
+
+      <button
+        onClick={() => onOpen(tpl)}
+        className="min-w-0 flex-1 text-left"
+      >
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-caption font-medium text-fg-primary">{tpl.name}</span>
+          <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] ${
+            tpl.mode === 'chatflow' ? 'bg-accent/10 text-accent' : 'bg-bg-muted text-fg-muted'
+          }`}>
+            {tpl.mode === 'chatflow' ? t('panelui.workflow.mode.chatflow') : t('panelui.workflow.mode.once')}
+          </span>
+          {tpl.source && (
+            <span className="shrink-0 rounded bg-bg-muted px-1 py-0.5 text-[9px] text-fg-muted">
+              {tpl.source === 'default' ? t('panelui.workflow.source.default') : tpl.source === 'ai' ? t('panelui.workflow.source.ai') : tpl.source === 'imported' ? t('panelui.workflow.source.imported') : t('panelui.workflow.source.user')}
+            </span>
+          )}
+        </div>
+        <div className="mt-0.5 truncate text-[11px] text-fg-muted">
+          {tpl.description || (tpl.nodes.length === 0 ? t('panelui.workflow.noNodes') : t('panelui.workflow.nodeEdgeCount', { n: tpl.nodes.length, m: tpl.edges.length }))}
+        </div>
+      </button>
+
+      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          onClick={() => onExport(tpl)}
+          className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
+          title={t('panelui.workflow.exportTitle')}
+          aria-label={t('panelui.workflow.exportAria', { name: tpl.name })}
+        >
+          <Copy size={11} />
+        </button>
+        <button
+          onClick={() => onDelete(tpl)}
+          className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-danger/15 hover:text-danger"
+          title={t('panelui.workflow.delete')}
+          aria-label={t('panelui.workflow.deleteAria', { name: tpl.name })}
+        >
+          <Trash2 size={11} />
+        </button>
+      </div>
+    </div>
+  )
+})
+
 export function WorkflowPanel() {
   const closeDrawer = useAppStore((s) => s.closeDrawer)
+  const t = useT()
   const templates = useWorkflowStore((s) => s.templates)
   const templatesLoaded = useWorkflowStore((s) => s.templatesLoaded)
   const refreshTemplates = useWorkflowStore((s) => s.refreshTemplates)
@@ -139,14 +228,6 @@ export function WorkflowPanel() {
       return []
     }
   })
-  const persistOrder = (next: string[]) => {
-    setOrder(next)
-    try {
-      localStorage.setItem(ORDER_KEY, JSON.stringify(next))
-    } catch {
-      // 忽略 localStorage 失败（隐私模式等），仅影响展示顺序
-    }
-  }
   // 新建表单
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -162,16 +243,18 @@ export function WorkflowPanel() {
   }, [refreshTemplates, templatesLoaded])
 
   const sorted = useMemo(() => sortTemplates(templates, order), [templates, order])
+  // 分组结果只随排序结果变化：此前每次渲染（含输入表单/错误提示变化）都重跑一遍分组与标签推导
+  const groups = useMemo(() => groupTemplates(sorted), [sorted])
 
   // 选中模板后本地保留一份副本用于详情编辑，避免直接改 store 引用
-  const openDetail = (t: WorkflowTemplate) => {
-    setSelected(structuredClone(t))
+  const openDetail = useCallback((tpl: WorkflowTemplate) => {
+    setSelected(structuredClone(tpl))
     setView('detail')
     setError('')
-  }
+  }, [])
 
   /** 组内移动：目标模板与其同组相邻项交换，不跨组（分类由 tags 决定，跨组无意义） */
-  const moveInGroup = (targetId: string, dir: -1 | 1) => {
+  const moveInGroup = useCallback((targetId: string, dir: -1 | 1) => {
     const idx = sorted.findIndex((t) => t.id === targetId)
     if (idx < 0) return
     const target = idx + dir
@@ -180,24 +263,30 @@ export function WorkflowPanel() {
     const next = [...sorted]
     const [item] = next.splice(idx, 1)
     next.splice(target, 0, item)
-    persistOrder(next.map((t) => t.id))
-  }
+    const ids = next.map((t) => t.id)
+    setOrder(ids)
+    try {
+      localStorage.setItem(ORDER_KEY, JSON.stringify(ids))
+    } catch {
+      // 忽略 localStorage 失败（隐私模式等），仅影响展示顺序
+    }
+  }, [sorted])
 
   /** 组内上移/下移是否可用（边界=组内首/末项） */
-  const canMoveInGroup = (t: WorkflowTemplate, dir: -1 | 1): boolean => {
-    const idx = sorted.findIndex((x) => x.id === t.id)
+  const canMoveInGroup = (tpl: WorkflowTemplate, dir: -1 | 1): boolean => {
+    const idx = sorted.findIndex((x) => x.id === tpl.id)
     if (idx < 0) return false
     const target = sorted[idx + dir]
-    return !!target && groupKeyOf(target) === groupKeyOf(t)
+    return !!target && groupKeyOf(target) === groupKeyOf(tpl)
   }
 
   const handleCreate = async () => {
     setError('')
     const n = name.trim()
-    if (!n) { setError('模板名称不能为空'); return }
+    if (!n) { setError(t('panelui.workflow.nameRequired')); return }
     // 新建默认含一个起始节点（workflow→end / chatflow→answer），保证模板可直接运行
     const startType: NodeType = mode === 'chatflow' ? 'answer' : 'end'
-    const t = await saveTemplate({
+    const created = await saveTemplate({
       name: n,
       description: description.trim(),
       mode,
@@ -205,41 +294,42 @@ export function WorkflowPanel() {
       nodes: [{ id: 'start', type: startType, name: '开始', config: defaultNodeConfig(startType) }],
       edges: []
     })
-    if (t) {
+    if (created) {
       setName('')
       setDescription('')
       setView('list')
     } else {
-      setError('创建失败：主进程未返回模板')
+      setError(t('panelui.workflow.createFailed'))
     }
   }
 
-  const handleDelete = async (t: WorkflowTemplate) => {
-    if (!confirm(`删除工作流「${t.name}」？此操作不可撤销。`)) return
-    await deleteTemplate(t.id)
-    if (selected?.id === t.id) {
+  // 行回调：接收模板数据，引用随依赖稳定——TemplateRow 的 memo 才有意义
+  const handleDelete = useCallback(async (tpl: WorkflowTemplate) => {
+    if (!confirm(t('panelui.workflow.deleteConfirm', { name: tpl.name }))) return
+    await deleteTemplate(tpl.id)
+    if (selected?.id === tpl.id) {
       setSelected(null)
       setView('list')
     }
-  }
+  }, [deleteTemplate, selected?.id])
 
-  const handleExport = async (t: WorkflowTemplate) => {
-    const jsonStr = await exportTemplate(t.id)
-    if (!jsonStr) { setError('导出失败'); return }
+  const handleExport = useCallback(async (tpl: WorkflowTemplate) => {
+    const jsonStr = await exportTemplate(tpl.id)
+    if (!jsonStr) { setError(t('panelui.workflow.exportFailed')); return }
     try {
       await navigator.clipboard?.writeText(jsonStr)
-      setError('已复制模板 JSON 到剪贴板')
+      setError(t('panelui.workflow.copySuccess'))
     } catch {
-      setError('导出成功，但剪贴板不可用')
+      setError(t('panelui.workflow.copyUnavailable'))
     }
-  }
+  }, [exportTemplate])
 
   const handleImport = async () => {
-    const jsonStr = prompt('粘贴工作流模板 JSON：')
+    const jsonStr = prompt(t('panelui.workflow.importPrompt'))
     if (!jsonStr) return
-    const t = await importTemplate(jsonStr)
-    if (t) void refreshTemplates()
-    else setError('导入失败：JSON 无法解析为模板')
+    const imported = await importTemplate(jsonStr)
+    if (imported) void refreshTemplates()
+    else setError(t('panelui.workflow.importFailed'))
   }
 
   return (
@@ -251,15 +341,15 @@ export function WorkflowPanel() {
             <button
               onClick={() => { setView('list'); setSelected(null) }}
               className="flex items-center gap-1 rounded-btn px-1 py-0.5 text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-              title="返回列表"
-              aria-label="返回工作流列表"
+              title={t('panelui.workflow.backToList')}
+              aria-label={t('panelui.workflow.backToListAria')}
             >
               <ArrowLeft size={13} />
             </button>
           ) : (
             <Workflow size={13} className="text-accent" />
           )}
-          {view === 'detail' ? selected?.name ?? '工作流详情' : '工作流'}
+          {view === 'detail' ? selected?.name ?? t('panelui.workflow.detail') : t('panelui.workflow.title')}
         </div>
         <div className="flex items-center gap-1">
           {view === 'list' && (
@@ -267,25 +357,25 @@ export function WorkflowPanel() {
               <button
                 onClick={handleImport}
                 className="flex items-center gap-1 rounded-btn bg-bg-muted px-2 py-1 text-[11px] text-fg-secondary hover:bg-bg-muted/70"
-                title="导入模板 JSON"
+                title={t('panelui.workflow.importTitle')}
               >
                 <Folder size={11} />
-                导入
+                {t('panelui.workflow.import')}
               </button>
               <button
                 onClick={() => { setView('create'); setError('') }}
                 className="flex items-center gap-1 rounded-btn bg-accent/15 px-2 py-1 text-[11px] text-accent hover:bg-accent/25"
               >
                 <Plus size={11} />
-                新增
+                {t('panelui.workflow.add')}
               </button>
             </>
           )}
           <button
             onClick={closeDrawer}
             className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-            title="关闭"
-            aria-label="关闭工作流面板"
+            title={t('panelui.workflow.close')}
+            aria-label={t('panelui.workflow.closeAria')}
           >
             <X size={12} />
           </button>
@@ -296,20 +386,20 @@ export function WorkflowPanel() {
       {view === 'create' && (
         <div className="border-b border-border-subtle bg-bg-base/50 p-3">
           <div className="mb-2">
-            <label className="mb-1 block text-[10px] text-fg-muted">名称</label>
+            <label className="mb-1 block text-[10px] text-fg-muted">{t('panelui.workflow.name')}</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="如：日报生成"
+              placeholder={t('panelui.workflow.namePlaceholder')}
               className="w-full rounded-btn border border-border bg-bg-elevated px-2 py-1 text-caption text-fg-primary placeholder:text-fg-muted focus:outline-none focus:border-accent/50"
             />
           </div>
           <div className="mb-2">
-            <label className="mb-1 block text-[10px] text-fg-muted">描述</label>
+            <label className="mb-1 block text-[10px] text-fg-muted">{t('panelui.workflow.description')}</label>
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="（可选）"
+              placeholder={t('panelui.workflow.optional')}
               className="w-full rounded-btn border border-border bg-bg-elevated px-2 py-1 text-caption text-fg-primary placeholder:text-fg-muted focus:outline-none focus:border-accent/50"
             />
           </div>
@@ -324,17 +414,17 @@ export function WorkflowPanel() {
                     : 'border-border text-fg-muted hover:bg-bg-muted'
                 }`}
               >
-                {m === 'workflow' ? '一次性工作流' : '对话流'}
+                {m === 'workflow' ? t('panelui.workflow.mode.onceWorkflow') : t('panelui.workflow.mode.chatflow')}
               </button>
             ))}
           </div>
-          {error && <div className="mb-2 text-caption text-red-400">{error}</div>}
+          {error && <div className="mb-2 text-caption text-danger">{error}</div>}
           <button
             onClick={handleCreate}
             className="flex w-full items-center justify-center gap-1 rounded-btn bg-accent px-2 py-1.5 text-caption text-accent-fg hover:bg-accent/80 active:scale-95"
           >
             <Check size={12} />
-            创建模板
+            {t('panelui.workflow.createTemplate')}
           </button>
         </div>
       )}
@@ -355,91 +445,34 @@ export function WorkflowPanel() {
           {sorted.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
               <Workflow size={20} className="text-fg-muted/50" />
-              <span className="text-caption text-fg-muted">暂无工作流模板</span>
+              <span className="text-caption text-fg-muted">{t('panelui.workflow.empty')}</span>
               <button
                 onClick={() => { setView('create'); setError('') }}
                 className="mt-1 flex items-center gap-1 rounded-btn bg-accent/15 px-3 py-1 text-caption text-accent hover:bg-accent/25"
               >
                 <Plus size={11} />
-                新建第一个工作流
+                {t('panelui.workflow.createFirst')}
               </button>
             </div>
           ) : (
-            groupTemplates(sorted).map((group) => (
+            groups.map((group) => (
               <div key={group.key}>
                 {/* 分组标题 */}
                 <div className="sticky top-0 z-10 flex items-center gap-1.5 border-b border-border-subtle bg-bg-surface px-3 py-1.5">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-fg-muted">{group.label}</span>
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-fg-muted">{t(group.label)}</span>
                   <span className="rounded bg-bg-muted px-1 text-[9px] text-fg-muted">{group.items.length}</span>
                 </div>
-                {group.items.map((t) => (
-                  <div
-                    key={t.id}
-                    className="group flex items-start gap-1 border-b border-border-subtle px-3 py-2 transition-colors hover:bg-bg-muted/40"
-                  >
-                    {/* 排序手柄（组内移动） */}
-                    <div className="flex w-5 shrink-0 flex-col items-center pt-1">
-                      <button
-                        onClick={() => moveInGroup(t.id, -1)}
-                        disabled={!canMoveInGroup(t, -1)}
-                        className="flex h-3.5 w-5 items-center justify-center rounded text-fg-muted/60 hover:text-accent disabled:opacity-20 disabled:hover:text-fg-muted/60"
-                        title="组内上移"
-                        aria-label={`上移${t.name}`}
-                      >
-                        <ChevronUp size={11} />
-                      </button>
-                      <button
-                        onClick={() => moveInGroup(t.id, 1)}
-                        disabled={!canMoveInGroup(t, 1)}
-                        className="flex h-3.5 w-5 items-center justify-center rounded text-fg-muted/60 hover:text-accent disabled:opacity-20 disabled:hover:text-fg-muted/60"
-                        title="组内下移"
-                        aria-label={`下移${t.name}`}
-                      >
-                        <ChevronDown size={11} />
-                      </button>
-                    </div>
-
-                    <button
-                      onClick={() => openDetail(t)}
-                      className="min-w-0 flex-1 text-left"
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-caption font-medium text-fg-primary">{t.name}</span>
-                        <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] ${
-                          t.mode === 'chatflow' ? 'bg-accent/10 text-accent' : 'bg-bg-muted text-fg-muted'
-                        }`}>
-                          {t.mode === 'chatflow' ? '对话流' : '一次性'}
-                        </span>
-                        {t.source && (
-                          <span className="shrink-0 rounded bg-bg-muted px-1 py-0.5 text-[9px] text-fg-muted">
-                            {t.source === 'default' ? '内置' : t.source === 'ai' ? 'AI 编排' : t.source === 'imported' ? '导入' : '用户'}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-0.5 truncate text-[11px] text-fg-muted">
-                        {t.description || (t.nodes.length === 0 ? '（无节点）' : `${t.nodes.length} 个节点 · ${t.edges.length} 条连线`)}
-                      </div>
-                    </button>
-
-                    <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                      <button
-                        onClick={() => void handleExport(t)}
-                        className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-                        title="导出 JSON 到剪贴板"
-                        aria-label={`导出${t.name}`}
-                      >
-                        <Copy size={11} />
-                      </button>
-                      <button
-                        onClick={() => void handleDelete(t)}
-                        className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-red-500/15 hover:text-red-400"
-                        title="删除"
-                        aria-label={`删除${t.name}`}
-                      >
-                        <Trash2 size={11} />
-                      </button>
-                    </div>
-                  </div>
+                {group.items.map((tpl) => (
+                  <TemplateRow
+                    key={tpl.id}
+                    template={tpl}
+                    canUp={canMoveInGroup(tpl, -1)}
+                    canDown={canMoveInGroup(tpl, 1)}
+                    onMove={moveInGroup}
+                    onOpen={openDetail}
+                    onExport={handleExport}
+                    onDelete={handleDelete}
+                  />
                 ))}
               </div>
             ))
@@ -469,6 +502,7 @@ function WorkflowDetail({
 }) {
   const editTemplate = useWorkflowStore((s) => s.editTemplate)
   const refreshTemplates = useWorkflowStore((s) => s.refreshTemplates)
+  const t = useT()
   // 新增节点表单
   const [newType, setNewType] = useState<NodeType>('llm')
   const [newNodeName, setNewNodeName] = useState('')
@@ -496,7 +530,7 @@ function WorkflowDetail({
       void refreshTemplates()
       setError('')
     } else {
-      setError('操作失败：主进程未返回更新后的模板')
+      setError(t('panelui.workflow.applyFailed'))
     }
   }
 
@@ -504,7 +538,7 @@ function WorkflowDetail({
     const node: WorkflowNode = {
       id: genNodeId(),
       type: newType,
-      name: newNodeName.trim() || NODE_TYPE_LABELS[newType],
+      name: newNodeName.trim() || t(NODE_TYPE_LABELS[newType]),
       config: defaultNodeConfig(newType)
     }
     await applyEdit({ templateId: template.id, action: 'add_node', payload: node as unknown as Record<string, unknown> })
@@ -512,13 +546,13 @@ function WorkflowDetail({
   }
 
   const removeNode = async (nodeId: string) => {
-    if (!confirm(`删除节点「${nodeId}」及其连线？`)) return
+    if (!confirm(t('panelui.workflow.removeNodeConfirm', { id: nodeId }))) return
     await applyEdit({ templateId: template.id, action: 'remove_node', payload: { nodeId } })
   }
 
   const addEdge = async () => {
-    if (!edgeFrom || !edgeTo) { setError('请选择起点和终点节点'); return }
-    if (edgeFrom === edgeTo) { setError('起点与终点不能相同'); return }
+    if (!edgeFrom || !edgeTo) { setError(t('panelui.workflow.edgeMissing')); return }
+    if (edgeFrom === edgeTo) { setError(t('panelui.workflow.edgeSame')); return }
     const edge: WorkflowEdge = { from: edgeFrom, to: edgeTo }
     if (edgeCond.trim()) edge.condition = edgeCond.trim()
     await applyEdit({ templateId: template.id, action: 'add_edge', payload: edge as unknown as Record<string, unknown> })
@@ -532,7 +566,7 @@ function WorkflowDetail({
 
   const saveMeta = async () => {
     const n = editName.trim()
-    if (!n) { setError('模板名称不能为空'); return }
+    if (!n) { setError(t('panelui.workflow.nameEmpty')); return }
     await applyEdit({
       templateId: template.id,
       action: 'rename',
@@ -545,13 +579,13 @@ function WorkflowDetail({
       <div className="flex-1 overflow-y-auto">
         {/* 元信息编辑 */}
         <div className="border-b border-border-subtle p-3">
-          <label className="mb-1 block text-[10px] text-fg-muted">名称</label>
+          <label className="mb-1 block text-[10px] text-fg-muted">{t('panelui.workflow.name')}</label>
           <input
             value={editName}
             onChange={(e) => setEditName(e.target.value)}
             className="mb-2 w-full rounded-btn border border-border bg-bg-elevated px-2 py-1 text-caption text-fg-primary focus:outline-none focus:border-accent/50"
           />
-          <label className="mb-1 block text-[10px] text-fg-muted">描述</label>
+          <label className="mb-1 block text-[10px] text-fg-muted">{t('panelui.workflow.description')}</label>
           <input
             value={editDesc}
             onChange={(e) => setEditDesc(e.target.value)}
@@ -562,17 +596,17 @@ function WorkflowDetail({
             className="flex w-full items-center justify-center gap-1 rounded-btn bg-accent/15 px-2 py-1 text-caption text-accent hover:bg-accent/25 active:scale-95"
           >
             <Check size={11} />
-            保存修改
+            {t('panelui.workflow.saveChanges')}
           </button>
         </div>
 
         {/* 节点列表 */}
         <div className="border-b border-border-subtle p-3">
           <div className="mb-2 flex items-center justify-between">
-            <span className="text-[10px] font-medium uppercase tracking-wider text-fg-muted">节点（{template.nodes.length}）</span>
+            <span className="text-[10px] font-medium uppercase tracking-wider text-fg-muted">{t('panelui.workflow.nodesCount', { n: template.nodes.length })}</span>
           </div>
           {template.nodes.length === 0 ? (
-            <div className="py-2 text-center text-caption text-fg-muted">暂无节点，请在下方添加</div>
+            <div className="py-2 text-center text-caption text-fg-muted">{t('panelui.workflow.noNodesHint')}</div>
           ) : (
             <div className="space-y-1">
               {template.nodes.map((n) => {
@@ -586,13 +620,13 @@ function WorkflowDetail({
                       <span className="ml-1 text-[10px] text-fg-muted/70">{n.type}</span>
                     </span>
                     {isStart && (
-                      <span className="shrink-0 rounded bg-accent/10 px-1 py-0.5 text-[9px] text-accent">起始</span>
+                      <span className="shrink-0 rounded bg-accent/10 px-1 py-0.5 text-[9px] text-accent">{t('panelui.workflow.start')}</span>
                     )}
                     <button
                       onClick={() => void removeNode(n.id)}
-                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-muted opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
-                      title="删除节点"
-                      aria-label={`删除节点${n.name}`}
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+                      title={t('panelui.workflow.removeNode')}
+                      aria-label={t('panelui.workflow.removeNodeAria', { name: n.name })}
                     >
                       <Trash2 size={10} />
                     </button>
@@ -607,23 +641,23 @@ function WorkflowDetail({
               value={newType}
               onChange={(e) => setNewType(e.target.value as NodeType)}
               className="h-7 shrink-0 rounded-btn border border-border bg-bg-elevated px-1.5 text-caption text-fg-primary focus:outline-none focus:border-accent/50"
-              title="节点类型"
+              title={t('panelui.workflow.nodeType')}
             >
-              {(Object.keys(NODE_TYPE_LABELS) as NodeType[]).map((t) => (
-                <option key={t} value={t}>{NODE_TYPE_LABELS[t]}</option>
+              {(Object.keys(NODE_TYPE_LABELS) as NodeType[]).map((type) => (
+                <option key={type} value={type}>{t(NODE_TYPE_LABELS[type])}</option>
               ))}
             </select>
             <input
               value={newNodeName}
               onChange={(e) => setNewNodeName(e.target.value)}
-              placeholder="节点名（可选）"
+              placeholder={t('panelui.workflow.nodeNameOptional')}
               className="h-7 min-w-0 flex-1 rounded-btn border border-border bg-bg-elevated px-2 text-caption text-fg-primary placeholder:text-fg-muted focus:outline-none focus:border-accent/50"
               onKeyDown={(e) => { if (e.key === 'Enter') void addNode() }}
             />
             <button
               onClick={() => void addNode()}
               className="flex h-7 shrink-0 items-center gap-1 rounded-btn bg-accent/15 px-2 text-caption text-accent hover:bg-accent/25"
-              title="添加节点"
+              title={t('panelui.workflow.addNode')}
             >
               <Plus size={11} />
             </button>
@@ -632,9 +666,9 @@ function WorkflowDetail({
 
         {/* 连线列表 */}
         <div className="border-b border-border-subtle p-3">
-          <span className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-fg-muted">连线（{template.edges.length}）</span>
+          <span className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-fg-muted">{t('panelui.workflow.edgesCount', { n: template.edges.length })}</span>
           {template.edges.length === 0 ? (
-            <div className="py-2 text-center text-caption text-fg-muted">暂无连线，请在下方添加</div>
+            <div className="py-2 text-center text-caption text-fg-muted">{t('panelui.workflow.noEdgesHint')}</div>
           ) : (
             <div className="space-y-1">
               {template.edges.map((e, i) => (
@@ -647,9 +681,9 @@ function WorkflowDetail({
                   </span>
                   <button
                     onClick={() => void removeEdge(e.from, e.to)}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-muted opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
-                    title="删除连线"
-                    aria-label={`删除连线${e.from}到${e.to}`}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+                    title={t('panelui.workflow.removeEdge')}
+                    aria-label={t('panelui.workflow.removeEdgeAria', { from: e.from, to: e.to })}
                   >
                     <Trash2 size={10} />
                   </button>
@@ -664,9 +698,9 @@ function WorkflowDetail({
                 value={edgeFrom}
                 onChange={(e) => setEdgeFrom(e.target.value)}
                 className="h-7 min-w-0 flex-1 rounded-btn border border-border bg-bg-elevated px-1.5 text-caption text-fg-primary focus:outline-none focus:border-accent/50"
-                title="起点节点"
+                title={t('panelui.workflow.edgeFrom')}
               >
-                <option value="">起点…</option>
+                <option value="">{t('panelui.workflow.edgeFromPlaceholder')}</option>
                 {nodeIds.map((id) => <option key={id} value={id}>{id}</option>)}
               </select>
               <span className="text-fg-muted/60">→</span>
@@ -674,16 +708,16 @@ function WorkflowDetail({
                 value={edgeTo}
                 onChange={(e) => setEdgeTo(e.target.value)}
                 className="h-7 min-w-0 flex-1 rounded-btn border border-border bg-bg-elevated px-1.5 text-caption text-fg-primary focus:outline-none focus:border-accent/50"
-                title="终点节点"
+                title={t('panelui.workflow.edgeTo')}
               >
-                <option value="">终点…</option>
+                <option value="">{t('panelui.workflow.edgeToPlaceholder')}</option>
                 {nodeIds.map((id) => <option key={id} value={id}>{id}</option>)}
               </select>
             </div>
             <input
               value={edgeCond}
               onChange={(e) => setEdgeCond(e.target.value)}
-              placeholder="条件表达式（可选，仅条件节点出边）"
+              placeholder={t('panelui.workflow.edgeCondition')}
               className="h-7 w-full rounded-btn border border-border bg-bg-elevated px-2 text-caption text-fg-primary placeholder:text-fg-muted focus:outline-none focus:border-accent/50"
               onKeyDown={(e) => { if (e.key === 'Enter') void addEdge() }}
             />
@@ -692,12 +726,12 @@ function WorkflowDetail({
               className="flex w-full items-center justify-center gap-1 rounded-btn bg-accent/15 px-2 py-1 text-caption text-accent hover:bg-accent/25"
             >
               <Plus size={11} />
-              添加连线
+              {t('panelui.workflow.addEdge')}
             </button>
           </div>
         </div>
 
-        {error && <div className="px-3 py-2 text-caption text-red-400">{error}</div>}
+        {error && <div className="px-3 py-2 text-caption text-danger">{error}</div>}
       </div>
 
       {/* 底部操作 */}
@@ -707,14 +741,14 @@ function WorkflowDetail({
           className="flex flex-1 items-center justify-center gap-1 rounded-btn bg-bg-muted px-2 py-1.5 text-caption text-fg-secondary hover:bg-bg-muted/70"
         >
           <Copy size={11} />
-          导出
+          {t('panelui.workflow.export')}
         </button>
         <button
           onClick={() => onRemove(template)}
-          className="flex flex-1 items-center justify-center gap-1 rounded-btn bg-red-500/10 px-2 py-1.5 text-caption text-red-400 hover:bg-red-500/20"
+          className="flex flex-1 items-center justify-center gap-1 rounded-btn bg-danger/10 px-2 py-1.5 text-caption text-danger hover:bg-danger/20"
         >
           <Trash2 size={11} />
-          删除模板
+          {t('panelui.workflow.deleteTemplate')}
         </button>
       </div>
     </div>

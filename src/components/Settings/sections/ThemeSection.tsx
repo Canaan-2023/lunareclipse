@@ -11,17 +11,17 @@ import { useT } from '../../../i18n/useT'
 /** 主题清单（含预览色板） */
 const THEMES: {
   name: ThemeName
-  label: string
+  labelKey: string
   icon: typeof Moon
   descKey: string
   preview: { bg: string; fg: string; accent: string }
 }[] = [
-  { name: 'frost-glass', label: '霜璃', icon: Snowflake, descKey: 'theme.frost-glass', preview: { bg: '#DCE4ED', fg: '#1E293B', accent: '#3D5A7A' } },
-  { name: 'parchment', label: '素笺', icon: FileText, descKey: 'theme.parchment', preview: { bg: '#FFFFFF', fg: '#000000', accent: '#000000' } },
-  { name: 'night', label: '夜幕', icon: Moon, descKey: 'theme.night', preview: { bg: '#000000', fg: '#F5F5F5', accent: '#E0E0E0' } },
-  { name: 'violet-night', label: '紫夜', icon: Sparkles, descKey: 'theme.violet-night', preview: { bg: '#171226', fg: '#EDE9F8', accent: '#A78BFA' } },
-  { name: 'eclipse', label: '月蚀', icon: CircleDot, descKey: 'theme.eclipse', preview: { bg: '#0D0F18', fg: '#ECEEF6', accent: '#D6B276' } },
-  { name: 'gilded', label: '烫金', icon: Gem, descKey: 'theme.gilded', preview: { bg: '#1A140B', fg: '#F2E6D2', accent: '#D4AF37' } }
+  { name: 'frost-glass', labelKey: 'settings.themeLabel.frostGlass', icon: Snowflake, descKey: 'theme.frost-glass', preview: { bg: '#DCE4ED', fg: '#1E293B', accent: '#3D5A7A' } },
+  { name: 'parchment', labelKey: 'settings.themeLabel.parchment', icon: FileText, descKey: 'theme.parchment', preview: { bg: '#FFFFFF', fg: '#000000', accent: '#000000' } },
+  { name: 'night', labelKey: 'settings.themeLabel.night', icon: Moon, descKey: 'theme.night', preview: { bg: '#000000', fg: '#F5F5F5', accent: '#E0E0E0' } },
+  { name: 'violet-night', labelKey: 'settings.themeLabel.violetNight', icon: Sparkles, descKey: 'theme.violet-night', preview: { bg: '#171226', fg: '#EDE9F8', accent: '#A78BFA' } },
+  { name: 'eclipse', labelKey: 'settings.themeLabel.eclipse', icon: CircleDot, descKey: 'theme.eclipse', preview: { bg: '#0D0F18', fg: '#ECEEF6', accent: '#D6B276' } },
+  { name: 'gilded', labelKey: 'settings.themeLabel.gilded', icon: Gem, descKey: 'theme.gilded', preview: { bg: '#1A140B', fg: '#F2E6D2', accent: '#D4AF37' } }
 ]
 
 /** 主题 Tab：主题选择（预览色板卡片） */
@@ -52,10 +52,10 @@ export function ThemeSection({
                   active ? 'border-accent shadow-lg' : 'border-border hover:border-accent/50'
                 }`}
                 style={{ backgroundColor: theme.preview.bg, color: theme.preview.fg }}
-                title={`${theme.label}: ${t(theme.descKey)}`}
+                title={`${t(theme.labelKey)}: ${t(theme.descKey)}`}
               >
                 <Icon size={20} style={{ color: theme.preview.accent }} />
-                <span className="text-body font-medium">{theme.label}</span>
+                <span className="text-body font-medium">{t(theme.labelKey)}</span>
                 <span className="text-[10px] opacity-70">{t(theme.descKey)}</span>
               </button>
             )

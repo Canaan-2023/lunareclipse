@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { ChatMessage } from '@shared/types'
+import { useT } from '../../i18n/useT'
 
 /** 消息锚点 id（与 MessageBubble 的 anchorId 一致：`msg-{sanitized id}`） */
 function anchorId(id: string): string {
@@ -31,6 +32,7 @@ export function MessageLocator({
   messages: ChatMessage[]
   scrollRef: RefObject<HTMLDivElement | null>
 }) {
+  const t = useT()
   const userMsgs = messages.filter((m) => m.role === 'user' && m.activation !== true).slice(-MAX_LOCATOR_DOTS)
   // ref 持有最新列表：scroll 监听只挂一次，回调读 ref
   const userMsgsRef = useRef(userMsgs)
@@ -86,8 +88,8 @@ export function MessageLocator({
             const node = document.getElementById(anchorId(m.id))
             node?.scrollIntoView({ behavior: 'smooth', block: 'center' })
           }}
-          title={`定位到这条消息：${String(m.content ?? '').slice(0, 24)}`}
-          aria-label={`定位到这条消息：${String(m.content ?? '').slice(0, 24)}`}
+          title={t('chatui.locateMsg', { text: String(m.content ?? '').slice(0, 24) })}
+          aria-label={t('chatui.locateMsg', { text: String(m.content ?? '').slice(0, 24) })}
           className={`relative h-[6px] w-[6px] shrink-0 rounded-full transition-all duration-150 before:absolute before:-inset-[9px] before:rounded-full before:content-[''] hover:scale-150 ${
             i === activeIdx
               ? 'scale-125 bg-accent opacity-100 shadow-[0_0_6px_rgb(var(--color-accent))]'

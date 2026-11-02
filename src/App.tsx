@@ -1,14 +1,11 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import { TitleBar } from './components/TitleBar'
 import { Sidebar } from './components/Sidebar'
 import { ChatArea } from './components/Chat/ChatArea'
-import { SettingsPanel } from './components/Settings/SettingsPanel'
-import { VisualizationPanel } from './components/Visualization/VisualizationPanel'
-import { MemoryGraphPanel } from './components/Visualization/MemoryGraphPanel'
-import { BrowserPanel } from './components/Browser/BrowserPanel'
-import { SocialBrowserPanel } from './components/Social/SocialBrowserPanel'
 import { RightPanelTabs } from './components/RightPanelTabs'
 import { DrawerPanel } from './components/DrawerPanel'
+import { PanelErrorBoundary } from './components/PanelErrorBoundary'
 import { NewSessionPicker } from './components/Ai/NewSessionPicker'
 import { ChatOverlay } from './components/Chat/ChatOverlay'
 import { OverlayChat } from './components/Chat/OverlayChat'
@@ -17,6 +14,40 @@ import { PermissionDialog } from './components/PermissionDialog'
 import { WorkflowHumanDialog } from './components/Chat/WorkflowHumanDialog'
 import { useAppStore } from './stores/appStore'
 import { useTheme } from './hooks/useTheme'
+import { useT } from './i18n/useT'
+
+/**
+ * 重型面板按需加载：模块只在首次打开时下载/解析，之后保持挂载以保留面板内部状态
+ * （Tab 选择、草稿、滚动位置）。关闭时是否卸载由面板自身 `open` 判断，行为不变。
+ */
+const SettingsPanel = lazy(async () => ({ default: (await import('./components/Settings/SettingsPanel')).SettingsPanel }))
+const VisualizationPanel = lazy(async () => ({ default: (await import('./components/Visualization/VisualizationPanel')).VisualizationPanel }))
+const MemoryGraphPanel = lazy(async () => ({ default: (await import('./components/Visualization/MemoryGraphPanel')).MemoryGraphPanel }))
+const BrowserPanel = lazy(async () => ({ default: (await import('./components/Browser/BrowserPanel')).BrowserPanel }))
+const SocialBrowserPanel = lazy(async () => ({ default: (await import('./components/Social/SocialBrowserPanel')).SocialBrowserPanel }))
+
+/**
+ * 面板首次打开后保持挂载：避免每次关闭/重开都丢失内部状态，同时把模块加载推迟到首次使用。
+ * 第二个返回值用于强制卸载：面板级错误卡片点了“关闭”后，需要连带丢弃该面板的错误状态，
+ * 否则边界会一直显示错误卡片（面板自身已不可用，无法自行退出）。
+ */
+function useEverOpened(open: boolean): [boolean, () => void] {
+  const [everOpened, setEverOpened] = useState(open)
+  useEffect(() => {
+    if (open) setEverOpened(true)
+  }, [open])
+  const reset = useCallback(() => setEverOpened(false), [])
+  return [everOpened, reset]
+}
+
+/** 面板模块加载占位：固定铺满容器，避免加载完成时出现布局跳动 */
+function PanelSpinner() {
+  return (
+    <div className="flex h-full w-full items-center justify-center text-fg-muted">
+      <Loader2 size={16} className="animate-spin" />
+    </div>
+  )
+}
 
 function LoadingScreen() {
   return (
@@ -85,6 +116,23 @@ function MainApp() {
   const authReady = useAppStore((s) => s.authReady)
   const currentUser = useAppStore((s) => s.currentUser)
   const activeTab = useAppStore((s) => s.activeRightPanel)
+  const settingsOpen = useAppStore((s) => s.settingsOpen)
+  const vizOpen = useAppStore((s) => s.vizPanelOpen)
+  const memoryGraphOpen = useAppStore((s) => s.memoryGraphOpen)
+  const drawerOpen = useAppStore((s) => s.activeDrawer !== null)
+  const closeSettings = useAppStore((s) => s.closeSettings)
+  const closeDrawer = useAppStore((s) => s.closeDrawer)
+  const setVizPanelOpen = useAppStore((s) => s.setVizPanelOpen)
+  const setMemoryGraphOpen = useAppStore((s) => s.setMemoryGraphOpen)
+  const [settingsMounted, dropSettings] = useEverOpened(settingsOpen)
+  const [vizMounted, dropViz] = useEverOpened(vizOpen)
+  const [memoryGraphMounted, dropMemoryGraph] = useEverOpened(memoryGraphOpen)
+  // 与各面板自身的 open 口径一致：被设置/监控遮罩挡住时不算打开
+  const browserOpen = activeTab === 'browser' && !vizOpen && !settingsOpen
+  const socialOpen = activeTab === 'social' && !vizOpen && !settingsOpen
+  const [browserMounted] = useEverOpened(browserOpen)
+  const [socialMounted] = useEverOpened(socialOpen)
+  const t = useT()
   useTheme()
 
   useEffect(() => {
@@ -126,19 +174,79 @@ function MainApp() {
             <div className={isChatTab ? 'flex flex-1 overflow-hidden' : 'hidden'}>
               <ChatArea />
             </div>
-            {/* 功能面板标签：重型面板全宽渲染，始终挂载以保留状态 */}
-<div className={!isChatTab ? 'flex flex-1 overflow-hidden' : 'hidden'}>
-              <BrowserPanel />
-              <SocialBrowserPanel />
+            {/* 功能面板标签：重型面板全宽渲染，首次打开后保持挂载以保留状态 */}
+            <div className={!isChatTab ? 'flex flex-1 overflow-hidden' : 'hidden'}>
+              {browserMounted && (
+                <PanelErrorBoundary label={t('tab.browser')}>
+                  <Suspense fallback={<PanelSpinner />}>
+                    <BrowserPanel />
+                  </Suspense>
+                </PanelErrorBoundary>
+              )}
+              {socialMounted && (
+                <PanelErrorBoundary label={t('tab.social')}>
+                  <Suspense fallback={<PanelSpinner />}>
+                    <SocialBrowserPanel />
+                  </Suspense>
+                </PanelErrorBoundary>
+              )}
             </div>
           </div>
         </div>
         {/* 右侧抽屉：内联 flex 子元素，打开时会话区域自然收缩 */}
-        <DrawerPanel />
+        <PanelErrorBoundary
+          label={t('error.panel.drawer')}
+          active={drawerOpen}
+          onDismiss={closeDrawer}
+        >
+          <DrawerPanel />
+        </PanelErrorBoundary>
       </div>
-      <SettingsPanel />
-      <VisualizationPanel />
-      <MemoryGraphPanel />
+      {settingsMounted && (
+        <PanelErrorBoundary
+          label={t('settings.title')}
+          variant="overlay"
+          active={settingsOpen}
+          onDismiss={() => {
+            closeSettings()
+            dropSettings()
+          }}
+        >
+          <Suspense fallback={<PanelSpinner />}>
+            <SettingsPanel />
+          </Suspense>
+        </PanelErrorBoundary>
+      )}
+      {vizMounted && (
+        <PanelErrorBoundary
+          label={t('tab.viz')}
+          variant="overlay"
+          active={vizOpen}
+          onDismiss={() => {
+            setVizPanelOpen(false)
+            dropViz()
+          }}
+        >
+          <Suspense fallback={<PanelSpinner />}>
+            <VisualizationPanel />
+          </Suspense>
+        </PanelErrorBoundary>
+      )}
+      {memoryGraphMounted && (
+        <PanelErrorBoundary
+          label={t('memoryGraph.title')}
+          variant="overlay"
+          active={memoryGraphOpen}
+          onDismiss={() => {
+            setMemoryGraphOpen(false)
+            dropMemoryGraph()
+          }}
+        >
+          <Suspense fallback={<PanelSpinner />}>
+            <MemoryGraphPanel />
+          </Suspense>
+        </PanelErrorBoundary>
+      )}
       <PermissionDialog />
       <WorkflowHumanDialog />
       <ChatOverlay />

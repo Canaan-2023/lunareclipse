@@ -22,6 +22,7 @@ import {
   Inbox
 } from 'lucide-react'
 import { useAppStore } from '../stores/appStore'
+import { useT } from '../i18n/useT'
 
 /** 日历条目（与主进程 ipc/handlers/calendar.ts 的 CalendarEntry 保持一致） */
 interface CalendarEntry {
@@ -35,18 +36,18 @@ interface CalendarEntry {
   createdAt: string
 }
 
-const TYPE_META: Record<CalendarEntry['type'], { icon: typeof StickyNote; label: string; cls: string }> = {
-  memo: { icon: StickyNote, label: '备忘', cls: 'bg-bg-muted text-fg-muted' },
-  plan: { icon: Flag, label: '计划', cls: 'bg-accent/10 text-accent' },
-  reminder: { icon: Bell, label: '提醒', cls: 'bg-warning-soft text-warning' },
-  backup: { icon: Archive, label: '备份', cls: 'bg-info-soft text-info' }
+const TYPE_META: Record<CalendarEntry['type'], { icon: typeof StickyNote; labelKey: string; cls: string }> = {
+  memo: { icon: StickyNote, labelKey: 'panelui.calendar.type.memo', cls: 'bg-bg-muted text-fg-muted' },
+  plan: { icon: Flag, labelKey: 'panelui.calendar.type.plan', cls: 'bg-accent/10 text-accent' },
+  reminder: { icon: Bell, labelKey: 'panelui.calendar.type.reminder', cls: 'bg-warning-soft text-warning' },
+  backup: { icon: Archive, labelKey: 'panelui.calendar.type.backup', cls: 'bg-info-soft text-info' }
 }
 
-const TYPE_OPTIONS: Array<{ value: CalendarEntry['type']; label: string }> = [
-  { value: 'memo', label: '备忘' },
-  { value: 'plan', label: '计划' },
-  { value: 'reminder', label: '提醒' },
-  { value: 'backup', label: '备份' }
+const TYPE_OPTIONS: Array<{ value: CalendarEntry['type']; labelKey: string }> = [
+  { value: 'memo', labelKey: 'panelui.calendar.type.memo' },
+  { value: 'plan', labelKey: 'panelui.calendar.type.plan' },
+  { value: 'reminder', labelKey: 'panelui.calendar.type.reminder' },
+  { value: 'backup', labelKey: 'panelui.calendar.type.backup' }
 ]
 
 function todayStr(): string {
@@ -68,6 +69,7 @@ function entryDate(e: CalendarEntry): string {
  * - 低俗轮询兜底（30s），主刷新时机为本地操作完成后主动 reload
  */
 export function CalendarPanel() {
+  const t = useT()
   const open = useAppStore((s) => s.activeDrawer === 'calendar' && !s.vizPanelOpen && !s.settingsOpen)
   const closeDrawer = useAppStore((s) => s.closeDrawer)
 
@@ -98,19 +100,19 @@ const res = await window.lunareclipse.calendarList()
       if (res.ok && res.entries) {
         setEntries(res.entries)
         setError(null) // 为什么：上次失败的错误提示不应在成功刷新后继续残留，否则用户误以为数据仍有问题
-      } else setError(res.error ?? '读取失败')
+      } else setError(res.error ?? t('panelui.calendar.loadFailed'))
     } catch (e) {
-      setError(e instanceof Error ? e.message : '读取失败')
+      setError(e instanceof Error ? e.message : t('panelui.calendar.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (!open) return
     void reload()
-    const t = setInterval(() => void reload(), 30000)
-    return () => clearInterval(t)
+    const iv = setInterval(() => void reload(), 30000)
+    return () => clearInterval(iv)
   }, [open, reload])
 
   // 选中日期变化时读取当天日记（raw_memory/YYYY/MM/DD/diary.md）
@@ -165,9 +167,9 @@ const res = await window.lunareclipse.calendarList()
     return [...list].sort((a, b) => (a.done === b.done ? 0 : a.done ? 1 : -1))
   }, [byDate, selected])
 
-  const monthLabel = `${view.year}年${view.month + 1}月`
+  const monthLabel = t('panelui.calendar.monthLabel', { year: view.year, month: view.month + 1 })
   const today = todayStr()
-  const selectedMeta = selected === today ? '今天' : selected
+  const selectedMeta = selected === today ? t('panelui.calendar.today') : selected
 
   const prevMonth = () => setView((v) => (v.month === 0 ? { year: v.year - 1, month: 11 } : { year: v.year, month: v.month - 1 }))
   const nextMonth = () => setView((v) => (v.month === 11 ? { year: v.year + 1, month: 0 } : { year: v.year, month: v.month + 1 }))
@@ -189,10 +191,10 @@ const res = await window.lunareclipse.calendarList()
         setShowAdd(false)
         void reload()
       } else {
-        setError(res.error ?? '添加失败')
+        setError(res.error ?? t('panelui.calendar.addFailed'))
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '添加失败')
+      setError(e instanceof Error ? e.message : t('panelui.calendar.addFailed'))
     } finally {
       setSaving(false)
     }
@@ -201,15 +203,15 @@ const res = await window.lunareclipse.calendarList()
   const toggleDone = async (e: CalendarEntry) => {
     const res = await window.lunareclipse.calendarUpdate(e.id, { done: !e.done })
     if (res.ok) void reload()
-    else setError(res.error ?? '更新失败')
+    else setError(res.error ?? t('panelui.calendar.updateFailed'))
   }
 
 const remove = async (e: CalendarEntry) => {
     // 删除为不可逆操作 + 按钮 hover-only 隐藏：先确认再执行（评审 MINOR-11）
-    if (!confirm(`删除「${e.title}」？此操作不可撤销。`)) return
+    if (!confirm(t('panelui.calendar.deleteConfirm', { title: e.title }))) return
     const res = await window.lunareclipse.calendarDelete(e.id)
     if (res.ok) void reload()
-    else setError(res.error ?? '删除失败')
+    else setError(res.error ?? t('panelui.calendar.deleteFailed'))
   }
 
   if (!open) return null
@@ -219,23 +221,23 @@ const remove = async (e: CalendarEntry) => {
       {/* 面板头 */}
       <div className="flex items-center gap-1 border-b border-border-subtle px-3 py-2">
         <Calendar size={14} className="shrink-0 text-accent" />
-        <span className="shrink-0 text-caption font-medium text-fg-primary">日历</span>
+        <span className="shrink-0 text-caption font-medium text-fg-primary">{t('panelui.calendar.title')}</span>
         <span className="ml-auto shrink-0 font-mono text-[10px] text-fg-muted">{selectedMeta}</span>
         <button
           onClick={() => setShowAdd(!showAdd)}
           className={`ml-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-btn transition-colors ${
             showAdd ? 'bg-accent/15 text-accent' : 'text-fg-muted hover:bg-bg-muted hover:text-fg-primary'
           }`}
-          title="添加条目"
-          aria-label="添加条目"
+          title={t('panelui.calendar.addEntry')}
+          aria-label={t('panelui.calendar.addEntry')}
         >
           {saving ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
         </button>
         <button
           onClick={() => closeDrawer()}
           className="ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-btn text-fg-muted transition-colors hover:bg-bg-muted hover:text-fg-primary"
-          title="关闭日历面板"
-          aria-label="关闭日历面板"
+          title={t('panelui.calendar.closeAria')}
+          aria-label={t('panelui.calendar.closeAria')}
         >
           <X size={12} />
         </button>
@@ -253,7 +255,7 @@ const remove = async (e: CalendarEntry) => {
                   form.type === o.value ? 'bg-accent/15 text-accent' : 'bg-bg-muted text-fg-muted hover:text-fg-primary'
                 }`}
               >
-                {o.label}
+                {t(o.labelKey)}
               </button>
             ))}
           </div>
@@ -261,14 +263,14 @@ const remove = async (e: CalendarEntry) => {
             value={form.title}
             onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             onKeyDown={(e) => e.key === 'Enter' && void submit()}
-            placeholder="标题（必填）"
+            placeholder={t('panelui.calendar.titlePlaceholder')}
             className="w-full rounded-card border border-border-subtle bg-bg-surface px-2 py-1 text-[11px] text-fg-primary placeholder:text-fg-muted/50 focus:border-accent focus:outline-none"
           />
           <input
             value={form.content}
             onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
             onKeyDown={(e) => e.key === 'Enter' && void submit()}
-            placeholder="内容（可选）"
+            placeholder={t('panelui.calendar.contentPlaceholder')}
             className="w-full rounded-card border border-border-subtle bg-bg-surface px-2 py-1 text-[11px] text-fg-primary placeholder:text-fg-muted/50 focus:border-accent focus:outline-none"
           />
           {form.type === 'reminder' && (
@@ -285,14 +287,14 @@ const remove = async (e: CalendarEntry) => {
               onClick={() => setShowAdd(false)}
               className="rounded-card px-2 py-1 text-[10px] text-fg-muted transition-colors hover:bg-bg-muted hover:text-fg-primary"
             >
-              取消
+              {t('panelui.calendar.cancel')}
             </button>
             <button
               onClick={() => void submit()}
               disabled={!form.title.trim() || saving}
               className="rounded-card bg-accent px-2.5 py-1 text-[10px] font-medium text-fg-primary transition-opacity hover:opacity-80 disabled:opacity-40"
             >
-              保存
+              {t('panelui.calendar.save')}
             </button>
           </div>
         </div>
@@ -301,18 +303,18 @@ const remove = async (e: CalendarEntry) => {
       {/* 月历 */}
       <div className="shrink-0 border-b border-border-subtle px-3 py-2">
         <div className="mb-1.5 flex items-center justify-between">
-          <button onClick={prevMonth} aria-label="上个月" title="上个月" className="flex h-5 w-5 items-center justify-center rounded text-fg-muted hover:bg-bg-muted hover:text-fg-primary">
+          <button onClick={prevMonth} aria-label={t('panelui.calendar.prevMonth')} title={t('panelui.calendar.prevMonth')} className="flex h-5 w-5 items-center justify-center rounded text-fg-muted hover:bg-bg-muted hover:text-fg-primary">
             <ChevronLeft size={12} />
           </button>
           <span className="text-caption font-medium text-fg-primary">{monthLabel}</span>
-          <button onClick={nextMonth} aria-label="下个月" title="下个月" className="flex h-5 w-5 items-center justify-center rounded text-fg-muted hover:bg-bg-muted hover:text-fg-primary">
+          <button onClick={nextMonth} aria-label={t('panelui.calendar.nextMonth')} title={t('panelui.calendar.nextMonth')} className="flex h-5 w-5 items-center justify-center rounded text-fg-muted hover:bg-bg-muted hover:text-fg-primary">
             <ChevronRight size={12} />
           </button>
         </div>
         <div className="grid grid-cols-7 gap-px">
-          {['日', '一', '二', '三', '四', '五', '六'].map((w) => (
+          {['panelui.calendar.week.sun', 'panelui.calendar.week.mon', 'panelui.calendar.week.tue', 'panelui.calendar.week.wed', 'panelui.calendar.week.thu', 'panelui.calendar.week.fri', 'panelui.calendar.week.sat'].map((w) => (
             <div key={w} className="pb-0.5 text-center text-[9px] text-fg-muted/60">
-              {w}
+              {t(w)}
             </div>
           ))}
           {grid.map((d, i) => {
@@ -348,20 +350,20 @@ const remove = async (e: CalendarEntry) => {
       <div className="shrink-0 border-b border-border-subtle px-3 py-2">
         <div className="mb-1 flex items-center gap-1">
           <BookOpen size={11} className="shrink-0 text-fg-muted" />
-          <span className="text-[10px] font-medium text-fg-primary">当天日记</span>
+          <span className="text-[10px] font-medium text-fg-primary">{t('panelui.calendar.diaryTitle')}</span>
           <span className="ml-auto font-mono text-[9px] text-fg-muted">{selected}</span>
         </div>
         {diaryLoading ? (
           <div className="flex items-center gap-1.5 py-1 text-[10px] text-fg-muted">
             <Loader2 size={10} className="animate-spin" />
-            读取中…
+            {t('panelui.calendar.reading')}
           </div>
         ) : diary ? (
           <div className="max-h-28 overflow-y-auto whitespace-pre-wrap rounded-card bg-bg-muted/40 px-2 py-1.5 font-mono text-[9px] leading-relaxed text-fg-muted">
             {diary}
           </div>
         ) : (
-          <div className="py-0.5 text-[10px] text-fg-muted/50">这天没有日记</div>
+          <div className="py-0.5 text-[10px] text-fg-muted/50">{t('panelui.calendar.noDiary')}</div>
         )}
       </div>
 
@@ -369,23 +371,23 @@ const remove = async (e: CalendarEntry) => {
       <div className="flex-1 overflow-y-auto px-1 py-1">
         {error && entries.length === 0 ? (
           <div className="flex flex-col items-center gap-1.5 px-3 py-6 text-center">
-            <span className="text-[11px] text-danger">加载失败：{error}</span>
+            <span className="text-[11px] text-danger">{t('panelui.calendar.loadFailedWith', { error })}</span>
             <button onClick={() => void reload()} className="rounded-card bg-bg-muted px-2 py-0.5 text-[10px] text-fg-primary hover:bg-bg-muted/70">
-              重试
+              {t('panelui.calendar.retry')}
             </button>
           </div>
         ) : loading && entries.length === 0 ? (
           <div className="flex flex-col items-center gap-1.5 px-3 py-6 text-center">
             <Loader2 size={14} className="animate-spin text-fg-muted" />
-            <span className="text-[11px] text-fg-muted">读取中…</span>
+            <span className="text-[11px] text-fg-muted">{t('panelui.calendar.reading')}</span>
           </div>
         ) : selectedEntries.length === 0 ? (
           <div className="flex flex-col items-center gap-1.5 px-3 py-6 text-center">
             <Inbox size={14} className="text-fg-muted/50" />
             <span className="text-[11px] leading-relaxed text-fg-muted">
-              {selected} 暂无条目
+              {t('panelui.calendar.noEntries', { date: selected })}
               <br />
-              点右上 + 添加
+              {t('panelui.calendar.noEntriesHint')}
             </span>
           </div>
         ) : (
@@ -402,7 +404,7 @@ const remove = async (e: CalendarEntry) => {
                   <button
                     onClick={() => void toggleDone(e)}
                     className="mt-0.5 shrink-0 text-fg-muted transition-colors hover:text-success"
-                    title={e.done ? '标记未完成' : '标记完成'}
+                    title={e.done ? t('panelui.calendar.markUndone') : t('panelui.calendar.markDone')}
                   >
                     {e.done ? <CheckCircle2 size={12} className="text-success" /> : <Circle size={12} />}
                   </button>
@@ -416,15 +418,15 @@ const remove = async (e: CalendarEntry) => {
                     )}
                     <div className="mt-0.5 flex items-center gap-1">
                       <span className={`shrink-0 rounded-full px-1.5 py-px text-[9px] font-medium ${meta.cls}`}>
-                        {meta.label}
+                        {t(meta.labelKey)}
                       </span>
                     </div>
                   </div>
 <button
                     onClick={() => void remove(e)}
                     className="mt-0.5 shrink-0 text-fg-muted opacity-0 transition-all hover:text-danger group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-                    title="删除"
-                    aria-label="删除日程"
+                    title={t('panelui.calendar.delete')}
+                    aria-label={t('panelui.calendar.deleteAria')}
                   >
                     <Trash2 size={11} />
                   </button>

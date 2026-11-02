@@ -35,6 +35,7 @@ import { drawCharacterBacklight, drawRoomAtmosphere, drawRoomGrade, renderStatic
 import { Live2DCharacter } from './Live2DCharacter'
 import type { Live2DAssets } from './use-appearance'
 import { useCharacterDrag } from './use-character-drag'
+import { useT } from '../../i18n/useT'
 import defaultCharacterUrl from '../../assets/default-character.png'
 
 /**
@@ -140,6 +141,7 @@ export function PerspectiveRoom({
   backgroundOverride?: string | null
 }) {
   const { ref, width, height } = useSize()
+  const t = useT()
   const env = useEnv()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const staticRef = useRef<HTMLCanvasElement | null>(null)
@@ -477,7 +479,7 @@ export function PerspectiveRoom({
         cursor: dragging ? 'grabbing' : 'grab',
         touchAction: 'none'
       }}
-      aria-label={`${aiName}的房间直播镜头`}
+      aria-label={t('chatui.roomCamera', { name: aiName })}
       role="img"
       {...drag.handlers}
     >

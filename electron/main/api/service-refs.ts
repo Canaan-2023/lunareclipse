@@ -97,7 +97,7 @@ export interface ServiceRefs {
    */
   internalSessionFlushRef: (() => Promise<void>) | null
   /**
-   * 内部会话**两写**入队函数（0.54.0 房间轮落盘用）。
+   * 内部会话**两写**入队函数（0.54.2 房间轮落盘用）。
    * 为什么走本容器：内部会话层是 `startApiServer` 的局部闭包，房间轮在 `bootstrap/room-runtime.ts`
    * 里（§3.4：跨域装配只许在 bootstrap/），拿不到 layer 实例。
    * 语义：登记的是 layer 的**同一个函数**——房间轮与 WS 主链路共享同一 500ms 合并窗口、
@@ -182,7 +182,7 @@ export function flushPendingInternalSessionJobs(): Promise<void> {
 }
 
 /**
- * 取内部会话**两写**入队函数（房间轮落盘用；0.54.0）。
+ * 取内部会话**两写**入队函数（房间轮落盘用；0.54.2）。
  * 未启动 / 已释放 → null：调用方跳过内部会话写入（未启用内部会话属**合法状态**，不报错）。
  */
 export function getEnqueueInternalSessionJob(): (

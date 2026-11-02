@@ -9,6 +9,7 @@
 import { DEFAULT_AI_ID } from '@shared/types'
 import type { ChatMessage } from '@shared/types'
 import type { AppState } from '../appStore-types'
+import { getDictEntry } from '../../i18n/locales'
 import { useSkillStore } from '../skillStore'
 import { wsState, safeSave } from '../appStore-handlers'
 import {
@@ -188,11 +189,13 @@ export function createChatSlice(set: SliceSet, get: SliceGet): ChatSlice {
     },
 
     deleteSession: async (id) => {
+      const lang = get().lang ?? 'zh'
+      const t = (key: string): string => getDictEntry(key)?.[lang] ?? key
       const ok = await window.lunareclipse.deleteSession(id)
       // IPC 返回 false 表示主进程拒绝或目录未删掉：此时**不能**先从列表移除，
       // 否则界面显示已删、刷新后又回来（0.53.16 之前自主域会话就是这样）。
       if (ok === false) {
-        set({ errorMessage: '删除会话失败：主进程未完成删除，请稍后重试' })
+        set({ errorMessage: t('storemsg.chat.deleteSessionFailed') })
         return
       }
       set((s) => {
@@ -238,13 +241,15 @@ export function createChatSlice(set: SliceSet, get: SliceGet): ChatSlice {
     },
 
     sendMessage: async (content) => {
+      const lang = get().lang ?? 'zh'
+      const t = (key: string): string => getDictEntry(key)?.[lang] ?? key
       const { currentSessionId, currentMessages, pendingAttachments, ws, currentSessionModel, status, streamingMessageId } = get()
       if (!currentSessionId) {
-        set({ errorMessage: '没有活动会话，请先新建会话' })
+        set({ errorMessage: t('storemsg.chat.noActiveSession') })
         return
       }
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        set({ errorMessage: '与服务器未建立连接，请稍候再试（WebSocket 未就绪）' })
+        set({ errorMessage: t('storemsg.chat.wsNotReady') })
         console.error('[sendMessage] ws 未就绪:', ws?.readyState)
         return
       }
@@ -388,17 +393,19 @@ export function createChatSlice(set: SliceSet, get: SliceGet): ChatSlice {
      * 不会触发，这里仍防御性拦截。
      */
     rewindToMessage: async (messageId) => {
+      const lang = get().lang ?? 'zh'
+      const t = (key: string): string => getDictEntry(key)?.[lang] ?? key
       const { currentSessionId, currentMessages, status } = get()
       if (!currentSessionId) return
       if (status === 'streaming') {
-        set({ errorMessage: '流式输出中无法回退，请先等待或终止' })
+        set({ errorMessage: t('storemsg.chat.rewindWhileStreaming') })
         return
       }
       if (!currentMessages.some((m) => m.id === messageId)) return
       try {
         const session = await window.lunareclipse.rewindSession(currentSessionId, messageId)
         if (!session) {
-          set({ errorMessage: '回退失败：会话或目标消息不存在' })
+          set({ errorMessage: t('storemsg.chat.rewindTargetMissing') })
           return
         }
         // 主进程已返回截断后会话：整体替换消息 + 清空与旧尾部相关的运行时状态
@@ -417,7 +424,7 @@ export function createChatSlice(set: SliceSet, get: SliceGet): ChatSlice {
         void get().refreshPlanMode()
       } catch (err) {
         console.error('[rewindToMessage] failed:', err)
-        set({ errorMessage: '回退失败，请稍后再试' })
+        set({ errorMessage: t('storemsg.chat.rewindFailed') })
       }
     },
 

@@ -7,6 +7,7 @@
 import { useState } from 'react'
 import { Wand2, Image as ImageIcon, Video, Music, FileText, FolderOpen, RefreshCw } from 'lucide-react'
 import type { AppConfig, GenMediaProviderConfig, ImageGenConfig } from '@shared/types'
+import { useT } from '../../i18n/useT'
 
 interface Props {
   config: AppConfig
@@ -20,6 +21,7 @@ interface Props {
  * 并出现在 AI「内容生成能力」提示里；生成的产物按分类+日期落盘。
  */
 export function GenerationSection({ config, onChange }: Props) {
+  const t = useT()
   const image = config.imageGen ?? { enabled: false, baseURL: '', apiKey: '', model: '' }
   const video = config.generation?.video ?? { enabled: false, baseURL: '', apiKey: '', model: '', endpointPath: 'videos' }
   const audio = config.generation?.audio ?? { enabled: false, baseURL: '', apiKey: '', model: '', endpointPath: 'audio' }
@@ -44,20 +46,20 @@ export function GenerationSection({ config, onChange }: Props) {
       <section className="rounded-btn border border-border-subtle bg-bg-base p-3">
         <div className="flex items-center gap-2">
           <Wand2 size={14} className="text-accent" />
-          <h3 className="text-body font-medium text-fg-primary">多模态内容生成</h3>
+          <h3 className="text-body font-medium text-fg-primary">{t('settings.genTitle')}</h3>
           {enabledCount > 0 && (
             <span className="ml-auto rounded-full bg-accent/15 px-2 py-0.5 text-[10px] text-accent">
-              {enabledCount} 个模态已启用
+              {t('settings.genEnabledCount', { n: enabledCount })}
             </span>
           )}
         </div>
         <p className="mt-1 break-words text-caption text-fg-muted">
-          按模态独立配置 OpenAI 兼容生成端点。模态启用后，对应工具自动暴露给 AI 并写入「内容生成能力」提示。
+          {t('settings.genDesc')}
         </p>
         <div className="mt-2 flex items-center gap-1.5 break-all rounded bg-bg-muted/50 px-2 py-1 font-mono text-[10px] text-fg-muted">
           <FolderOpen size={11} className="shrink-0" />
           <span>
-            产物目录：generated/U{'{uid}'}/AI{'{aiId}'}/{'{分类=image|video|audio|document}'}/{'{年}/{月}/{日}/'}
+            {t('settings.genOutputDir')}
           </span>
         </div>
       </section>
@@ -65,9 +67,9 @@ export function GenerationSection({ config, onChange }: Props) {
       {/* 图片 */}
       <ProviderCard
         icon={<ImageIcon size={14} className="text-accent" />}
-        title="图片生成"
+        title={t('settings.genImageTitle')}
         tool="image_gen"
-        hint="文生图，OpenAI 兼容 /images/generations（硅基流动 / 通义 / OpenAI 等）。"
+        hint={t('settings.genImageHint')}
         config={{ enabled: image.enabled, baseURL: image.baseURL, apiKey: image.apiKey, model: image.model }}
         onToggle={(v) => patchImage({ enabled: v })}
         onPatch={(patch) => patchImage(patch)}
@@ -78,9 +80,9 @@ export function GenerationSection({ config, onChange }: Props) {
       {/* 视频 */}
       <ProviderCard
         icon={<Video size={14} className="text-accent" />}
-        title="视频生成"
+        title={t('settings.genVideoTitle')}
         tool="video_gen"
-        hint="文生视频，OpenAI 兼容 /videos/generations。视频生成通常较慢。"
+        hint={t('settings.genVideoHint')}
         config={video}
         onToggle={(v) => patchGen('video', { enabled: v })}
         onPatch={(patch) => patchGen('video', patch)}
@@ -90,9 +92,9 @@ export function GenerationSection({ config, onChange }: Props) {
       {/* 音频 */}
       <ProviderCard
         icon={<Music size={14} className="text-accent" />}
-        title="音频生成"
+        title={t('settings.genAudioTitle')}
         tool="audio_gen"
-        hint="文生音频/音乐，OpenAI 兼容 /audio/generations。"
+        hint={t('settings.genAudioHint')}
         config={audio}
         onToggle={(v) => patchGen('audio', { enabled: v })}
         onPatch={(patch) => patchGen('audio', patch)}
@@ -103,11 +105,11 @@ export function GenerationSection({ config, onChange }: Props) {
       <section className="rounded-btn border border-border-subtle p-3">
         <div className="flex items-center gap-2">
           <FileText size={14} className="text-accent" />
-          <h3 className="text-body font-medium text-fg-primary">文稿归档</h3>
-          <span className="ml-auto rounded-full bg-success/15 px-2 py-0.5 text-[10px] text-success">即时可用</span>
+          <h3 className="text-body font-medium text-fg-primary">{t('settings.genDocTitle')}</h3>
+          <span className="ml-auto rounded-full bg-success/15 px-2 py-0.5 text-[10px] text-success">{t('settings.genDocBadge')}</span>
         </div>
         <p className="mt-1 break-words text-caption text-fg-muted">
-          <code className="rounded bg-bg-muted/50 px-1 text-[10px]">create_document</code> 工具：把 AI 起草的文稿（md/txt）按分类+日期存档，无需任何外部端点配置。
+          <code className="rounded bg-bg-muted/50 px-1 text-[10px]">create_document</code>{t('settings.genDocDesc')}
         </p>
       </section>
     </div>
@@ -126,6 +128,7 @@ interface CardProps {
 }
 
 function ProviderCard({ icon, title, tool, hint, config, onToggle, onPatch, showEndpoint }: CardProps) {
+  const t = useT()
   const [fetching, setFetching] = useState(false)
   const [fetchMsg, setFetchMsg] = useState<string | null>(null)
   const [models, setModels] = useState<string[]>([])
@@ -134,7 +137,7 @@ function ProviderCard({ icon, title, tool, hint, config, onToggle, onPatch, show
   // 拉取端点模型清单（OpenAI 兼容 GET /models；生成端点通常同源提供）
   const discoverModels = async () => {
     if (!config.baseURL || !config.apiKey) {
-      setFetchMsg('请先填 Base URL 和 API Key')
+      setFetchMsg(t('settings.genNeedUrlKey'))
       return
     }
     setFetching(true)
@@ -149,12 +152,12 @@ function ProviderCard({ icon, title, tool, hint, config, onToggle, onPatch, show
       const ids = (data.data ?? data.models ?? [])
         .map((m) => m.id)
         .filter((id): id is string => typeof id === 'string' && id.length > 0)
-      if (ids.length === 0) throw new Error('返回模型列表为空')
+      if (ids.length === 0) throw new Error(t('settings.genEmptyList'))
       setModels(ids)
-      setFetchMsg(`发现 ${ids.length} 个模型，输入框可下拉选择`)
+      setFetchMsg(t('settings.genFoundModels', { n: ids.length }))
     } catch (err) {
       setModels([])
-      setFetchMsg(`拉取失败：${(err as Error).message}（手填模型名即可）`)
+      setFetchMsg(t('settings.genFetchFail', { error: (err as Error).message }))
     } finally {
       setFetching(false)
     }
@@ -170,7 +173,7 @@ function ProviderCard({ icon, title, tool, hint, config, onToggle, onPatch, show
           <div>
             <div className="text-body font-medium text-fg-primary">{title}</div>
             <div className="text-[11px] text-fg-muted">
-              工具：<code className="rounded bg-bg-muted/50 px-1 text-[10px]">{tool}</code>
+              {t('settings.genToolLabel')}<code className="rounded bg-bg-muted/50 px-1 text-[10px]">{tool}</code>
             </div>
           </div>
         </div>
@@ -180,7 +183,7 @@ function ProviderCard({ icon, title, tool, hint, config, onToggle, onPatch, show
           aria-checked={config.enabled}
           aria-label={tool}
           className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${config.enabled ? 'bg-accent' : 'bg-bg-muted'}`}
-          title={config.enabled ? `${tool} 已启用` : `${tool} 未启用`}
+          title={config.enabled ? t('settings.genEnabledTitle', { tool }) : t('settings.genDisabledTitle', { tool })}
         >
           <span
             className={`absolute left-[2px] top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white shadow-sm transition-transform duration-200 ${
@@ -195,7 +198,7 @@ function ProviderCard({ icon, title, tool, hint, config, onToggle, onPatch, show
       {config.enabled && (
         <div className="mt-3 space-y-2">
           <label className="block text-caption text-fg-secondary">
-            Base URL（OpenAI 兼容，如 https://api.siliconflow.cn/v1）
+            {t('settings.genBaseUrlLabel')}
             <input
               type="text"
               value={config.baseURL}
@@ -215,14 +218,14 @@ function ProviderCard({ icon, title, tool, hint, config, onToggle, onPatch, show
             />
           </label>
           <label className="block text-caption text-fg-secondary">
-            模型
+            {t('settings.genModelLabel')}
             <div className="flex items-center gap-1.5">
               <input
                 type="text"
                 list={listId}
                 value={config.model}
                 onChange={(e) => onPatch({ model: e.target.value })}
-                placeholder="模型名（可点右侧按钮拉取）"
+                placeholder={t('settings.genModelPlaceholder')}
                 className={inputCls}
               />
               <datalist id={listId}>
@@ -234,17 +237,17 @@ function ProviderCard({ icon, title, tool, hint, config, onToggle, onPatch, show
                 onClick={() => void discoverModels()}
                 disabled={fetching}
                 className="flex shrink-0 items-center gap-1 rounded-btn border border-border-subtle bg-bg-elevated px-2.5 py-2 text-caption text-fg-secondary transition-all duration-150 hover:bg-bg-muted active:scale-95 disabled:opacity-50"
-                title="从端点拉取模型清单（GET /models）"
+                title={t('settings.genFetchTitle')}
               >
                 <RefreshCw size={11} className={fetching ? 'animate-spin' : ''} />
-                拉取
+                {t('settings.genFetchBtn')}
               </button>
             </div>
           </label>
           {fetchMsg && <div className="text-[11px] text-fg-muted">{fetchMsg}</div>}
           {showEndpoint && (
             <label className="block text-caption text-fg-secondary">
-              端点路径段（默认按模态）
+              {t('settings.genEndpointLabel')}
               <input
                 type="text"
                 value={config.endpointPath ?? ''}

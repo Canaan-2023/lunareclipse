@@ -7,6 +7,7 @@ import {
 } from '../electron/main/tools/run-command'
 import type { ToolContext, PermissionResponse } from '../electron/main/tools/base-tool'
 import type { CommandPolicy } from '@shared/types/command-policy'
+import { createFakeSpawn } from './helpers/fake-spawn'
 
 /**
  * 管理规则层（policyRules）行为测试（M4）。
@@ -89,7 +90,7 @@ describe('matchPolicyRule（管理规则匹配）', () => {
 })
 
 describe('run_command × 管理规则层', () => {
-  const tool = new RunCommandTool()
+  const tool = new RunCommandTool(createFakeSpawn())
 
   it('deny：直接拒绝，即使命令在白名单', async () => {
     const ctx = makeCtx(true, {
@@ -106,9 +107,8 @@ describe('run_command × 管理规则层', () => {
       policyRules: [{ command: 'npm', argPattern: 'install', action: 'deny' }]
     })
     expect((await tool.execute({ command: 'npm install lodash' }, ctx)).ok).toBe(false)
-    // 这里只验证「argPattern 不命中 → 不被管理规则拦截并真实执行」。
-    // 原先用 `npm run build` 会真的跑完整构建（本机约 10s，正好撞上 10s 全局超时，
-    // 让这条断言变成随机失败）；换成只读的 `npm --version`，语义不变、耗时毫秒级。
+    // 这里只验证「argPattern 不命中 → 不被管理规则拦截并进入执行阶段」。
+    // 执行层由注入的假进程替代，不需要真实跑 npm；断言 ok 即表示命令未被策略拦下。
     expect((await tool.execute({ command: 'npm --version' }, ctx)).ok).toBe(true)
   })
 

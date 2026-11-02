@@ -21,10 +21,10 @@ interface InstanceStatus {
   master: { baseUrl: string; instanceId: string } | null
 }
 
-const ROLE_BADGE: Record<InstanceStatus['role'], { label: string; cls: string }> = {
-  master: { label: '主系统', cls: 'border-accent/40 bg-accent/10 text-accent' },
-  satellite: { label: '分系统', cls: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' },
-  standalone: { label: '单机模式', cls: 'border-border-subtle bg-bg-elevated text-fg-muted' }
+const ROLE_BADGE: Record<InstanceStatus['role'], { labelKey: string; cls: string }> = {
+  master: { labelKey: 'settings.multi.roleMaster', cls: 'border-accent/40 bg-accent/10 text-accent' },
+  satellite: { labelKey: 'settings.multi.roleSatellite', cls: 'border-success/30 bg-success/10 text-success' },
+  standalone: { labelKey: 'settings.multi.roleStandalone', cls: 'border-border-subtle bg-bg-elevated text-fg-muted' }
 }
 
 /**
@@ -62,7 +62,7 @@ export function MultiInstanceSection() {
       setCopied(true)
       scheduleCopiedClear(() => setCopied(false), 1500)
     } else {
-      setMsg('复制失败，请手动选择复制')
+      setMsg(t('settings.multi.copyFail'))
     }
   }
 
@@ -75,19 +75,19 @@ export function MultiInstanceSection() {
     const r = await window.lunareclipse.multiRotateJoinCode()
     if (r.ok && r.link) {
       setInfo({ baseUrl: info?.baseUrl ?? '', code: r.code ?? '', link: r.link })
-      setMsg('接入码已轮换，旧链接立即失效')
+      setMsg(t('settings.multi.rotated'))
     } else {
-      setMsg(r.error ?? '轮换失败')
+      setMsg(r.error ?? t('settings.multi.rotateFail'))
     }
   }
 
   const resetToStandalone = async () => {
     const r = await window.lunareclipse.multiResetRole()
     if (r.ok) {
-      setMsg('已退回单机模式')
+      setMsg(t('settings.multi.backToStandalone'))
       await refresh()
     } else {
-      setMsg(r.error ?? '退回失败')
+      setMsg(r.error ?? t('settings.multi.backFail'))
     }
   }
 
@@ -105,11 +105,11 @@ export function MultiInstanceSection() {
         <div className="mb-3 flex items-center gap-2">
           {role && (
             <span className={`rounded-full border px-2.5 py-1 text-[11px] ${ROLE_BADGE[role].cls}`}>
-              {ROLE_BADGE[role].label}
+              {t(ROLE_BADGE[role].labelKey)}
             </span>
           )}
           {role === 'satellite' && status?.master && (
-            <span className="text-[11px] text-fg-muted">已接入 {status.master.baseUrl}</span>
+            <span className="text-[11px] text-fg-muted">{t('settings.multi.joinedTo', { url: status.master.baseUrl })}</span>
           )}
         </div>
 
@@ -128,19 +128,19 @@ export function MultiInstanceSection() {
                       onClick={copy}
                       className="flex items-center gap-1 rounded-btn border border-border-subtle px-2 py-1 text-[11px] text-fg-muted transition-all duration-150 hover:border-accent/40 hover:text-accent active:scale-95"
                     >
-                      {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-                      {copied ? '已复制' : t('settings.multi.copy')}
+                      {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
+                      {copied ? t('settings.multi.copied') : t('settings.multi.copy')}
                     </button>
                     <button
                       onClick={rotate}
                       className={`flex items-center gap-1 rounded-btn border px-2 py-1 text-[11px] transition-all duration-150 active:scale-95 ${
                         confirmRotate
-                          ? 'border-red-500/40 bg-red-500/10 text-red-400'
-                          : 'border-border-subtle text-fg-muted hover:border-amber-500/40 hover:text-amber-400'
+                          ? 'border-danger/40 bg-danger/10 text-danger'
+                          : 'border-border-subtle text-fg-muted hover:border-warning/40 hover:text-warning'
                       }`}
                     >
                       <RotateCcw size={11} />
-                      {confirmRotate ? '确认轮换？' : t('settings.multi.rotate')}
+                      {confirmRotate ? t('settings.multi.confirmRotate') : t('settings.multi.rotate')}
                     </button>
                   </div>
                 </div>
@@ -160,7 +160,7 @@ export function MultiInstanceSection() {
                 </p>
               </div>
             ) : (
-              <div className="text-[11px] text-fg-muted">接入码未生成，请先注册主系统账号。</div>
+              <div className="text-[11px] text-fg-muted">{t('settings.multi.noCode')}</div>
             )}
           </div>
         )}
@@ -169,7 +169,7 @@ export function MultiInstanceSection() {
         {role === 'satellite' && (
           <div className="rounded-btn border border-border-subtle bg-bg-elevated p-3">
             <div className="mb-2 flex items-center gap-2 text-body text-fg-primary">
-              <MonitorSmartphone size={14} className="text-emerald-400" />
+              <MonitorSmartphone size={14} className="text-success" />
               {t('settings.multi.satelliteHint')}
             </div>
             {status?.master && (
@@ -178,17 +178,17 @@ export function MultiInstanceSection() {
                   {status.master.baseUrl}
                 </div>
                 <p className="text-[11px] leading-relaxed text-fg-muted">
-                  账号由主系统统一管理，本机仅缓存令牌；禁用/注销请在主系统侧操作。
+                  {t('settings.multi.masterManaged')}
                 </p>
               </div>
             )}
             {!status?.master?.instanceId && (
               <button
                 onClick={resetToStandalone}
-                className="mt-3 flex items-center gap-1 text-[11px] text-fg-muted/70 transition-all duration-150 hover:text-red-400 active:scale-95"
+                className="mt-3 flex items-center gap-1 text-[11px] text-fg-muted/70 transition-all duration-150 hover:text-danger active:scale-95"
               >
                 <RotateCcw size={11} />
-                退回单机模式
+                {t('settings.multi.leaveStandalone')}
               </button>
             )}
           </div>
@@ -202,7 +202,7 @@ export function MultiInstanceSection() {
               {t('settings.multi.standaloneHint')}
             </div>
             <p className="text-[11px] leading-relaxed text-fg-muted">
-              注册账号即可成为主系统并向其他机器分享接入链接；或粘贴其他主系统分享的接入链接注册为分系统。
+              {t('settings.multi.standaloneGuide')}
             </p>
           </div>
         )}

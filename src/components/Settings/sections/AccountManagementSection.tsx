@@ -47,7 +47,7 @@ export function AccountManagementSection() {
         <UserX size={12} />
         <span>{t('settings.accountMgmt')}</span>
       </div>
-      <div className="rounded-btn border border-red-500/20 bg-red-500/5 p-4 space-y-3">
+      <div className="rounded-btn border border-danger/20 bg-danger/5 p-4 space-y-3">
         <div>
           <div className="text-body text-fg-primary">{t('settings.deleteAccount')}</div>
           <div className="mt-1 text-caption text-fg-muted leading-relaxed">
@@ -56,7 +56,7 @@ export function AccountManagementSection() {
         </div>
 
         {error && (
-          <div className="rounded-btn border border-red-500/30 bg-red-500/10 px-3 py-2 text-caption text-red-400">
+          <div className="rounded-btn border border-danger/30 bg-danger/10 px-3 py-2 text-caption text-danger">
             {error}
           </div>
         )}
@@ -67,14 +67,14 @@ export function AccountManagementSection() {
               setConfirming(true)
               setError(null)
             }}
-            className="flex items-center gap-1.5 rounded-btn border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-caption text-red-400 transition-all duration-150 hover:bg-red-500/20 active:scale-95"
+            className="flex items-center gap-1.5 rounded-btn border border-danger/30 bg-danger/10 px-3 py-1.5 text-caption text-danger transition-all duration-150 hover:bg-danger/20 active:scale-95"
           >
             <UserX size={12} />
             {t('settings.deleteAccountBtn')}
           </button>
         ) : (
-          <div className="space-y-2 rounded-btn border border-red-500/30 bg-bg-base/40 p-3">
-            <div className="flex items-start gap-2 text-caption text-red-400">
+          <div className="space-y-2 rounded-btn border border-danger/30 bg-bg-base/40 p-3">
+            <div className="flex items-start gap-2 text-caption text-danger">
               <AlertTriangle size={12} className="mt-0.5 shrink-0" />
               <span>
                 {t('settings.deleteConfirm', { name: currentUser.用户名 })}
@@ -84,7 +84,7 @@ export function AccountManagementSection() {
               <button
                 onClick={() => void handleDelete()}
                 disabled={busy}
-                className="flex items-center gap-1.5 rounded-btn bg-red-500 px-3 py-1.5 text-caption text-white transition-all duration-150 hover:bg-red-600 active:scale-95 disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-btn bg-danger px-3 py-1.5 text-caption text-white transition-all duration-150 hover:bg-danger active:scale-95 disabled:opacity-50"
               >
                 {busy ? (
                   <>

@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Webhook, RefreshCw, ShieldCheck, Puzzle, FileCode, X } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
+import { useT } from '../../i18n/useT'
 
 /**
  * Hook 检视面板（右侧栏 tab）：
@@ -20,22 +21,23 @@ interface HookRow {
   source: string
 }
 
-const EVENT_LABELS: Record<string, string> = {
-  PreToolUse: '工具调用前',
-  PostToolUse: '工具调用后',
-  UserPromptSubmit: '用户提交消息',
-  PreLLMCall: 'LLM 调用前',
-  Stop: 'AI 完成响应',
-  SubagentStop: '子 Agent 完成',
-  Notification: '通知'
+const EVENT_LABEL_KEYS: Record<string, string> = {
+  PreToolUse: 'hookui.event.preToolUse',
+  PostToolUse: 'hookui.event.postToolUse',
+  UserPromptSubmit: 'hookui.event.userPromptSubmit',
+  PreLLMCall: 'hookui.event.preLLMCall',
+  Stop: 'hookui.event.stop',
+  SubagentStop: 'hookui.event.subagentStop',
+  Notification: 'hookui.event.notification'
 }
 
 function SourceBadge({ source }: { source: string }) {
+  const t = useT()
   if (source === 'kernel') {
     return (
       <span className="flex items-center gap-1 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] text-accent">
         <ShieldCheck size={9} />
-        内核治理
+        {t('hookui.source.kernel')}
       </span>
     )
   }
@@ -58,12 +60,13 @@ function SourceBadge({ source }: { source: string }) {
   return (
     <span className="flex items-center gap-1 rounded bg-bg-muted px-1.5 py-0.5 text-[10px] text-fg-secondary">
       <FileCode size={9} />
-      config 配置
+      {t('hookui.source.config')}
     </span>
   )
 }
 
 export function HookPanel() {
+  const t = useT()
   const open = useAppStore((s) => s.activeDrawer === 'hook' && !s.vizPanelOpen && !s.settingsOpen)
   const closeDrawer = useAppStore((s) => s.closeDrawer)
   const [rows, setRows] = useState<HookRow[]>([])
@@ -76,13 +79,13 @@ export function HookPanel() {
     try {
       const res = await window.lunareclipse.hooksEffective()
       if (res.ok && res.rows) setRows(res.rows)
-      else setError(res.error ?? '加载失败')
+      else setError(res.error ?? t('hookui.loadFailed'))
     } catch (e) {
       setError((e as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (open) void load()
@@ -102,7 +105,7 @@ export function HookPanel() {
       <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2">
         <div className="flex items-center gap-1.5 text-caption font-medium text-fg-secondary">
           <Webhook size={13} className="text-accent" />
-          Hook 机制
+          {t('hookui.title')}
           <span className="rounded bg-bg-muted px-1.5 py-0.5 text-[10px] text-fg-muted">{rows.length}</span>
         </div>
         <div className="flex items-center gap-1">
@@ -110,16 +113,16 @@ export function HookPanel() {
             onClick={() => void load()}
             disabled={loading}
             className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary disabled:opacity-50"
-            title="刷新"
-            aria-label="刷新 Hook 列表"
+            title={t('hookui.refresh')}
+            aria-label={t('hookui.refreshAria')}
           >
             <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
           </button>
           <button
             onClick={() => closeDrawer()}
             className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-            title="关闭"
-            aria-label="关闭 Hook 面板"
+            title={t('hookui.close')}
+            aria-label={t('hookui.closeAria')}
           >
             <X size={12} />
           </button>
@@ -128,21 +131,20 @@ export function HookPanel() {
 
       <div className="flex-1 overflow-y-auto p-2">
         <p className="mb-2 px-1 text-[10px] leading-relaxed text-fg-muted">
-          真实生效的 hook（三源）：<span className="text-accent">内核治理</span> = 空转抑制/查证提醒/收尾反思/失败止损；
-          config = 配置文件注册；plugin = 插件 hooks.js。停用单个治理机制用 config_patch 写 governance.机制名=false。
+          {t('hookui.descPrefix')}<span className="text-accent">{t('hookui.source.kernel')}</span>{t('hookui.descSuffix')}
         </p>
         {error && <div className="mb-2 rounded bg-danger-soft/50 px-2 py-1 text-[10px] text-danger">{error}</div>}
         {grouped.length === 0 && !error && (
           <div className="px-3 py-8 text-center text-caption text-fg-muted">
-            暂无生效 hook
-            <div className="mt-2 text-[11px]">内核治理机制在重启后注册，若无显示请刷新</div>
+            {t('hookui.empty')}
+            <div className="mt-2 text-[11px]">{t('hookui.emptyHint')}</div>
           </div>
         )}
         {grouped.map((g) => (
           <div key={g.event} className="mb-3">
             <div className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-fg-muted">
               <span className="h-1 w-1 rounded-full bg-accent" />
-              {EVENT_LABELS[g.event] ?? g.event}
+              {EVENT_LABEL_KEYS[g.event] ? t(EVENT_LABEL_KEYS[g.event]) : g.event}
             </div>
             <div className="space-y-1">
               {g.hooks.map((h, i) => (

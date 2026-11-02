@@ -150,7 +150,7 @@ export function BackendLlmSection({
                 <span
                   className={`text-caption ${
                     /^(失败|错误|未发现|Failed|Error|No models)/.test(llm.workflowTestResult ?? '')
-                      ? 'text-red-400'
+                      ? 'text-danger'
                       : 'text-accent'
                   }`}
                 >
@@ -302,7 +302,7 @@ export function BackendLlmSection({
                     <button
                       type="button"
                       onClick={() => llm.removeWorkflowModel(m)}
-                      className="text-fg-muted hover:text-red-400"
+                      className="text-fg-muted hover:text-danger"
                       title={t('settings.remove')}
                     >
                       <Trash2 size={11} />

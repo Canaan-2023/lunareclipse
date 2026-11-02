@@ -7,8 +7,10 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { ChevronDown, Check, Cpu } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
+import { useT } from '../../i18n/useT'
 
 export function ModelSwitcher() {
+  const t = useT()
   const currentSessionId = useAppStore((s) => s.currentSessionId)
   const currentSessionModel = useAppStore((s) => s.currentSessionModel)
   const defaultModel = useAppStore((s) => s.config.llm.model)
@@ -28,7 +30,7 @@ export function ModelSwitcher() {
   }, [defaultModel, availableModels])
 
   // 默认模型为空（未配置）时不回退显示「（默认）」，选中显示为空
-  const displayLabel = currentSessionModel ?? (defaultModel ? `${defaultModel}（默认）` : '')
+  const displayLabel = currentSessionModel ?? (defaultModel ? t('panelui.modelSwitcher.default', { model: defaultModel }) : '')
 
   useEffect(() => {
     if (!open) return
@@ -56,7 +58,7 @@ export function ModelSwitcher() {
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-center gap-2 rounded-btn border border-border-subtle bg-bg-elevated px-2.5 py-1.5 text-caption text-fg-secondary transition-all duration-150 hover:border-border active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-        title="切换当前会话模型"
+        title={t('panelui.modelSwitcher.title')}
       >
         <Cpu size={11} className="shrink-0 text-fg-muted" />
         <span className="flex-1 truncate text-left">{displayLabel}</span>
@@ -79,7 +81,7 @@ export function ModelSwitcher() {
               size={11}
               className={currentSessionModel === null ? 'opacity-100' : 'opacity-0'}
             />
-            <span className="flex-1 truncate">{defaultModel ? `${defaultModel}（默认）` : ''}</span>
+            <span className="flex-1 truncate">{defaultModel ? t('panelui.modelSwitcher.default', { model: defaultModel }) : ''}</span>
           </button>
           {models
             .filter((m) => m !== defaultModel)

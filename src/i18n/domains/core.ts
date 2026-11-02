@@ -125,6 +125,14 @@ const dict = {
   // ===== 通用（新增） =====
   'common.processing': { zh: '处理中', en: 'Processing' },
 
+  // ===== 面板级错误卡片 =====
+  'error.panel.title': { zh: '{panel}加载出错', en: '{panel} failed to render' },
+  'error.panel.desc': { zh: '这个面板渲染时发生错误，其他区域仍可正常使用。', en: 'This panel failed to render. Other areas still work.' },
+  'error.panel.retry': { zh: '重试', en: 'Retry' },
+  'error.panel.copy': { zh: '复制错误信息', en: 'Copy error details' },
+  'error.panel.copied': { zh: '已复制', en: 'Copied' },
+  'error.panel.drawer': { zh: '抽屉', en: 'Drawer' },
+
 } satisfies Record<string, DictEntry>
 
 export default dict

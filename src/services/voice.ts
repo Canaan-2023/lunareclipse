@@ -5,6 +5,9 @@
 // 基于浏览器 Web Speech API 实现 ASR（语音识别）和 TTS（语音合成）
 // 不依赖后端，全部在渲染进程完成
 
+import { getDictEntry } from '../i18n/locales'
+import { useAppStore } from '../stores/appStore'
+
 type SpeechRecognitionLike = {
   lang: string
   continuous: boolean
@@ -53,7 +56,9 @@ export class ASRController {
   start(lang = 'zh-CN'): boolean {
     const Ctor = getRecognitionCtor()
     if (!Ctor) {
-      this.handlers.onError?.('浏览器不支持语音识别')
+      const uiLang = useAppStore.getState().lang ?? 'zh'
+      const t = (key: string): string => getDictEntry(key)?.[uiLang] ?? key
+      this.handlers.onError?.(t('storemsg.voice.asrUnsupported'))
       return false
     }
     if (this.listening) return true

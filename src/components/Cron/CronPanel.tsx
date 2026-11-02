@@ -7,6 +7,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Timer, Plus, Trash2, FolderOpen, AlertTriangle, Clock, Hourglass, X } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
+import { useT, type TFunc } from '../../i18n/useT'
 
 /**
  * 倒计时显示格式化（纯函数，供渲染与单测共用）：
@@ -15,12 +16,14 @@ import { useAppStore } from '../../stores/appStore'
  * @param fireAtMs 定时器触发时间戳（ms）
  * @param nowMs 当前时间戳（ms），默认 Date.now() 便于测试注入
  */
-export function formatCountdown(fireAtMs: number, nowMs: number = Date.now()): string {
+export function formatCountdown(fireAtMs: number, nowMs: number = Date.now(), t?: TFunc): string {
   // 剩余毫秒为负说明已到期：倒计时显示必须归零而非负数
   const s = Math.max(0, Math.floor((fireAtMs - nowMs) / 1000))
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
   const sec = s % 60
+  // 为什么保留无 t 的分支：test/cron-countdown.test.ts 以两参调用断言中文输出，保持原口径
+  if (t) return h > 0 ? t('panelui.cron.countdown.hms', { h, m, s: sec }) : m > 0 ? t('panelui.cron.countdown.ms', { m, s: sec }) : t('panelui.cron.countdown.s', { s: sec })
   return h > 0 ? `${h}时${m}分${sec}秒` : m > 0 ? `${m}分${sec}秒` : `${sec}秒`
 }
 
@@ -37,7 +40,7 @@ interface CronJobInfo {
 }
 
 /** schedule 校验：间隔型（30m/2h/every 6h）| cron 5 段 | ISO 一次性（本地提示，最终以主进程为准） */
-function isValidSchedule(expr: string): { ok: boolean; hint?: string } {
+function isValidSchedule(expr: string, t: TFunc): { ok: boolean; hint?: string } {
   const s = expr.trim()
   // 间隔型
   if (/^(?:every\s+)?\d+\s*(s|m|h|d)$/i.test(s)) return { ok: true }
@@ -46,7 +49,7 @@ function isValidSchedule(expr: string): { ok: boolean; hint?: string } {
   // cron 5 段
   const fields = s.split(/\s+/)
   if (fields.length !== 5) {
-    return { ok: false, hint: 'schedule 需为：间隔型 every 6h/30m/2h，或 cron 5 段"0 9 * * 1-5"，或 ISO 时间戳' }
+    return { ok: false, hint: t('panelui.cron.hint.format') }
   }
   const ranges = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 7]]
   for (let i = 0; i < 5; i++) {
@@ -56,30 +59,31 @@ function isValidSchedule(expr: string): { ok: boolean; hint?: string } {
       if (p === '*') continue
       if (/^\*\//.test(p)) {
         const step = parseInt(p.slice(2), 10)
-        if (isNaN(step) || step <= 0) return { ok: false, hint: `第 ${i + 1} 字段步进非法: ${p}` }
+        if (isNaN(step) || step <= 0) return { ok: false, hint: t('panelui.cron.hint.stepInvalid', { field: i + 1, value: p }) }
         continue
       }
       const m = p.match(/^(\d+)-(\d+)(?:\/(\d+))?$/)
       if (m) {
         const lo = parseInt(m[1], 10), hi = parseInt(m[2], 10)
-        if (lo < ranges[i][0] || hi > ranges[i][1] || lo > hi) return { ok: false, hint: `第 ${i + 1} 字段范围非法: ${p}` }
+        if (lo < ranges[i][0] || hi > ranges[i][1] || lo > hi) return { ok: false, hint: t('panelui.cron.hint.rangeInvalid', { field: i + 1, value: p }) }
         continue
       }
-      if (!/^\d+$/.test(p)) return { ok: false, hint: `第 ${i + 1} 字段无法解析: ${p}` }
+      if (!/^\d+$/.test(p)) return { ok: false, hint: t('panelui.cron.hint.unparsable', { field: i + 1, value: p }) }
       const v = parseInt(p, 10)
-      if (v < ranges[i][0] || v > ranges[i][1]) return { ok: false, hint: `第 ${i + 1} 字段越界: ${v}` }
+      if (v < ranges[i][0] || v > ranges[i][1]) return { ok: false, hint: t('panelui.cron.hint.outOfRange', { field: i + 1, value: v }) }
     }
   }
   return { ok: true }
 }
 
 /** 已知内置任务用途说明（用户/系统建的固定任务） */
-const KNOWN_JOBS: Record<string, { label: string; desc: string }> = {
-  'review-thinking-gate': { label: '决策复盘', desc: '每 6 小时复盘 thinking-log 思考日志，提炼经验固化为技能或记忆' },
-  'curator-skill-sweep': { label: '技能库维护', desc: '每天 4 点归档长期未使用的技能（先备份），保持技能库精简' }
+const KNOWN_JOBS: Record<string, { labelKey: string; descKey: string }> = {
+  'review-thinking-gate': { labelKey: 'panelui.cron.job.review.label', descKey: 'panelui.cron.job.review.desc' },
+  'curator-skill-sweep': { labelKey: 'panelui.cron.job.curator.label', descKey: 'panelui.cron.job.curator.desc' }
 }
 
 export function CronPanel() {
+  const t = useT()
   const open = useAppStore((s) => s.activeDrawer === 'cron' && !s.vizPanelOpen && !s.settingsOpen)
   const closeDrawer = useAppStore((s) => s.closeDrawer)
   // selector 不能返回新引用（?? [] 每次新建数组 → zustand 无限重渲染）
@@ -115,15 +119,15 @@ export function CronPanel() {
 
   const save = async () => {
     setError('')
-    if (!id.trim()) { setError('任务 id 不能为空'); return }
-    if (!prompt.trim()) { setError('任务描述不能为空'); return }
-    const v = isValidSchedule(schedule)
-    if (!v.ok) { setError(v.hint ?? 'schedule 表达式非法'); return }
+    if (!id.trim()) { setError(t('panelui.cron.error.idEmpty')); return }
+    if (!prompt.trim()) { setError(t('panelui.cron.error.promptEmpty')); return }
+    const v = isValidSchedule(schedule, t)
+    if (!v.ok) { setError(v.hint ?? t('panelui.cron.error.scheduleInvalid')); return }
     setSaving(true)
     try {
       const res = await window.lunareclipse.cronUpsert({ id: id.trim(), schedule: schedule.trim(), prompt: prompt.trim() })
       if (!res.ok) {
-        setError(res.error ?? '保存失败')
+        setError(res.error ?? t('panelui.cron.error.saveFailed'))
         return
       }
       setId('')
@@ -132,7 +136,7 @@ export function CronPanel() {
       setShowForm(false)
       void load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : '保存失败')
+      setError(e instanceof Error ? e.message : t('panelui.cron.error.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -145,7 +149,7 @@ export function CronPanel() {
 
   const remove = async (jobId: string) => {
     // 删除为不可逆操作，先确认再执行（评审 MINOR-10）
-    if (!confirm('删除该定时任务？此操作不可撤销。')) return
+    if (!confirm(t('panelui.cron.removeConfirm'))) return
     await window.lunareclipse.cronDelete(jobId)
     void load()
   }
@@ -164,13 +168,13 @@ export function CronPanel() {
       <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2">
         <div className="flex items-center gap-1.5 text-caption font-medium text-fg-secondary">
           <Timer size={13} className="text-accent" />
-          定时任务
+          {t('panelui.cron.title')}
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => void openJobs()}
             className="flex items-center gap-1 rounded-btn bg-bg-muted px-2 py-1 text-[11px] text-fg-secondary hover:bg-bg-muted/70"
-            title="打开 jobs.json"
+            title={t('panelui.cron.openJobs')}
           >
             <FolderOpen size={11} />
             jobs.json
@@ -180,13 +184,13 @@ export function CronPanel() {
             className="flex items-center gap-1 rounded-btn bg-accent/15 px-2 py-1 text-[11px] text-accent hover:bg-accent/25"
           >
             <Plus size={11} />
-            新增
+            {t('panelui.cron.add')}
           </button>
           <button
             onClick={() => closeDrawer()}
             className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-            title="关闭"
-            aria-label="关闭定时任务面板"
+            title={t('panelui.cron.close')}
+            aria-label={t('panelui.cron.closeAria')}
           >
             <X size={12} />
           </button>
@@ -197,17 +201,17 @@ export function CronPanel() {
       {showForm && (
         <div className="border-b border-border-subtle bg-bg-base/50 p-3">
           <div className="mb-2">
-            <label className="mb-1 block text-[10px] text-fg-muted">任务 id（唯一，kebab-case）</label>
+            <label className="mb-1 block text-[10px] text-fg-muted">{t('panelui.cron.idLabel')}</label>
             <input
               value={id}
               onChange={(e) => setId(e.target.value)}
-              placeholder="如 daily9am"
+              placeholder={t('panelui.cron.idPlaceholder')}
               className="w-full rounded-btn border border-border-subtle bg-bg-base px-2 py-1.5 text-caption text-fg-primary outline-none focus:border-accent"
             />
           </div>
           <div className="mb-2">
             <label className="mb-1 block text-[10px] text-fg-muted">
-              调度表达式：<code className="text-accent">every 6h</code>（间隔）/ <code className="text-accent">0 9 * * 1-5</code>（cron）/ ISO 时间戳（一次性）
+              {t('panelui.cron.scheduleExprPrefix')}<code className="text-accent">every 6h</code>{t('panelui.cron.scheduleExprInterval')}<code className="text-accent">0 9 * * 1-5</code>{t('panelui.cron.scheduleExprCron')}
             </label>
             <input
               value={schedule}
@@ -216,11 +220,11 @@ export function CronPanel() {
             />
           </div>
           <div className="mb-2">
-            <label className="mb-1 block text-[10px] text-fg-muted">任务描述（到点唤醒 AI 干活的指令）</label>
+            <label className="mb-1 block text-[10px] text-fg-muted">{t('panelui.cron.promptLabel')}</label>
             <input
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="如：检查今日待办并汇报"
+              placeholder={t('panelui.cron.promptPlaceholder')}
               className="w-full rounded-btn border border-border-subtle bg-bg-base px-2 py-1.5 text-caption text-fg-primary outline-none focus:border-accent"
             />
           </div>
@@ -235,7 +239,7 @@ export function CronPanel() {
             disabled={saving}
             className="w-full rounded-btn bg-accent py-1.5 text-caption font-medium text-accent-fg hover:bg-accent/90 disabled:opacity-50"
           >
-            {saving ? '保存中…' : '保存'}
+            {saving ? t('panelui.cron.saving') : t('panelui.cron.save')}
           </button>
         </div>
       )}
@@ -247,23 +251,23 @@ export function CronPanel() {
           <div className="mb-3">
             <div className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-medium uppercase tracking-wider text-fg-muted">
               <Hourglass size={11} className="text-accent" />
-              AI 倒计时（运行中）
+              {t('panelui.cron.aiCountdown')}
             </div>
             <div className="space-y-1.5">
-              {vizTimers.map((t) => {
+              {vizTimers.map((timer) => {
                 // 剩余时间以 fireAt 与本地时钟差实时重算（见组件头部 tick 注释）：
                 // 快照 remainingMs 会旧，冻结显示即由此修复；格式化口径收敛在 formatCountdown
-                const label = formatCountdown(t.fireAt)
+                const label = formatCountdown(timer.fireAt, Date.now(), t)
                 return (
-                  <div key={t.id} className="flex items-center gap-2 rounded-btn border border-border-subtle bg-bg-elevated px-2.5 py-1.5">
+                  <div key={timer.id} className="flex items-center gap-2 rounded-btn border border-border-subtle bg-bg-elevated px-2.5 py-1.5">
                     <Clock size={11} className="shrink-0 text-accent" />
-                    <span className="flex-1 truncate text-caption text-fg-primary">{t.task}</span>
+                    <span className="flex-1 truncate text-caption text-fg-primary">{timer.task}</span>
                     <span className="shrink-0 font-mono text-[11px] text-accent">{label}</span>
                     <button
-                      onClick={() => cancelTimer(t.id)}
-                      className="rounded bg-bg-muted px-1.5 py-0.5 text-[10px] text-fg-secondary hover:text-red-400"
+                      onClick={() => cancelTimer(timer.id)}
+                      className="rounded bg-bg-muted px-1.5 py-0.5 text-[10px] text-fg-secondary hover:text-danger"
                     >
-                      取消
+                      {t('panelui.cron.cancel')}
                     </button>
                   </div>
                 )
@@ -275,9 +279,9 @@ export function CronPanel() {
         {/* 定时任务 */}
         {jobs.length === 0 ? (
           <div className="px-3 py-8 text-center text-caption text-fg-muted">
-            暂无定时任务
+            {t('panelui.cron.empty')}
             <div className="mt-2 text-[11px] leading-relaxed">
-              点「新增」创建任务，到点后月蚀会唤醒 AI 按任务描述干活
+              {t('panelui.cron.emptyHint')}
             </div>
           </div>
         ) : (
@@ -291,7 +295,7 @@ export function CronPanel() {
                 <div className="flex items-center justify-between">
                   <div className="flex min-w-0 items-center gap-1.5">
                     {known && (
-                      <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] text-accent">{known.label}</span>
+                      <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] text-accent">{t(known.labelKey)}</span>
                     )}
                     <span className="truncate text-caption font-medium text-fg-primary">{job.prompt}</span>
                   </div>
@@ -300,9 +304,9 @@ export function CronPanel() {
                       onClick={() => void toggle(job.id, !job.enabled)}
                       role="switch"
                       aria-checked={job.enabled}
-                      aria-label={job.enabled ? '禁用此定时任务' : '启用此定时任务'}
+                      aria-label={job.enabled ? t('panelui.cron.disableAria') : t('panelui.cron.enableAria')}
                       className={`relative h-4 w-7 rounded-full transition-colors ${job.enabled ? 'bg-accent' : 'bg-bg-muted'}`}
-                      title={job.enabled ? '点击禁用' : '点击启用'}
+                      title={job.enabled ? t('panelui.cron.clickDisable') : t('panelui.cron.clickEnable')}
                     >
                       <span
                         className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${job.enabled ? 'left-3.5' : 'left-0.5'}`}
@@ -311,8 +315,8 @@ export function CronPanel() {
                     <button
                       onClick={() => void remove(job.id)}
                       className="flex h-5 w-5 items-center justify-center rounded text-fg-muted hover:bg-danger-soft hover:text-danger"
-                      title="删除"
-                      aria-label="删除此定时任务"
+                      title={t('panelui.cron.delete')}
+                      aria-label={t('panelui.cron.deleteAria')}
                     >
                       <Trash2 size={11} />
                     </button>
@@ -321,7 +325,7 @@ export function CronPanel() {
                 <div className="mt-1 font-mono text-[11px] text-accent">{job.schedule}</div>
                 <div className="mt-0.5 text-[10px] text-fg-muted/70">
                   id: {job.id}
-                  {known ? ` · ${known.desc}` : ''}
+                  {known ? ` · ${t(known.descKey)}` : ''}
                 </div>
               </div>
             )

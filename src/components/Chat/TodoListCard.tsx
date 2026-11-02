@@ -6,6 +6,7 @@
  */
 import { useState, memo } from 'react'
 import { ListTodo } from 'lucide-react'
+import { useT } from '../../i18n/useT'
 
 export interface TodoItem {
   id: string
@@ -19,9 +20,9 @@ interface Props {
 }
 
 export const PRIORITY_LABELS: Record<TodoItem['priority'], string> = {
-  high: '高',
-  medium: '中',
-  low: '低'
+  high: 'chatui.priority.high',
+  medium: 'chatui.priority.medium',
+  low: 'chatui.priority.low'
 }
 
 export const PRIORITY_CLASSES: Record<TodoItem['priority'], string> = {
@@ -66,6 +67,7 @@ export function getProgressStats(todos: TodoItem[]): {
  */
 export const TodoListCard = memo(
   function TodoListCard({ todos }: Props) {
+    const t = useT()
     const { total, completed, percent, hasInProgress, incomplete } = getProgressStats(todos)
     // 语义：全部完成则默认折叠（done ? todoCollapsedByDefault : todoIncomplete）
     const [expanded, setExpanded] = useState(incomplete === 0 ? false : true)
@@ -93,7 +95,7 @@ export const TodoListCard = memo(
           {/* 未完成标记（incomplete） */}
           {incomplete > 0 && (
             <span className="shrink-0 rounded-full bg-warning-soft px-1.5 py-0.5 text-[10px] font-medium text-warning">
-              {incomplete} 未完成
+              {t('chatui.todoIncomplete', { n: incomplete })}
             </span>
           )}
           {/* 进度条 */}
@@ -124,6 +126,7 @@ export const TodoListCard = memo(
 
 /** 单条任务行（[x]/[>]/[-]/[ ] + content，缩进 2 空格） */
 function TodoRow({ todo }: { todo: TodoItem }) {
+  const t = useT()
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 pl-4 hover:bg-bg-muted/40 transition-colors border-t border-border-subtle/30">
       {/* 状态字形（todoGlyph） */}
@@ -156,7 +159,7 @@ function TodoRow({ todo }: { todo: TodoItem }) {
       <span
         className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${PRIORITY_CLASSES[todo.priority]}`}
       >
-        {PRIORITY_LABELS[todo.priority]}
+        {t(PRIORITY_LABELS[todo.priority])}
       </span>
     </div>
   )

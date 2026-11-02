@@ -9,23 +9,24 @@ import { Loader2, Check, X, ChevronDown, FileText } from 'lucide-react'
 import type { ToolCall, ToolCategory, SubAgentInfo } from '@shared/types'
 import { CATEGORY_ICONS, CATEGORY_LABELS, TOOL_MAP } from '@shared/tools/registry'
 import { useState } from 'react'
+import { useT } from '../../i18n/useT'
 
 // 分类色（简化：只用于左侧小色点；保留 soft 字段兼容旧接口/测试）
 export const CATEGORY_COLORS: Record<ToolCategory, { bar: string; soft: string; text: string }> = {
   'file-read':   { bar: 'bg-blue-500',     soft: 'bg-blue-500/8',     text: 'text-blue-500' },
-  'file-write':  { bar: 'bg-emerald-500',  soft: 'bg-emerald-500/8',  text: 'text-emerald-500' },
+  'file-write':  { bar: 'bg-success',  soft: 'bg-success/8',  text: 'text-success' },
   browser:       { bar: 'bg-purple-500',   soft: 'bg-purple-500/8',   text: 'text-purple-500' },
-  'self-shape':  { bar: 'bg-orange-500',   soft: 'bg-orange-500/8',   text: 'text-orange-500' },
+  'self-shape':  { bar: 'bg-warning',   soft: 'bg-warning/8',   text: 'text-warning' },
   account:       { bar: 'bg-stone-500',    soft: 'bg-stone-500/8',    text: 'text-stone-500' },
-  system:        { bar: 'bg-red-500',      soft: 'bg-red-500/8',      text: 'text-red-500' },
+  system:        { bar: 'bg-danger',      soft: 'bg-danger/8',      text: 'text-danger' },
   network:       { bar: 'bg-cyan-500',     soft: 'bg-cyan-500/8',     text: 'text-cyan-500' },
-  graph:         { bar: 'bg-teal-500',     soft: 'bg-teal-500/8',     text: 'text-teal-500' },
+  graph:         { bar: 'bg-success',     soft: 'bg-success/8',     text: 'text-success' },
   mechanism:     { bar: 'bg-accent',       soft: 'bg-accent/8',       text: 'text-accent' },
   'memory-workflow-exclusive': { bar: 'bg-pink-500',   soft: 'bg-pink-500/8',     text: 'text-pink-500' },
   workflow:      { bar: 'bg-indigo-500',   soft: 'bg-indigo-500/8',   text: 'text-indigo-500' },
-  plugin:        { bar: 'bg-amber-500',    soft: 'bg-amber-500/8',    text: 'text-amber-500' },
+  plugin:        { bar: 'bg-warning',    soft: 'bg-warning/8',    text: 'text-warning' },
   'task-mode':   { bar: 'bg-fuchsia-500',  soft: 'bg-fuchsia-500/8',  text: 'text-fuchsia-500' },
-  generation:   { bar: 'bg-lime-500',     soft: 'bg-lime-500/8',     text: 'text-lime-500' },
+  generation:   { bar: 'bg-success',     soft: 'bg-success/8',     text: 'text-success' },
   lan:          { bar: 'bg-sky-500',      soft: 'bg-sky-500/8',      text: 'text-sky-500' },
   device:       { bar: 'bg-violet-500',   soft: 'bg-violet-500/8',   text: 'text-violet-500' }
 }
@@ -48,6 +49,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   onPreviewFile,
   onOpenInBrowser
 }: ToolCallCardProps) {
+  const t = useT()
   // 折叠态：全部调用完成后收敛成一行摘要，点击展开明细
   const [collapsed, setCollapsed] = useState(true)
   if (!toolCalls || toolCalls.length === 0) return null
@@ -92,7 +94,7 @@ export const ToolCallCard = memo(function ToolCallCard({
       <button
         onClick={() => setCollapsed(!collapsed)}
         className="flex items-center gap-1.5 rounded px-1 py-px text-[10px] text-fg-muted transition-colors hover:bg-bg-muted/40 hover:text-fg-secondary"
-        title={collapsed ? '展开工具调用明细' : '收起工具调用明细'}
+        title={collapsed ? t('chatui.expandToolDetail') : t('chatui.collapseToolDetail')}
       >
         {hasError ? (
           <X size={10} className="shrink-0 text-danger" />
@@ -100,7 +102,7 @@ export const ToolCallCard = memo(function ToolCallCard({
           <Check size={10} className="shrink-0 text-success/70" />
         )}
         <span className="shrink-0">
-          {hasError ? '工具调用有错误' : `工具调用 · ${toolCalls.length} 次`}
+          {hasError ? t('chatui.toolCallError') : t('chatui.toolCallCount', { n: toolCalls.length })}
         </span>
         {totalSecs > 0 && (
           <span className="shrink-0 tabular-nums text-fg-muted/60">{totalSecs}s</span>
@@ -132,6 +134,7 @@ function ToolCallRow({
   onOpenInBrowser?: (url: string) => void
 }) {
   const [showDetail, setShowDetail] = useState(false)
+  const t = useT()
   const meta = TOOL_MAP[toolCall.toolName]
   const category = toolCall.category ?? meta?.category ?? 'mechanism'
   const colors = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.mechanism
@@ -242,8 +245,8 @@ function ToolCallRow({
         <button
           onClick={() => setShowDetail(!showDetail)}
           className="shrink-0 rounded p-0.5 text-fg-muted/60 hover:text-fg-secondary"
-          title={showDetail ? '收起详情' : '展开详情'}
-          aria-label={showDetail ? '收起详情' : '展开详情'}
+          title={showDetail ? t('chatui.collapseDetail') : t('chatui.expandDetail')}
+          aria-label={showDetail ? t('chatui.collapseDetail') : t('chatui.expandDetail')}
         >
           <ChevronDown size={10} className={`transition-transform ${showDetail ? 'rotate-180' : ''}`} />
         </button>
@@ -279,7 +282,7 @@ function ToolCallRow({
                       </button>
                     ) : (
                       <span className="min-w-0 flex-1 text-[10px] font-medium text-fg-primary truncate">
-                        {r.title || r.url || '(无标题)'}
+                        {r.title || r.url || t('chatui.noTitle')}
                       </span>
                     )}
                   </div>
@@ -350,6 +353,7 @@ function SubAgentRow({
 }) {
   const [expanded, setExpanded] = useState(false)
   const [showOutput, setShowOutput] = useState(false)
+  const t = useT()
   const isRunning = sa.status === 'running'
   const isError = sa.status === 'error'
   const seconds = sa.endedAt
@@ -362,7 +366,7 @@ function SubAgentRow({
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-1.5 text-left transition-colors hover:opacity-80"
-        title={expanded ? '收起子 agent 详情' : '展开子 agent 详情'}
+        title={expanded ? t('chatui.collapseSubagentDetail') : t('chatui.expandSubagentDetail')}
       >
         {isRunning ? (
           <Loader2 size={10} className="shrink-0 animate-spin text-accent" />
@@ -372,13 +376,13 @@ function SubAgentRow({
           <Check size={10} className="shrink-0 text-success/80" />
         )}
         <span className="shrink-0 text-[10px] font-medium text-fg-secondary">
-          子任务 {sa.index + 1}/{sa.total}
+          {t('chatui.subtaskLabel', { current: sa.index + 1, total: sa.total })}
         </span>
         <span className="min-w-0 flex-1 truncate text-[10px] text-fg-muted" title={sa.prompt}>
           {sa.prompt}
         </span>
         {toolCount > 0 && (
-          <span className="shrink-0 text-[10px] text-fg-muted/70">{toolCount} 次工具</span>
+          <span className="shrink-0 text-[10px] text-fg-muted/70">{t('chatui.toolTimes', { n: toolCount })}</span>
         )}
         <span className={`shrink-0 tabular-nums text-[10px] ${isRunning ? 'text-accent' : 'text-fg-muted/60'}`}>
           {seconds}s
@@ -409,7 +413,7 @@ function SubAgentRow({
                 className="flex items-center gap-1 rounded px-1 py-px text-[10px] text-fg-muted transition-colors hover:bg-bg-muted/40 hover:text-fg-secondary"
               >
                 <ChevronDown size={9} className={`transition-transform ${showOutput ? 'rotate-180' : ''}`} />
-                输出
+                {t('chatui.output')}
               </button>
               {showOutput && (
                 <pre className="mt-0.5 max-h-[200px] overflow-y-auto whitespace-pre-wrap rounded-btn bg-bg-base/80 p-2 font-mono text-[10px] leading-relaxed text-fg-secondary border border-border-subtle/40">
@@ -422,7 +426,7 @@ function SubAgentRow({
             <div className="text-[10px] text-danger/90">{sa.error}</div>
           )}
           {!sa.toolCalls && !sa.output && (
-            <div className="text-[10px] text-fg-muted/60 italic">（无过程记录）</div>
+            <div className="text-[10px] text-fg-muted/60 italic">{t('chatui.noProcessRecord')}</div>
           )}
         </div>
       )}

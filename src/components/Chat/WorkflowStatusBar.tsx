@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { useWorkflowStore } from '../../stores/workflowStore'
 import type { WorkflowInstance, NodeRun, NodeType } from '@shared/workflow/types'
+import { useT } from '../../i18n/useT'
 
 /** 节点类型 → 图标映射（NodeHistoryRow 视觉识别用） */
 const NODE_TYPE_ICONS: Record<NodeType, typeof Brain> = {
@@ -42,12 +43,12 @@ const NODE_TYPE_ICONS: Record<NodeType, typeof Brain> = {
 /** 节点类型 → 中文标签 */
 const NODE_TYPE_LABELS: Record<NodeType, string> = {
   llm: 'LLM',
-  tool: '工具',
+  tool: 'chatui.nodeType.tool',
   skill: 'SKILL',
-  condition: '条件',
-  human: '人工',
-  answer: '回复',
-  end: '结束'
+  condition: 'chatui.nodeType.condition',
+  human: 'chatui.nodeType.human',
+  answer: 'chatui.nodeType.answer',
+  end: 'chatui.nodeType.end'
 }
 
 /**
@@ -92,6 +93,7 @@ function WorkflowInstanceRow({
   instance: WorkflowInstance
   onModify: (params: { instanceId: string; action: 'pause' | 'resume' | 'cancel' }) => Promise<unknown>
 }) {
+  const t = useT()
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -112,16 +114,16 @@ function WorkflowInstanceRow({
     : 'bg-success'
 
   const statusText = isRunning
-    ? '运行中'
+    ? t('chatui.wfRunning')
     : isPaused
-    ? (instance.pauseReason === 'human' ? '等待输入' : instance.pauseReason === 'await_user' ? '等待消息' : '已暂停')
+    ? (instance.pauseReason === 'human' ? t('chatui.wfWaitingInput') : instance.pauseReason === 'await_user' ? t('chatui.wfWaitingMessage') : t('chatui.wfPaused'))
     : isFailed
-    ? '失败'
+    ? t('chatui.wfFailed')
     : instance.status === 'completed'
-    ? '已完成'
+    ? t('chatui.wfCompleted')
     : instance.status === 'cancelled'
-    ? '已取消'
-    : '未知'
+    ? t('chatui.wfCancelled')
+    : t('chatui.unknown')
 
   const handleAction = async (action: 'pause' | 'resume' | 'cancel') => {
     setBusy(true)
@@ -177,7 +179,7 @@ function WorkflowInstanceRow({
           {instance.templateName ?? instance.templateId}
         </span>
         <span className="shrink-0 rounded bg-bg-muted px-1 py-0.5 text-[10px] text-fg-muted">
-          {instance.mode === 'chatflow' ? '对话流' : '工作流'}
+          {instance.mode === 'chatflow' ? t('chatui.modeChatflow') : t('chatui.modeWorkflow')}
         </span>
 
         {/* 当前节点 + 类型图标 */}
@@ -218,8 +220,8 @@ function WorkflowInstanceRow({
             <button
               onClick={() => handleAction('pause')}
               disabled={busy}
-              title="暂停"
-              aria-label="暂停"
+              title={t('chatui.pause')}
+              aria-label={t('chatui.pause')}
               className="rounded p-1 text-fg-muted hover:bg-bg-muted hover:text-warning disabled:opacity-50"
             >
               <Pause size={11} />
@@ -229,8 +231,8 @@ function WorkflowInstanceRow({
             <button
               onClick={() => handleAction('resume')}
               disabled={busy}
-              title="恢复"
-              aria-label="恢复"
+              title={t('chatui.resume')}
+              aria-label={t('chatui.resume')}
               className="rounded p-1 text-fg-muted hover:bg-bg-muted hover:text-accent disabled:opacity-50"
             >
               <Play size={11} />
@@ -240,12 +242,12 @@ function WorkflowInstanceRow({
             <button
               onClick={() => {
                 // 取消会终止运行中的工作流实例，已执行节点进度无法恢复，先确认再调用
-                if (!window.confirm('取消将终止该工作流实例，已执行的进度无法恢复。确定取消？')) return
+                if (!window.confirm(t('chatui.wfCancelConfirm'))) return
                 void handleAction('cancel')
               }}
               disabled={busy}
-              title="取消"
-              aria-label="取消"
+              title={t('chatui.cancel')}
+              aria-label={t('chatui.cancel')}
               className="rounded p-1 text-fg-muted hover:bg-bg-muted hover:text-danger disabled:opacity-50"
             >
               <X size={11} />
@@ -270,7 +272,7 @@ function WorkflowInstanceRow({
             className="overflow-hidden border-t border-border-subtle/60 bg-bg-base/40"
           >
             {instance.history.length === 0 ? (
-              <div className="px-4 py-2 text-caption text-fg-muted">暂无节点执行记录</div>
+              <div className="px-4 py-2 text-caption text-fg-muted">{t('chatui.noNodeHistory')}</div>
             ) : (
               <div className="max-h-[240px] overflow-y-auto">
                 {instance.history.map((node, idx) => (
@@ -280,12 +282,12 @@ function WorkflowInstanceRow({
             )}
             {instance.error && (
               <div className="border-t border-border-subtle/30 px-4 py-2 text-caption text-danger">
-                错误：{instance.error}
+                {t('chatui.errorPrefix')}{instance.error}
               </div>
             )}
             {instance.output && (
               <div className="border-t border-border-subtle/30 px-4 py-2 text-caption text-fg-secondary">
-                <span className="text-fg-muted">输出：</span>
+                <span className="text-fg-muted">{t('chatui.outputPrefix')}</span>
                 <span className="line-clamp-2">{instance.output}</span>
               </div>
             )}
@@ -298,6 +300,7 @@ function WorkflowInstanceRow({
 
 /** 节点历史行 */
 function NodeHistoryRow({ node }: { node: NodeRun }) {
+  const t = useT()
   const statusIcon = node.status === 'done' ? (
     <CheckCircle2 size={11} className="text-success" />
   ) : node.status === 'failed' ? (
@@ -318,7 +321,7 @@ function NodeHistoryRow({ node }: { node: NodeRun }) {
       <span className="shrink-0">{statusIcon}</span>
       <NodeIcon size={11} className="shrink-0 text-fg-muted" />
       <span className="shrink-0 rounded bg-bg-muted/60 px-1 py-0.5 text-[10px] tabular-nums text-fg-muted">
-        {NODE_TYPE_LABELS[node.nodeType] ?? node.nodeType}
+        {NODE_TYPE_LABELS[node.nodeType] ? t(NODE_TYPE_LABELS[node.nodeType]) : node.nodeType}
       </span>
       <span className={`flex-1 truncate text-caption ${
         node.status === 'failed' ? 'text-danger' : 'text-fg-secondary'

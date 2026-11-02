@@ -8,11 +8,11 @@ export function StatusRow({ label, ok, okText, badText }: { label: string; ok: b
     <div className="flex items-center gap-1.5">
       <span
         className={`inline-block h-1.5 w-1.5 rounded-full ${
-          ok ? 'bg-emerald-500' : 'bg-fg-muted/40'
+          ok ? 'bg-success' : 'bg-fg-muted/40'
         }`}
       />
       <span className="text-fg-muted">{label}</span>
-      <span className={`ml-auto ${ok ? 'text-emerald-500' : 'text-fg-muted'}`}>
+      <span className={`ml-auto ${ok ? 'text-success' : 'text-fg-muted'}`}>
         {ok ? okText : badText}
       </span>
     </div>

@@ -8,7 +8,8 @@ import { memo, useState } from 'react'
 import { Loader2, Check, X, ChevronDown, Brain, Split } from 'lucide-react'
 import type { ConversationRow, SubagentRow, TimelineMarkerRow } from '@shared/types'
 import { MarkdownRenderer } from './MarkdownRenderer'
-import { openFilePreview } from '../Workshop/FileWorkshopPanel'
+import { openFilePreview } from '../Workshop/filePreviewOpener'
+import { useT } from '../../i18n/useT'
 
 /**
  * 行协议渲染器：按行类型渲染部件。
@@ -71,6 +72,7 @@ function RowItem({ row, streaming }: { row: ConversationRow; streaming: boolean 
 }
 
 function TurnHeaderRow({ row }: { row: Extract<ConversationRow, { kind: 'turnHeader' }> }) {
+  const t = useT()
   const running = row.state === 'running'
   const ok = row.state === 'completedSuccess'
   const failed = row.state === 'failed'
@@ -83,15 +85,15 @@ function TurnHeaderRow({ row }: { row: Extract<ConversationRow, { kind: 'turnHea
       ) : ok ? (
         <Check size={11} className="text-success" />
       ) : failed ? (
-        <X size={11} className="text-red-400" />
+        <X size={11} className="text-danger" />
       ) : (
         <span className="h-2 w-2 rounded-full bg-fg-muted/40" />
       )}
-      <span className="text-[10px] font-medium text-fg-secondary">回合</span>
+      <span className="text-[10px] font-medium text-fg-secondary">{t('chatui.turn')}</span>
       {duration && <span className="text-[10px] text-fg-muted">{duration}</span>}
       {fc && (fc.additions > 0 || fc.deletions > 0) && (
         <span className="ml-auto rounded-full bg-bg-muted px-1.5 py-px text-[9px] text-fg-muted">
-          +{fc.additions} −{fc.deletions} · {fc.files} 文件
+          +{fc.additions} −{fc.deletions} · {t('chatui.filesChanged', { n: fc.files })}
         </span>
       )}
     </div>
@@ -105,6 +107,7 @@ function ReasoningRowBlock({
   row: Extract<ConversationRow, { kind: 'reasoning' }>
   streaming: boolean
 }) {
+  const t = useT()
   // 思考块默认收起成一行小标签（思考 · N字），
   // 只有点击才展开看全文——流式中也不自动展开。
   const [expanded, setExpanded] = useState(false)
@@ -118,7 +121,7 @@ function ReasoningRowBlock({
         className="flex w-full items-center gap-1.5 text-left transition-opacity hover:opacity-80"
       >
         <Brain size={11} className="shrink-0 text-fg-muted" />
-        <span className="text-[10px] font-medium text-fg-muted/70">思考</span>
+        <span className="text-[10px] font-medium text-fg-muted/70">{t('chatui.thinking')}</span>
         {thinking && (
           <span className="relative flex h-1.5 w-1.5 shrink-0">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fg-muted/50" />
@@ -202,7 +205,7 @@ function openPath(path: string) {
 }
 
 /** 从工具参数提炼一句话摘要：让用户一眼看到"操作了啥" */
-function summarizeToolInput(toolName: string, input: unknown): string {
+function summarizeToolInput(toolName: string, input: unknown, t: (key: string, vars?: Record<string, string | number>) => string): string {
   if (input == null) return ''
   if (typeof input === 'string') return input.length > 60 ? `${input.slice(0, 60)}…` : input
   if (typeof input !== 'object') return String(input)
@@ -239,7 +242,7 @@ function summarizeToolInput(toolName: string, input: unknown): string {
     case 'browser_navigate':
       return pick(['url']) ?? ''
     case 'Agent':
-      return obj.tasks ? `${Array.isArray(obj.tasks) ? obj.tasks.length : 1} 个子任务` : ''
+      return obj.tasks ? t('chatui.subtaskCount', { n: Array.isArray(obj.tasks) ? obj.tasks.length : 1 }) : ''
     default:
       return JSON.stringify(obj).slice(0, 60)
   }
@@ -247,11 +250,12 @@ function summarizeToolInput(toolName: string, input: unknown): string {
 
 /** 工具调用卡片：每个工具单独一行，显示操作摘要（看了啥/干了啥）+ 可点开文件路径 */
 function ToolCallRowBlock({ row }: { row: Extract<ConversationRow, { kind: 'toolCall' }> }) {
+  const t = useT()
   const running = row.status === 'running'
   const ok = row.status === 'success'
   const err = row.status === 'error'
   const duration = row.startedAt && row.endedAt ? `${row.endedAt - row.startedAt}ms` : null
-  const summary = summarizeToolInput(row.toolName, row.input)
+  const summary = summarizeToolInput(row.toolName, row.input, t)
   const paths = extractFilePaths(row.toolName, row.input)
   return (
     <div className="rounded-btn border border-border-subtle/60 bg-bg-muted/30 px-2.5 py-1.5">
@@ -261,7 +265,7 @@ function ToolCallRowBlock({ row }: { row: Extract<ConversationRow, { kind: 'tool
         ) : ok ? (
           <Check size={11} className="text-success" />
         ) : err ? (
-          <X size={11} className="text-red-400" />
+          <X size={11} className="text-danger" />
         ) : (
           <span className="h-1.5 w-1.5 rounded-full bg-fg-muted/40" />
         )}
@@ -270,7 +274,7 @@ function ToolCallRowBlock({ row }: { row: Extract<ConversationRow, { kind: 'tool
           <span className="truncate text-[10px] text-fg-muted/80">{summary}</span>
         )}
         <span className="ml-auto shrink-0 text-[9px] text-fg-muted">
-          {running ? '运行中' : duration ?? ''}
+          {running ? t('chatui.running') : duration ?? ''}
         </span>
       </div>
       {paths.length > 0 && (
@@ -279,7 +283,7 @@ function ToolCallRowBlock({ row }: { row: Extract<ConversationRow, { kind: 'tool
             <button
               key={p}
               onClick={() => openPath(p)}
-              title={`点击打开：${p}`}
+              title={t('chatui.openPath', { path: p })}
               className="max-w-full truncate text-[10px] text-accent underline decoration-accent/40 underline-offset-2 transition-opacity hover:opacity-80"
             >
               📄 {p}
@@ -288,7 +292,7 @@ function ToolCallRowBlock({ row }: { row: Extract<ConversationRow, { kind: 'tool
         </div>
       )}
       {err && row.error && (
-        <div className="mt-1 text-[10px] text-red-400">{row.error.message}</div>
+        <div className="mt-1 text-[10px] text-danger">{row.error.message}</div>
       )}
     </div>
   )
@@ -296,6 +300,7 @@ function ToolCallRowBlock({ row }: { row: Extract<ConversationRow, { kind: 'tool
 
 function SubagentRowBlock({ row }: { row: SubagentRow }) {
   const [expanded, setExpanded] = useState(false)
+  const t = useT()
   const running = row.status === 'running'
   const ok = row.status === 'success'
   const err = row.status === 'failed'
@@ -310,12 +315,12 @@ function SubagentRowBlock({ row }: { row: SubagentRow }) {
         ) : ok ? (
           <Check size={11} className="text-success" />
         ) : err ? (
-          <X size={11} className="text-red-400" />
+          <X size={11} className="text-danger" />
         ) : (
           <span className="h-1.5 w-1.5 rounded-full bg-fg-muted/40" />
         )}
         <span className="text-[11px] font-medium text-fg-primary">
-          {row.subagentType === 'parallel-agent' ? '并行子代理' : '子代理'}
+          {row.subagentType === 'parallel-agent' ? t('chatui.parallelSubagent') : t('chatui.subagent')}
         </span>
         {running && row.summaryText && (
           <span className="ml-2 truncate text-[10px] text-fg-muted">{row.summaryText}</span>
@@ -338,6 +343,7 @@ function SubagentRowBlock({ row }: { row: SubagentRow }) {
 }
 
 function TimelineMarkerBlock({ row }: { row: TimelineMarkerRow }) {
+  const t = useT()
   const m = row.marker
   if (!m) return null
   switch (m.type) {
@@ -346,7 +352,7 @@ function TimelineMarkerBlock({ row }: { row: TimelineMarkerRow }) {
         <div className="my-1 flex items-center gap-1.5 rounded-btn border border-dashed border-border-subtle/60 px-2.5 py-1">
           <Split size={10} className="text-fg-muted" />
           <span className="text-[10px] text-fg-muted">
-            模型切换{m.fromModel ? `：${m.fromModel} → ${m.toModel}` : `：${m.toModel}`}
+            {m.fromModel ? t('chatui.modelSwitchFrom', { from: m.fromModel, to: m.toModel }) : t('chatui.modelSwitchTo', { to: m.toModel })}
           </span>
         </div>
       )

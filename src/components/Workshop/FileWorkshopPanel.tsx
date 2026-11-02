@@ -6,12 +6,17 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
 import {
-  X, Play, Trash2, Terminal, AlertTriangle, Loader2, Clock,
+  X, Trash2, AlertTriangle, Loader2,
   FileText, ExternalLink, FolderOpen, Maximize2, Minimize2, Eye, ChevronDown,
   FileTerminal, Code2, Settings2, Plus
 } from 'lucide-react'
-import { useAppStore } from '../../stores/appStore'
-import { formatValue } from '@shared/utils/format-value'
+import { useAppStore } from '../../stores/appStore'; import { useT } from '../../i18n/useT'
+import {
+  registerFilePreviewOpener,
+  consumePendingFilePreview
+} from './filePreviewOpener'
+import { SandboxOutput } from './SandboxOutput'
+import { Modal } from '../Modal'
 
 type WorkshopTab = 'code' | 'preview'
 
@@ -21,18 +26,6 @@ interface FilePreviewState {
   content: string | null
   totalLines: number | null
   error: string | null
-}
-
-let pendingPreviewPath: string | null = null
-let openPreviewFn: ((path: string) => void) | null = null
-
-export function openFilePreview(path: string): void {
-  if (openPreviewFn) {
-    openPreviewFn(path)
-  } else {
-    pendingPreviewPath = path
-    useAppStore.getState().openDrawer('workshop')
-  }
 }
 
 /**
@@ -47,13 +40,13 @@ export function FileWorkshopPanel() {
   const workshopFullscreen = useAppStore((s) => s.workshopFullscreen)
   const setWorkshopFullscreen = useAppStore((s) => s.setWorkshopFullscreen)
   const closeDrawer = useAppStore((s) => s.closeDrawer)
-  const setPreviewingFilePath = useAppStore((s) => s.setPreviewingFilePath)
+  const setPreviewingFilePath = useAppStore((s) => s.setPreviewingFilePath); const t = useT()
 
   const language = useAppStore((s) => s.sandboxLanguage)
   const code = useAppStore((s) => s.sandboxCode)
   const running = useAppStore((s) => s.sandboxRunning)
-  const output = useAppStore((s) => s.sandboxOutput)
-  const result = useAppStore((s) => s.sandboxResult)
+  // 只订阅布尔派生值：流式追加 output 时该值保持 true，主组件不重渲染（输出区自行订阅原文）
+  const hasOutput = useAppStore((s) => !!(s.sandboxOutput || s.sandboxResult))
   const executors = useAppStore((s) => s.sandboxExecutors)
   const setLanguage = useAppStore((s) => s.sandboxSetLanguage)
   const setCode = useAppStore((s) => s.sandboxSetCode)
@@ -62,9 +55,7 @@ export function FileWorkshopPanel() {
   const loadExecutors = useAppStore((s) => s.sandboxLoadExecutors)
 
   const editorRef = useRef<HTMLTextAreaElement>(null)
-  const outputRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [showResult, setShowResult] = useState(false)
   const [activeTab, setActiveTab] = useState<WorkshopTab>('code')
   const [langDropdownOpen, setLangDropdownOpen] = useState(false)
   const [executorMgrOpen, setExecutorMgrOpen] = useState(false)
@@ -90,7 +81,7 @@ export function FileWorkshopPanel() {
       if (res.ok) {
         setPreviewState((s) => ({ ...s, loading: false, content: res.content ?? '', totalLines: res.totalLines ?? null }))
       } else {
-        setPreviewState((s) => ({ ...s, loading: false, error: res.error ?? '读取失败' }))
+        setPreviewState((s) => ({ ...s, loading: false, error: res.error ?? t('panelui.workshop.readFailed') }))
       }
     } catch (err) {
       setPreviewState((s) => ({ ...s, loading: false, error: (err as Error).message }))
@@ -98,31 +89,19 @@ export function FileWorkshopPanel() {
   }, [setPreviewingFilePath])
 
   useEffect(() => {
-    openPreviewFn = (path: string) => {
+    const openPreview = (path: string) => {
       setPreviewingFilePath(path)
       setActiveTab('preview')
       void loadFile(path)
     }
-    if (pendingPreviewPath) {
-      const p = pendingPreviewPath
-      pendingPreviewPath = null
-      openPreviewFn(p)
-    }
+    registerFilePreviewOpener(openPreview)
+    const pending = consumePendingFilePreview()
+    if (pending) openPreview(pending)
     void loadExecutors()
     return () => {
-      openPreviewFn = null
+      registerFilePreviewOpener(null)
     }
   }, [loadFile, setPreviewingFilePath, loadExecutors])
-
-  useEffect(() => {
-    if (outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight
-    }
-  }, [output])
-
-  useEffect(() => {
-    if (result) setShowResult(true)
-  }, [result])
 
   useEffect(() => {
     if (activeDrawer === 'workshop') {
@@ -197,14 +176,13 @@ export function FileWorkshopPanel() {
 
   const fileName = previewState.path.replace(/\\/g, '/').split('/').pop() || previewState.path
   const currentExecutor = executors.find((e) => e.id === language)
-  const hasOutput = !!(output || result)
 
   return (
     <div className="flex h-full w-full flex-col bg-bg-surface" ref={containerRef}>
       {/* 第一行：标题 + 右侧按钮 */}
       <div className="flex items-center gap-2 border-b border-border-subtle px-2.5 py-1.5">
         <FileTerminal size={14} className="text-accent shrink-0" />
-        <span className="text-caption font-medium text-fg-primary">文件工坊</span>
+        <span className="text-caption font-medium text-fg-primary">{t('panelui.workshop.title')}</span>
 
         <div className="flex-1" />
 
@@ -219,7 +197,7 @@ export function FileWorkshopPanel() {
             }`}
           >
             <Code2 size={11} />
-            代码
+            {t('panelui.workshop.code')}
           </button>
           <button
             onClick={() => setActiveTab('preview')}
@@ -230,7 +208,7 @@ export function FileWorkshopPanel() {
             }`}
           >
             <Eye size={11} />
-            预览
+            {t('panelui.workshop.preview')}
           </button>
         </div>
 
@@ -238,24 +216,24 @@ export function FileWorkshopPanel() {
           onClick={() => setConfirmClear(true)}
           disabled={activeTab === 'preview' || running || !hasOutput}
           className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary disabled:opacity-30 disabled:cursor-not-allowed"
-          title="清空输出"
-          aria-label="清空输出"
+          title={t('panelui.workshop.clearOutput')}
+          aria-label={t('panelui.workshop.clearOutput')}
         >
           <Trash2 size={12} />
         </button>
         <button
           onClick={() => setWorkshopFullscreen(!workshopFullscreen)}
           className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-          title={workshopFullscreen ? '退出全屏' : '全屏展开'}
-          aria-label={workshopFullscreen ? '退出全屏' : '全屏展开'}
+          title={workshopFullscreen ? t('panelui.workshop.exitFullscreen') : t('panelui.workshop.fullscreen')}
+          aria-label={workshopFullscreen ? t('panelui.workshop.exitFullscreen') : t('panelui.workshop.fullscreen')}
         >
           {workshopFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
         </button>
         <button
           onClick={() => closeDrawer()}
           className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-          title="关闭（Esc）"
-          aria-label="关闭文件工坊面板"
+          title={t('panelui.workshop.closeEsc')}
+          aria-label={t('panelui.workshop.closePanel')}
         >
           <X size={14} />
         </button>
@@ -283,7 +261,7 @@ export function FileWorkshopPanel() {
                     />
                     <div className="absolute top-full left-0 z-20 mt-1 min-w-32 rounded-btn border border-border-subtle bg-bg-elevated shadow-lg">
                       {executors.length === 0 ? (
-                        <div className="px-2.5 py-1.5 text-caption text-fg-muted">加载中...</div>
+                        <div className="px-2.5 py-1.5 text-caption text-fg-muted">{t('panelui.workshop.loading')}</div>
                       ) : (
                         executors.map((exec) => (
                           <button
@@ -300,7 +278,7 @@ export function FileWorkshopPanel() {
                           >
                             <span>{exec.label}</span>
                             {exec.builtin && (
-                              <span className="text-[9px] text-fg-muted">默认</span>
+                              <span className="text-[9px] text-fg-muted">{t('panelui.workshop.default')}</span>
                             )}
                           </button>
                         ))
@@ -314,7 +292,7 @@ export function FileWorkshopPanel() {
                           className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-caption text-accent transition-colors hover:bg-bg-muted"
                         >
                           <Settings2 size={11} />
-                          管理执行器
+                          {t('panelui.workshop.manageExecutors')}
                         </button>
                       </div>
                     </div>
@@ -324,8 +302,8 @@ export function FileWorkshopPanel() {
 
               <span className="text-[10px] text-fg-muted">
                 {language === 'javascript'
-                  ? 'worker 隔离'
-                  : '子进程执行'}
+                  ? t('panelui.workshop.workerIsolated')
+                  : t('panelui.workshop.subprocess')}
               </span>
 
               <div className="flex-1" />
@@ -362,98 +340,8 @@ export function FileWorkshopPanel() {
               <div className={`h-0.5 w-8 rounded-full ${dragging ? 'bg-accent' : 'bg-border-subtle'}`} />
             </div>
 
-            {/* 输出区（下栏） */}
-            <div className="flex flex-col overflow-hidden" style={{ height: `${(1 - splitRatio) * 100}%` }}>
-              <div className="flex items-center gap-1.5 border-b border-border-subtle bg-bg-surface/50 px-2.5 py-0.5">
-                <Terminal size={9} className="text-fg-muted" />
-                <span className="text-[10px] uppercase tracking-wider text-fg-muted">输出</span>
-                {running && (
-                  <span className="ml-auto flex items-center gap-1 text-[10px] text-accent">
-                    <Loader2 size={9} className="animate-spin" />
-                    执行中
-                  </span>
-                )}
-                {result && !running && (
-                  <span className="ml-auto flex items-center gap-1 text-[10px] text-fg-muted">
-                    <Clock size={9} />
-                    {result.durationMs}ms
-                    {result.timedOut && <span className="text-amber-400">超时</span>}
-                  </span>
-                )}
-              </div>
-
-              <div
-                ref={outputRef}
-                className="flex-1 overflow-auto bg-bg-base px-2.5 py-2 font-mono"
-                style={{
-                  fontFamily: '"Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, Monaco, monospace',
-                  fontSize: '11px',
-                  lineHeight: 1.5,
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-all'
-                }}
-              >
-                {!hasOutput ? (
-                  <div className="flex h-full items-center justify-center text-fg-muted">
-                    <div className="text-center">
-                      <Terminal size={20} className="mx-auto mb-1.5 opacity-30" />
-                      <div className="text-caption">按 Ctrl+Enter 或点击下方"执行"运行代码</div>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {output && (
-                      <pre className="whitespace-pre-wrap break-all">{output}</pre>
-                    )}
-                    {showResult && result && (
-                      <div className="mt-2 border-t border-border-subtle pt-2">
-                        <div className="mb-1 text-[10px] uppercase tracking-wider text-fg-muted">
-                          结果 {result.ok ? 'OK' : 'FAIL'}
-                        </div>
-                        {result.result !== undefined && (
-                          <pre className="whitespace-pre-wrap break-all text-emerald-300">
-                            {formatValue(result.result)}
-                          </pre>
-                        )}
-                        {result.errorMessage && (
-                          <pre className="whitespace-pre-wrap break-all text-red-400">
-                            {result.errorMessage}
-                          </pre>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* 底部执行栏 */}
-              <div className="flex items-center gap-2 border-t border-border-subtle bg-bg-surface px-2.5 py-1.5">
-                {!running ? (
-                  <button
-                    onClick={() => void run()}
-                    className="flex items-center gap-1.5 rounded-btn bg-accent px-3 py-1 text-caption text-accent-fg hover:bg-accent/90"
-                    title="执行（Ctrl+Enter）"
-                  >
-                    <Play size={11} />
-                    执行
-                  </button>
-                ) : (
-                  <button
-                    disabled
-                    className="flex items-center gap-1.5 rounded-btn bg-bg-muted px-3 py-1 text-caption text-fg-muted cursor-not-allowed"
-                  >
-                    {/* 运行中禁用 + 旋转指示：原名 Square 停止图标对 disabled 按钮
-                        是 affordance 误导（评审 MINOR-3）——改为 Loader2 表达「进行中」，
-                        避免用户误以为可以手动停止却点击无反馈。 */}
-                    <Loader2 size={11} className="animate-spin" />
-                    执行中…
-                  </button>
-                )}
-                <div className="text-[10px] text-fg-muted">
-                  {running ? '超时自动终止' : '就绪'}
-                </div>
-              </div>
-            </div>
+            {/* 输出区（下栏）：独立订阅流式输出，避免每个输出 tick 重渲染编辑器与语言栏 */}
+            <SandboxOutput splitRatio={splitRatio} />
           </>
         ) : (
           <PreviewMode
@@ -467,44 +355,39 @@ export function FileWorkshopPanel() {
       {/* 清空输出确认弹层：输出/结果是运行产物，误清不可恢复，先确认再执行。 */}
       {/* 作用：与执行器删除同一防护标准，复用项目既有 fixed inset-0 z-40 + 卡片弹层样式。 */}
       {/* 不删的理由：无确认时用户误点清空按钮会静默丢失全部运行输出与结果。 */}
-      {confirmClear && (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40"
-          onClick={() => setConfirmClear(false)}
-        >
-          <div
-            className="flex w-[340px] flex-col rounded-lg border border-border-subtle bg-bg-elevated shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+      <Modal
+        open={confirmClear}
+        onClose={() => setConfirmClear(false)}
+        label={t('panelui.workshop.clearOutput')}
+        backdropClassName="fixed inset-0 z-40 flex items-center justify-center bg-black/40"
+        cardClassName="flex w-[340px] flex-col rounded-lg border border-border-subtle bg-bg-elevated shadow-xl"
+      >
             <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
               <AlertTriangle size={14} className="text-danger" />
-              <span className="text-caption font-medium text-fg-primary">清空输出</span>
+              <span className="text-caption font-medium text-fg-primary">{t('panelui.workshop.clearOutput')}</span>
             </div>
             <div className="px-3 py-3 text-caption text-fg-secondary">
-              将清空当前输出与运行结果，此操作不可撤销。确定继续？
+              {t('panelui.workshop.clearConfirm')}
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border-subtle px-3 py-2">
               <button
-                autoFocus
                 onClick={() => setConfirmClear(false)}
                 className="flex h-7 items-center rounded-btn border border-border-subtle px-2.5 text-caption text-fg-muted transition-colors hover:bg-bg-muted hover:text-fg-primary"
               >
-                取消
+                {t('panelui.workshop.cancel')}
               </button>
               <button
                 onClick={() => {
+                  // 结果块显隐由输出区内部维护：清空后 result 为空，结果块自然不再渲染
                   clearOutput()
-                  setShowResult(false)
                   setConfirmClear(false)
                 }}
                 className="flex h-7 items-center rounded-btn bg-danger/80 px-2.5 text-caption font-medium text-fg-primary transition-colors hover:bg-danger"
               >
-                清空
+                {t('panelui.workshop.clear')}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
 
       {/* 执行器管理弹层（语言下拉底部「管理执行器」入口打开） */}
       <ExecutorManager
@@ -522,18 +405,18 @@ function PreviewMode({
   previewState: FilePreviewState
   fileName: string
   onSwitchToCode: () => void
-}) {
+}) { const t = useT()
   if (!previewState.path) {
     return (
       <div className="flex h-full items-center justify-center text-fg-muted">
         <div className="text-center">
           <FileText size={24} className="mx-auto mb-1.5 opacity-40" />
-          <div className="text-caption mb-2">从消息中点击文件路径打开预览</div>
+          <div className="text-caption mb-2">{t('panelui.workshop.previewHint')}</div>
           <button
             onClick={onSwitchToCode}
             className="text-caption text-accent hover:text-accent/80 underline"
           >
-            或切换到代码模式编写代码 →
+            {t('panelui.workshop.switchToCode')}
           </button>
         </div>
       </div>
@@ -547,23 +430,23 @@ function PreviewMode({
           <FileText size={12} className="text-accent shrink-0" />
           <span className="text-caption font-medium text-fg-primary truncate">{fileName}</span>
           {previewState.totalLines !== null && (
-            <span className="text-caption text-fg-muted shrink-0">{previewState.totalLines} 行</span>
+            <span className="text-caption text-fg-muted shrink-0">{t('panelui.workshop.lines', { n: previewState.totalLines })}</span>
           )}
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={() => void window.lunareclipse.openFile(previewState.path)}
             className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-            title="用系统默认程序打开"
-            aria-label="用系统默认程序打开"
+            title={t('panelui.workshop.openWithSystem')}
+            aria-label={t('panelui.workshop.openWithSystem')}
           >
             <ExternalLink size={12} />
           </button>
           <button
             onClick={() => void window.lunareclipse.showItemInFolder(previewState.path)}
             className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted hover:bg-bg-muted hover:text-fg-primary"
-            title="在文件夹中显示"
-            aria-label="在文件夹中显示"
+            title={t('panelui.workshop.showInFolder')}
+            aria-label={t('panelui.workshop.showInFolder')}
           >
             <FolderOpen size={12} />
           </button>
@@ -578,7 +461,7 @@ function PreviewMode({
         {previewState.loading ? (
           <div className="flex h-full items-center justify-center text-fg-muted">
             <Loader2 size={16} className="animate-spin mr-2" />
-            读取中...
+            {t('panelui.workshop.reading')}
           </div>
         ) : previewState.error ? (
           <div className="flex h-full items-center justify-center text-danger">
@@ -615,7 +498,7 @@ function ExecutorManager({
   open: boolean
   executors: SandboxExecutorSummary[]
   onClose: () => void
-}) {
+}) { const t = useT()
   const loadExecutors = useAppStore((s) => s.sandboxLoadExecutors)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [id, setId] = useState('')
@@ -666,7 +549,7 @@ function ExecutorManager({
     const trimmedLabel = label.trim()
     const trimmedCommand = command.trim()
     if (!trimmedId || !trimmedLabel || !trimmedCommand) {
-      setErr('id、名称与命令均为必填项')
+      setErr(t('panelui.workshop.executor.required'))
       return
     }
     const argsParts = argsText
@@ -675,7 +558,7 @@ function ExecutorManager({
       .filter(Boolean)
     const timeoutMs = timeoutText.trim() ? Number(timeoutText.trim()) : undefined
     if (timeoutText.trim() && (!Number.isFinite(timeoutMs) || (timeoutMs as number) <= 0)) {
-      setErr('超时需为大于 0 的毫秒数')
+      setErr(t('panelui.workshop.executor.timeoutInvalid'))
       return
     }
     const config: {
@@ -702,7 +585,7 @@ function ExecutorManager({
     try {
       const res = await window.lunareclipse.codeUpsertExecutor(config)
       if (!res?.ok) {
-        setErr(res?.error ?? '保存失败')
+        setErr(res?.error ?? t('panelui.workshop.executor.saveFailed'))
         return
       }
       await loadExecutors()
@@ -715,13 +598,13 @@ function ExecutorManager({
   }
 
   const remove = async (e: SandboxExecutorSummary) => {
-    if (!window.confirm(`删除执行器「${e.label}」（${e.id}）？删除后该语言将不可用。`)) return
+    if (!window.confirm(t('panelui.workshop.executor.deleteConfirm', { label: e.label, id: e.id }))) return
     setBusy(true)
     setErr(null)
     try {
       const res = await window.lunareclipse.codeRemoveExecutor(e.id)
       if (!res?.ok) {
-        setErr(res?.error ?? '删除失败')
+        setErr(res?.error ?? t('panelui.workshop.executor.deleteFailed'))
         return
       }
       // 若正在编辑的正是被删执行器，清空表单
@@ -740,21 +623,23 @@ function ExecutorManager({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div
-        className="flex max-h-[80vh] w-[420px] flex-col rounded-lg border border-border-subtle bg-bg-elevated shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal
+      open
+      onClose={onClose}
+      label={t('panelui.workshop.manageExecutors')}
+      backdropClassName="fixed inset-0 z-40 flex items-center justify-center bg-black/40"
+      cardClassName="flex max-h-[80vh] w-[420px] flex-col rounded-lg border border-border-subtle bg-bg-elevated shadow-xl"
+    >
         {/* 头部 */}
         <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
           <Settings2 size={14} className="text-accent" />
-          <span className="text-caption font-medium text-fg-primary">管理执行器</span>
+          <span className="text-caption font-medium text-fg-primary">{t('panelui.workshop.manageExecutors')}</span>
           <div className="flex-1" />
           <button
             onClick={onClose}
             className="flex h-6 w-6 items-center justify-center rounded-btn text-fg-muted transition-colors hover:bg-bg-muted hover:text-fg-primary"
-            title="关闭（Esc）"
-            aria-label="关闭执行器管理弹层"
+            title={t('panelui.workshop.closeEsc')}
+            aria-label={t('panelui.workshop.executor.closeAria')}
           >
             <X size={13} />
           </button>
@@ -762,9 +647,9 @@ function ExecutorManager({
 
         {/* 现有执行器列表 */}
         <div className="border-b border-border-subtle px-3 py-2">
-          <div className="mb-1 text-[10px] uppercase tracking-wider text-fg-muted">已安装执行器</div>
+          <div className="mb-1 text-[10px] uppercase tracking-wider text-fg-muted">{t('panelui.workshop.executor.installed')}</div>
           {executors.length === 0 ? (
-            <div className="py-1 text-caption text-fg-muted">暂无执行器（可能加载失败，可关闭后重试）</div>
+            <div className="py-1 text-caption text-fg-muted">{t('panelui.workshop.executor.empty')}</div>
           ) : (
             <div className="max-h-40 space-y-0.5 overflow-y-auto">
               {executors.map((e) => (
@@ -779,23 +664,23 @@ function ExecutorManager({
                     <span className="ml-1.5 font-mono text-[10px] text-fg-muted">{e.id}</span>
                   </span>
                   {e.builtin ? (
-                    <span className="shrink-0 rounded-full bg-bg-muted px-1.5 py-px text-[9px] text-fg-muted">默认</span>
+                    <span className="shrink-0 rounded-full bg-bg-muted px-1.5 py-px text-[9px] text-fg-muted">{t('panelui.workshop.default')}</span>
                   ) : (
                     <>
                       <button
                         onClick={() => startEdit(e)}
                         className="shrink-0 rounded px-1 py-px text-[10px] text-accent transition-colors hover:bg-bg-muted"
-                        title="编辑（仅名称；完整参数请重新填写）"
+                        title={t('panelui.workshop.executor.editTitle')}
                       >
-                        编辑
+                        {t('panelui.workshop.executor.edit')}
                       </button>
                       <button
                         onClick={() => void remove(e)}
                         disabled={busy}
-                        className="shrink-0 rounded px-1 py-px text-[10px] text-red-400 transition-colors hover:bg-red-500/10 disabled:opacity-40"
-                        title="删除执行器"
+                        className="shrink-0 rounded px-1 py-px text-[10px] text-danger transition-colors hover:bg-danger/10 disabled:opacity-40"
+                        title={t('panelui.workshop.executor.deleteTitle')}
                       >
-                        删除
+                        {t('panelui.workshop.delete')}
                       </button>
                     </>
                   )}
@@ -808,11 +693,11 @@ function ExecutorManager({
         {/* 新增/编辑表单 */}
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
           <div className="mb-1.5 text-[10px] uppercase tracking-wider text-fg-muted">
-            {editingId ? '编辑执行器（参数需重新填写）' : '新增自定义执行器'}
+            {editingId ? t('panelui.workshop.executor.editForm') : t('panelui.workshop.executor.createForm')}
           </div>
           <div className="space-y-1.5">
             <div>
-              <div className="mb-0.5 text-[10px] text-fg-secondary">ID（唯一标识，如 python3）*</div>
+              <div className="mb-0.5 text-[10px] text-fg-secondary">{t('panelui.workshop.executor.idLabel')}</div>
               <input
                 value={id}
                 onChange={(e) => setId(e.target.value)}
@@ -823,7 +708,7 @@ function ExecutorManager({
               />
             </div>
             <div>
-              <div className="mb-0.5 text-[10px] text-fg-secondary">显示名称（如 Python3）*</div>
+              <div className="mb-0.5 text-[10px] text-fg-secondary">{t('panelui.workshop.executor.nameLabel')}</div>
               <input
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
@@ -833,7 +718,7 @@ function ExecutorManager({
               />
             </div>
             <div>
-              <div className="mb-0.5 text-[10px] text-fg-secondary">命令（如 python / node）*</div>
+              <div className="mb-0.5 text-[10px] text-fg-secondary">{t('panelui.workshop.executor.commandLabel')}</div>
               <input
                 value={command}
                 onChange={(e) => setCommand(e.target.value)}
@@ -843,7 +728,7 @@ function ExecutorManager({
               />
             </div>
             <div>
-              <div className="mb-0.5 text-[10px] text-fg-secondary">参数模板（空格分隔，可选）</div>
+              <div className="mb-0.5 text-[10px] text-fg-secondary">{t('panelui.workshop.executor.argsLabel')}</div>
               <input
                 value={argsText}
                 onChange={(e) => setArgsText(e.target.value)}
@@ -860,20 +745,20 @@ function ExecutorManager({
                   onChange={(e) => setStdinMode(e.target.checked)}
                   className="h-3 w-3 accent-accent"
                 />
-                从 stdin 读代码
+                {t('panelui.workshop.executor.stdinLabel')}
               </label>
               <div className="flex-1">
                 <input
                   value={fileExtension}
                   onChange={(e) => setFileExtension(e.target.value)}
                   spellCheck={false}
-                  placeholder="文件扩展名（可选）"
+                  placeholder={t('panelui.workshop.executor.extensionLabel')}
                   className="w-full rounded-btn border border-border-subtle bg-bg-base px-2 py-1 text-caption font-mono text-fg-primary outline-none focus:border-accent"
                 />
               </div>
             </div>
             <div>
-              <div className="mb-0.5 text-[10px] text-fg-secondary">超时（毫秒，可选）</div>
+              <div className="mb-0.5 text-[10px] text-fg-secondary">{t('panelui.workshop.executor.timeoutLabel')}</div>
               <input
                 value={timeoutText}
                 onChange={(e) => setTimeoutText(e.target.value)}
@@ -884,7 +769,7 @@ function ExecutorManager({
               />
             </div>
           </div>
-          {err && <div className="mt-1.5 text-caption text-red-400">{err}</div>}
+          {err && <div className="mt-1.5 text-caption text-danger">{err}</div>}
         </div>
 
         {/* 底部操作 */}
@@ -895,7 +780,7 @@ function ExecutorManager({
               disabled={busy}
               className="flex h-7 items-center rounded-btn border border-border-subtle px-2.5 text-caption text-fg-muted transition-colors hover:bg-bg-muted hover:text-fg-primary disabled:opacity-40"
             >
-              取消编辑
+              {t('panelui.workshop.executor.cancelEdit')}
             </button>
           )}
           <div className="flex-1" />
@@ -904,7 +789,7 @@ function ExecutorManager({
             disabled={busy}
             className="flex h-7 items-center rounded-btn border border-border-subtle px-2.5 text-caption text-fg-muted transition-colors hover:bg-bg-muted hover:text-fg-primary disabled:opacity-40"
           >
-            关闭
+            {t('panelui.workshop.executor.close')}
           </button>
           <button
             onClick={() => void save()}
@@ -912,10 +797,9 @@ function ExecutorManager({
             className="flex h-7 items-center gap-1 rounded-btn bg-accent px-3 text-caption font-medium text-accent-fg transition-colors hover:bg-accent/90 disabled:opacity-40"
           >
             {busy ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
-            {editingId ? '保存' : '添加'}
+            {editingId ? t('panelui.workshop.executor.save') : t('panelui.workshop.executor.add')}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

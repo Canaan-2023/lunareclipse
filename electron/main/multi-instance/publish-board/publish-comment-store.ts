@@ -8,15 +8,18 @@ import { join } from 'path'
 import { renameFileWithRetry } from '../../utils/atomic-write'
 import type { PublishComment } from './publish-board-types'
 
+/** 单篇文章评论数上限（产品口径：默认 200 条展示、硬上限 500 条）。 */
+export const PUBLISH_COMMENT_MAX = 500
+
 /**
  * 评论存储（abyssac_data/federation/publish-board/comments/{articleId}.json）。
- * 整文件原子覆写，上限 500 条（单新闻评论数上限）。
+ * 整文件原子覆写，上限 PUBLISH_COMMENT_MAX（可通过构造参数覆盖，测试用小上限验证裁剪语义）。
  */
 export class PublishCommentStore {
   private readonly dir: string
   private readonly maxComments: number
 
-  constructor(root: string, maxComments = 500) {
+  constructor(root: string, maxComments = PUBLISH_COMMENT_MAX) {
     this.dir = join(root, 'federation', 'news', 'comments')
     this.maxComments = maxComments
     mkdirSync(this.dir, { recursive: true })

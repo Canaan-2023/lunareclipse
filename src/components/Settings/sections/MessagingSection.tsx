@@ -9,6 +9,7 @@ import { Plus, Trash2, RefreshCw, Check } from 'lucide-react'
 import type { AppConfig, MessagingConfig, MessagingContact } from '@shared/types'
 import { StatusRow } from '../StatusRow'
 import { useT } from '../../../i18n/useT'
+import { useVisibleInterval } from '../../../hooks/useVisibleInterval'
 
 interface MessagingStatusView {
   running: boolean
@@ -70,11 +71,11 @@ export function MessagingSection({ config, onChange }: { config: AppConfig; onCh
     if (r) setStatus(r.status)
   }
 
+  // 打开时读一次配置；状态灯 5 秒轮询交给 useVisibleInterval（窗口隐藏时暂停，恢复可见立即补刷）
   useEffect(() => {
     loadConfig()
-    const t = setInterval(refreshStatus, 5000)
-    return () => clearInterval(t)
   }, [])
+  useVisibleInterval(() => { void refreshStatus() }, 5000)
 
   const handleSave = async () => {
     setSaving(true)
@@ -132,7 +133,7 @@ export function MessagingSection({ config, onChange }: { config: AppConfig; onCh
             okText={t('settings.msgConnected', { n: status?.handledCount ?? 0 })}
             badText={canRun ? t('settings.msgNotConnected') : t('settings.msgNotStarted')}
           />
-          {status?.lastError && <div className="pt-1 text-[11px] text-red-400">{t('settings.msgLastError', { error: status.lastError })}</div>}
+          {status?.lastError && <div className="pt-1 text-[11px] text-danger">{t('settings.msgLastError', { error: status.lastError })}</div>}
           <div className="pt-1 text-[11px] text-fg-muted leading-relaxed">
             {t('settings.msgRouteDesc')}
           </div>
@@ -222,7 +223,7 @@ export function MessagingSection({ config, onChange }: { config: AppConfig; onCh
                   </span>
                   <button
                     onClick={() => removeContact(i)}
-                    className="text-fg-muted transition-colors hover:text-red-400"
+                    className="text-fg-muted transition-colors hover:text-danger"
                     title={t('settings.msgDelete')}
                   >
                     <Trash2 size={13} />

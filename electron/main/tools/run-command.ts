@@ -5,7 +5,7 @@
  * 超时有两个来源——本工具内部计时器（timeoutMs）与执行器经 ctx.signal 发来的取消——共用同一
  * killTree 终止子进程树，避免命令在后台残留成孤儿。
  */
-import { spawn } from 'child_process'
+import { spawn, type ChildProcess } from 'child_process'
 import { createHash } from 'crypto'
 import type { Tool, ToolResult, ToolContext, PermissionResponse } from './base-tool'
 import { detect_dangerous_command } from './security-engine/approval'
@@ -384,6 +384,13 @@ export function assessCommandForBackgroundExec(
   return { allowed: true, reason: '' }
 }
 
+/** 进程启动器签名：默认是 Node 的 spawn；测试注入内存假进程时必须与调用点参数形状一致。 */
+export type ProcessSpawner = (
+  command: string,
+  args: readonly string[],
+  options: { cwd?: string; windowsHide?: boolean; env?: NodeJS.ProcessEnv; stdio?: 'ignore' }
+) => ChildProcess
+
 export class RunCommandTool implements Tool<RunCommandToolParams> {
   name = 'run_command'
 description =
@@ -399,6 +406,16 @@ description =
   behavior = {
     resultLimitChars: 50_000
   }
+
+  /**
+   * 可注入的进程启动器：默认就是 Node spawn，生产路径行为不变。
+   * 为什么存在：策略/权限判定用例（黑名单、白名单、管理规则、危险检测）只需要确认
+   * 「命令是否进入执行阶段」，不需要真实 PowerShell 输出；真实 spawn 在并行跑全量用例时
+   * 会因 Windows 进程创建抢占而随机超出全局超时，把纯策略断言变成环境抖动。
+   * 不删理由：这是策略测试与真实进程之间的唯一切分点；删掉只能退回真 spawn（抖动复现）
+   * 或在生产代码里塞测试分支（更差）。
+   */
+  constructor(private readonly spawnProcess: ProcessSpawner = spawn) {}
 
   async execute(params: RunCommandToolParams, ctx?: ToolContext): Promise<ToolResult> {
     if (!params.command || params.command.trim().length === 0) {
@@ -593,7 +610,7 @@ description =
       // 命令首字符为 # 时是 PowerShell 注释，不拼接 prioPrefix 避免被注释吞掉
       const isComment = command.startsWith('#')
       const args = ['-NoProfile', '-Command', isComment ? command : `${prioPrefix} ${command}`]
-      const child = spawn('powershell.exe', args, {
+      const child = this.spawnProcess('powershell.exe', args, {
         cwd: params.cwd || undefined,
         windowsHide: true,
         env: { ...process.env, LANG: 'zh-CN.UTF-8' }
@@ -638,7 +655,7 @@ description =
       // 为什么杀树（/T /F）：curl/npm 的子进程会持有句柄，只杀壳会让真正的重活在后台残留成孤儿。
       const killTree = (): void => {
         try {
-          spawn('taskkill.exe', ['/pid', String(child.pid ?? ''), '/T', '/F'], {
+          this.spawnProcess('taskkill.exe', ['/pid', String(child.pid ?? ''), '/T', '/F'], {
             windowsHide: true,
             stdio: 'ignore'
           })
@@ -660,8 +677,8 @@ description =
       }
       signal?.addEventListener('abort', onAbort, { once: true })
 
-      child.stdout.on('data', (d) => { stdout = appendLimited(stdout, d.toString('utf-8'), () => { stdoutTruncated = true }) })
-      child.stderr.on('data', (d) => { stderr = appendLimited(stderr, d.toString('utf-8'), () => { stderrTruncated = true }) })
+      child.stdout?.on('data', (d) => { stdout = appendLimited(stdout, d.toString('utf-8'), () => { stdoutTruncated = true }) })
+      child.stderr?.on('data', (d) => { stderr = appendLimited(stderr, d.toString('utf-8'), () => { stderrTruncated = true }) })
 
       child.on('close', (code) => {
         clearTimeout(timer)

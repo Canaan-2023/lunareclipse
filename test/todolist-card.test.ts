@@ -5,6 +5,7 @@ import {
   getProgressStats
 } from '../src/components/Chat/TodoListCard'
 import type { TodoItem } from '../src/components/Chat/TodoListCard'
+import { getDictEntry } from '../src/i18n/locales'
 
 function makeTodo(overrides: Partial<TodoItem> = {}): TodoItem {
   return {
@@ -17,10 +18,11 @@ function makeTodo(overrides: Partial<TodoItem> = {}): TodoItem {
 }
 
 describe('TodoListCard 视觉回归 - 优先级映射', () => {
+  // PRIORITY_LABELS 存的是 i18n key，渲染层经 t() 取值；此处按 zh 字典解析，守住界面原标签
   it('三个优先级都有标签', () => {
-    expect(PRIORITY_LABELS.high).toBe('高')
-    expect(PRIORITY_LABELS.medium).toBe('中')
-    expect(PRIORITY_LABELS.low).toBe('低')
+    expect(getDictEntry(PRIORITY_LABELS.high)?.zh).toBe('高')
+    expect(getDictEntry(PRIORITY_LABELS.medium)?.zh).toBe('中')
+    expect(getDictEntry(PRIORITY_LABELS.low)?.zh).toBe('低')
   })
 
   it('三个优先级都有色样式', () => {

@@ -54,20 +54,20 @@ export function BackupCenterPanel() {
       if (status.role === 'satellite') {
         const r = await window.lunareclipse.multiSatBackupArchives()
         if (r.ok) setArchives(r.archives ?? [])
-        else setError(r.error ?? '读取失败')
+        else setError(r.error ?? t('panelui.backup.loadFailed'))
         return
       }
       if (status.role === 'master') {
         const r = await window.lunareclipse.multiLocalBackupStatus()
         if (r.ok) setArchives(r.archives ?? [])
-        else setError(r.error ?? '读取失败')
+        else setError(r.error ?? t('panelui.backup.loadFailed'))
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '读取失败')
+      setError(e instanceof Error ? e.message : t('panelui.backup.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (open) void load()
@@ -91,7 +91,7 @@ export function BackupCenterPanel() {
         setDetail(r.detail ?? null)
       } else {
         setDetail(null)
-        setError(r.error ?? '读取备份内容失败')
+        setError(r.error ?? t('panelui.backup.inspectFailed'))
       }
     })()
   }, [open, selected, role])
@@ -101,8 +101,8 @@ export function BackupCenterPanel() {
     setBusy(`dl-${a.date}`)
     const r = await window.lunareclipse.multiSatBackupSave(a.uid, a.date)
     setBusy(null)
-    if (!r.ok && !r.canceled) setError(r.error ?? '提取失败')
-    else if (r.ok && r.path) setOkMsg(`已保存：${r.path}`)
+    if (!r.ok && !r.canceled) setError(r.error ?? t('panelui.backup.extractFailed'))
+    else if (r.ok && r.path) setOkMsg(t('panelui.backup.savedTo', { path: r.path }))
   }
 
   const doRestore = async (a: ArchiveItem) => {
@@ -116,7 +116,7 @@ export function BackupCenterPanel() {
     setRestoreArmed(false)
     setRestoreConfirm(false)
     if (r.ok) setOkMsg(t('backup.restored', { n: r.restored ?? 0 }))
-    else setError(r.error ?? '恢复失败')
+    else setError(r.error ?? t('panelui.backup.restoreFailed'))
     await load()
   }
 
@@ -174,7 +174,7 @@ export function BackupCenterPanel() {
               <div className="rounded-btn border border-danger-soft bg-danger-soft/20 px-2.5 py-1.5 text-[11px] text-danger">{error}</div>
             )}
             {okMsg && (
-              <div className="rounded-btn border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] text-emerald-400">{okMsg}</div>
+              <div className="rounded-btn border border-success/30 bg-success/10 px-2.5 py-1.5 text-[11px] text-success">{okMsg}</div>
             )}
           </div>
         )}

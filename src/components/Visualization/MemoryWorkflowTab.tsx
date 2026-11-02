@@ -5,28 +5,30 @@
  * 与记忆总览统计卡。
  */
 import { RefreshCw, AlertTriangle, FileText, Activity, FolderOpen } from 'lucide-react'
-import { openFilePreview } from '../Workshop/FileWorkshopPanel'
+import { openFilePreview } from '../Workshop/filePreviewOpener'
 import type { VisualizationData, ErrorLogEntry, WorkflowInstanceSummary, RawMemoryLatest } from '@shared/types'
 import { SectionTitle, EmptyHint, StatCard } from './common'
 import { formatDateTime } from '../../utils/time'
+import { useT } from '../../i18n/useT'
 
 /** 记忆工作流监控 Tab（批次 E-5c 从 VisualizationPanel.tsx 拆出） */
 export function MemoryWorkflowTab({ data, loading }: { data: VisualizationData | null; loading: boolean }) {
+  const t = useT()
   if (!data) {
     // 加载中显示骨架提示，否则用醒目卡片提示无数据（虚线边框 + 图标 + 说明文字）
     if (loading) {
       return (
         <div className="flex flex-col items-center justify-center gap-3 rounded-btn border border-dashed border-border-subtle px-4 py-10 text-center">
           <RefreshCw size={20} className="animate-spin text-fg-muted" />
-          <div className="text-caption text-fg-secondary">加载中...</div>
+          <div className="text-caption text-fg-secondary">{t('vizui.workflow.loading')}</div>
         </div>
       )
     }
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-btn border border-dashed border-border-subtle px-4 py-10 text-center">
         <AlertTriangle size={22} className="text-fg-muted" />
-        <div className="text-body text-fg-secondary">暂无监控数据</div>
-        <div className="text-caption text-fg-muted">请确认后端监控服务已启动</div>
+        <div className="text-body text-fg-secondary">{t('vizui.workflow.noData')}</div>
+        <div className="text-caption text-fg-muted">{t('vizui.workflow.noDataHint')}</div>
       </div>
     )
   }
@@ -35,19 +37,19 @@ export function MemoryWorkflowTab({ data, loading }: { data: VisualizationData |
     <div className="space-y-5">
       {/* 最新 RAW（raw_memory 最新一条，监控面板 RAW 接口） */}
       <section>
-        <SectionTitle icon={FileText} title="最新 RAW" />
+        <SectionTitle icon={FileText} title={t('vizui.workflow.latestRaw')} />
         {data.latestRawMemory ? (
           <LatestRawItem raw={data.latestRawMemory} />
         ) : (
-          <EmptyHint text="暂无 raw_memory 记录（对话尚未落盘或 raw_memory 目录为空）" />
+          <EmptyHint text={t('vizui.workflow.emptyRaw')} />
         )}
       </section>
 
       {/* 工作流进度（进度来自工作流引擎实例；旧心跳 .dmn_shared/进度.json 已停更废弃） */}
       <section>
-        <SectionTitle icon={RefreshCw} title={`工作流进度（${data.workflowInstances.length}）`} />
+        <SectionTitle icon={RefreshCw} title={t('vizui.workflow.progressTitle', { n: data.workflowInstances.length })} />
         {data.workflowInstances.length === 0 ? (
-          <EmptyHint text="当前无工作流实例（前端 AI 忙或流水线未启动；运行中的批次会实时显示在这里）" />
+          <EmptyHint text={t('vizui.workflow.emptyInstances')} />
         ) : (
           <div className="space-y-2">
             {data.workflowInstances.map((inst) => (
@@ -59,9 +61,9 @@ export function MemoryWorkflowTab({ data, loading }: { data: VisualizationData |
 
       {/* 错误日志 */}
       <section>
-        <SectionTitle icon={AlertTriangle} title={`错误日志（${data.errorLogs.length}）`} />
+        <SectionTitle icon={AlertTriangle} title={t('vizui.workflow.errorsTitle', { n: data.errorLogs.length })} />
         {data.errorLogs.length === 0 ? (
-          <EmptyHint text="无错误记录" />
+          <EmptyHint text={t('vizui.workflow.noErrors')} />
         ) : (
           <div className="space-y-1.5">
             {data.errorLogs.slice(0, 5).map((e) => (
@@ -74,15 +76,15 @@ export function MemoryWorkflowTab({ data, loading }: { data: VisualizationData |
       {/* 监控器状态 */}
       {data.monitorState && (
         <section>
-          <SectionTitle icon={Activity} title="文件监控器" />
+          <SectionTitle icon={Activity} title={t('vizui.workflow.monitor')} />
           <div className="grid grid-cols-2 gap-2">
-            <StatCard label="创建事件" value={data.monitorState?.统计?.create_events ?? 0} />
-            <StatCard label="修改事件" value={data.monitorState?.统计?.modify_events ?? 0} />
-            <StatCard label="删除事件" value={data.monitorState?.统计?.delete_events ?? 0} />
-            <StatCard label="移动事件" value={data.monitorState?.统计?.move_events ?? 0} />
+            <StatCard label={t('vizui.workflow.eventCreate')} value={data.monitorState?.统计?.create_events ?? 0} />
+            <StatCard label={t('vizui.workflow.eventModify')} value={data.monitorState?.统计?.modify_events ?? 0} />
+            <StatCard label={t('vizui.workflow.eventDelete')} value={data.monitorState?.统计?.delete_events ?? 0} />
+            <StatCard label={t('vizui.workflow.eventMove')} value={data.monitorState?.统计?.move_events ?? 0} />
           </div>
           <div className="mt-2 text-[10px] text-fg-muted">
-            启动：{data.monitorState?.启动时间 ? new Date(data.monitorState.启动时间).toLocaleString('zh-CN') : '未知'}
+            {t('vizui.workflow.startedAt', { time: data.monitorState?.启动时间 ? new Date(data.monitorState.启动时间).toLocaleString('zh-CN') : t('vizui.workflow.unknownTime') })}
           </div>
         </section>
       )}
@@ -90,42 +92,43 @@ export function MemoryWorkflowTab({ data, loading }: { data: VisualizationData |
   )
 }
 
-const WF_STATUS_STYLE: Record<string, { label: string; dot: string }> = {
-  running: { label: '运行中', dot: 'bg-accent animate-pulse' },
-  paused: { label: '已暂停', dot: 'bg-blue-400' },
-  completed: { label: '已完成', dot: 'bg-green-400' },
-  failed: { label: '失败', dot: 'bg-red-400' },
-  cancelled: { label: '已取消', dot: 'bg-fg-muted' }
+const WF_STATUS_STYLE: Record<string, { labelKey: string; dot: string }> = {
+  running: { labelKey: 'vizui.workflow.status.running', dot: 'bg-accent animate-pulse' },
+  paused: { labelKey: 'vizui.workflow.status.paused', dot: 'bg-blue-400' },
+  completed: { labelKey: 'vizui.workflow.status.completed', dot: 'bg-success' },
+  failed: { labelKey: 'vizui.workflow.status.failed', dot: 'bg-danger' },
+  cancelled: { labelKey: 'vizui.workflow.status.cancelled', dot: 'bg-fg-muted' }
 }
 
 const WF_NODE_STYLE: Record<string, string> = {
   running: 'bg-accent/15 text-accent',
   done: 'bg-bg-muted text-fg-secondary',
-  failed: 'bg-red-400/15 text-red-400',
-  skipped: 'bg-yellow-400/15 text-yellow-400'
+  failed: 'bg-danger/15 text-danger',
+  skipped: 'bg-warning/15 text-warning'
 }
 
 function WorkflowInstanceItem({ inst }: { inst: WorkflowInstanceSummary }) {
-  const st = WF_STATUS_STYLE[inst.status] ?? { label: inst.status, dot: 'bg-fg-muted' }
+  const t = useT()
+  const st = WF_STATUS_STYLE[inst.status] ?? { labelKey: inst.status, dot: 'bg-fg-muted' }
   const lastNodes = inst.nodes.slice(-6)
   return (
     <div className="rounded-btn border border-border-subtle bg-bg-elevated px-3 py-2">
       <div className="flex items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${st.dot}`} />
         <span className="flex-1 truncate text-caption text-fg-primary">{inst.templateName ?? inst.templateId}</span>
-        <span className="shrink-0 text-[10px] text-fg-muted">{st.label}</span>
+        <span className="shrink-0 text-[10px] text-fg-muted">{t(st.labelKey)}</span>
       </div>
       <div className="mt-1 flex items-center gap-2 text-[10px] text-fg-muted">
         <span className="truncate font-mono">{inst.id}</span>
-        <span className="shrink-0">开始 {formatDateTime(inst.startedAt)}</span>
+        <span className="shrink-0">{t('vizui.workflow.started', { time: formatDateTime(inst.startedAt) })}</span>
         {inst.completedAt != null && (
           <span className="shrink-0">→ {formatDateTime(inst.completedAt)}</span>
         )}
       </div>
       {inst.status === 'running' && inst.currentNode && (
-        <div className="mt-1 text-[10px] text-accent">当前节点：{inst.currentNode}</div>
+        <div className="mt-1 text-[10px] text-accent">{t('vizui.workflow.currentNode', { node: inst.currentNode })}</div>
       )}
-      {inst.error && <div className="mt-1 truncate text-[10px] text-red-400" title={inst.error}>失败：{inst.error}</div>}
+      {inst.error && <div className="mt-1 truncate text-[10px] text-danger" title={inst.error}>{t('vizui.workflow.failedWith', { error: inst.error })}</div>}
       {lastNodes.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {lastNodes.map((n, i) => (
@@ -140,16 +143,17 @@ function WorkflowInstanceItem({ inst }: { inst: WorkflowInstanceSummary }) {
 }
 
 function ErrorLogItem({ entry }: { entry: ErrorLogEntry }) {
+  const t = useT()
   return (
-    <div className={`rounded-btn border px-3 py-2 ${entry.permanent_failure ? 'border-red-400/40 bg-red-400/5' : 'border-border-subtle bg-bg-elevated'}`}>
+    <div className={`rounded-btn border px-3 py-2 ${entry.permanent_failure ? 'border-danger/40 bg-danger/5' : 'border-border-subtle bg-bg-elevated'}`}>
       <div className="flex items-center gap-2">
         <span className="rounded bg-bg-muted px-1.5 py-0.5 text-[10px] text-fg-secondary">{entry.task.type}</span>
-        {entry.permanent_failure && <span className="text-[10px] text-red-400">永久失败</span>}
+        {entry.permanent_failure && <span className="text-[10px] text-danger">{t('vizui.workflow.permanentFailure')}</span>}
         <span className="ml-auto text-[10px] text-fg-muted">{new Date(entry.timestamp).toLocaleString('zh-CN')}</span>
       </div>
-      <div className="mt-1 text-[11px] text-red-400">{entry.error}</div>
+      <div className="mt-1 text-[11px] text-danger">{entry.error}</div>
       {entry.task.path && <div className="mt-0.5 truncate text-[10px] text-fg-muted">{entry.task.path}</div>}
-      <div className="mt-0.5 text-[10px] text-fg-muted">重试 {entry.retry_count} 次</div>
+      <div className="mt-0.5 text-[10px] text-fg-muted">{t('vizui.workflow.retryCount', { n: entry.retry_count })}</div>
     </div>
   )
 }
@@ -172,6 +176,7 @@ function BeautifiedText({ text }: { text: string }) {
 }
 
 function LatestRawItem({ raw }: { raw: RawMemoryLatest }) {
+  const t = useT()
   // 整卡可点击需键盘可达：补 role/tabIndex 与 Enter/Space 处理；
   // e.target 判定防止内层「在文件夹中显示」按钮聚焦回车时冒泡误触发预览
   return (
@@ -179,7 +184,7 @@ function LatestRawItem({ raw }: { raw: RawMemoryLatest }) {
       role="button"
       tabIndex={0}
       className="rounded-btn border border-border-subtle bg-bg-elevated px-3 py-2 cursor-pointer hover:bg-bg-muted/40 transition-colors"
-      title={`点击打开全文：${raw.path}`}
+      title={t('vizui.workflow.openFullText', { path: raw.path })}
       onClick={() => openFilePreview(raw.path)}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return
@@ -200,8 +205,8 @@ function LatestRawItem({ raw }: { raw: RawMemoryLatest }) {
         {/* 在文件夹中显示（独立 icon 按钮：不嵌进可点击卡片避免嵌套交互） */}
         <button
           className="ml-auto shrink-0 rounded p-0.5 text-fg-muted hover:bg-bg-muted hover:text-accent"
-          title={`在文件夹中显示：${raw.path}`}
-          aria-label={`在文件夹中显示：${raw.path}`}
+          title={t('vizui.common.revealInFolder', { path: raw.path })}
+          aria-label={t('vizui.common.revealInFolder', { path: raw.path })}
           onClick={(e) => {
             e.stopPropagation()
             void window.lunareclipse.showItemInFolder(raw.path)
@@ -210,8 +215,8 @@ function LatestRawItem({ raw }: { raw: RawMemoryLatest }) {
           <FolderOpen size={11} />
         </button>
         <span className="shrink-0 text-[10px] text-fg-muted">{(raw.size / 1024).toFixed(1)}KB</span>
-        {raw.truncated && <span className="shrink-0 text-[10px] text-yellow-400">已截断</span>}
-        <span className="ml-auto shrink-0 text-[9px] text-accent">点击看全文</span>
+        {raw.truncated && <span className="shrink-0 text-[10px] text-warning">{t('vizui.workflow.truncated')}</span>}
+        <span className="ml-auto shrink-0 text-[9px] text-accent">{t('vizui.workflow.openFullTextHint')}</span>
       </div>
       <div className="mt-1.5 space-y-1">
         <div className="text-[11px] text-fg-primary">

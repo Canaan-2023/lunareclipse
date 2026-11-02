@@ -42,7 +42,7 @@ describe('ConfirmDialog 确认弹窗渲染', () => {
   })
 
   // 用例3：danger（默认）→ 红色主按钮 + 红色图标语义
-  it('danger 模式主按钮为红色语义', () => {
+  it('danger 模式主按钮为 danger 语义', () => {
     const html = renderToStaticMarkup(
       <ConfirmDialog
         open
@@ -55,8 +55,8 @@ describe('ConfirmDialog 确认弹窗渲染', () => {
         onCancel={() => {}}
       />
     )
-    expect(html).toContain('bg-red-500/90')
-    expect(html).toContain('text-red-400')
+    expect(html).toContain('bg-danger/90')
+    expect(html).toContain('text-danger')
     // 关闭按钮（取消）不应误用主按钮危险样式
     expect(html).not.toContain('bg-accent')
   })
@@ -76,7 +76,7 @@ describe('ConfirmDialog 确认弹窗渲染', () => {
       />
     )
     expect(html).toContain('bg-accent')
-    expect(html).not.toContain('bg-red-500/90')
-    expect(html).not.toContain('text-red-400')
+    expect(html).not.toContain('bg-danger/90')
+    expect(html).not.toContain('text-danger')
   })
 })

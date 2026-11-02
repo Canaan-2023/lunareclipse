@@ -83,7 +83,7 @@ describe('无头链路的内部会话锚点（逆生树）', () => {
     expect(injectedCalls[0].purpose).toBe('room')
   })
 
-  it('钩子拿到本轮落定的内部会话 id（房间轮两写入口，0.54.0）', async () => {
+  it('钩子拿到本轮落定的内部会话 id（房间轮两写入口，0.54.2）', async () => {
     const seen: Array<string | null> = []
     const { runner } = makeHarness({
       resolveSessionContext: async () => ({ sessionContext: ANCHOR, internalId: 'int-9' })

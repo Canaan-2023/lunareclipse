@@ -192,7 +192,7 @@ export function MemoryGraphPanel() {
                 }`}
               >
                 <span className="mr-1">{a.avatar ?? aiAvatarFallback(a.id)}</span>
-                {a.name}（AI {a.id}）
+                {t('vizui.memory.aiSuffix', { name: a.name, id: a.id })}
               </button>
             ))}
           </div>
